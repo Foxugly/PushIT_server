@@ -1,0 +1,42 @@
+groups:
+  - name: pushit-api
+    rules:
+      - alert: PushitApiTargetDown
+        expr: up{job="pushit-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: pushit-api
+        annotations:
+          summary: "PushIT API metrics target is down"
+          description: "Prometheus cannot scrape the PushIT API metrics endpoint for more than 1 minute."
+
+      - alert: PushitHighInternalErrorRate
+        expr: sum(increase(pushit_http_requests_total{route!~"health-live|health-ready|health-metrics",status=~"5.."}[5m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+          service: pushit-api
+        annotations:
+          summary: "PushIT API is returning too many 5xx responses"
+          description: "At least 5 server-side HTTP errors were observed over the last 5 minutes."
+
+      - alert: PushitNotificationFailures
+        expr: sum(increase(pushit_notification_send_total{outcome=~"failed|partial"}[10m])) >= 5
+        for: 10m
+        labels:
+          severity: warning
+          service: notifications
+        annotations:
+          summary: "PushIT notifications are failing or partially failing"
+          description: "At least 5 notification send attempts ended in failed or partial over the last 10 minutes."
+
+      - alert: PushitAppTokenAuthAnomaly
+        expr: sum(increase(pushit_app_token_auth_total{outcome=~"invalid|invalid_format|revoked"}[10m])) >= 20
+        for: 10m
+        labels:
+          severity: warning
+          service: applications
+        annotations:
+          summary: "PushIT app token authentication anomalies detected"
+          description: "Invalid, malformed, or revoked app token authentications spiked over the last 10 minutes."
