@@ -7,7 +7,7 @@ from config.api_errors import (
     ErrorResponseSerializer as DetailResponseSerializer,
     build_validation_error_serializer,
 )
-from .models import User
+from .models import User, UserLanguage
 
 
 RegisterValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -29,6 +29,12 @@ TokenRefreshValidationErrorResponseSerializer = build_validation_error_serialize
     "TokenRefreshValidationErrorResponse",
     ["refresh"],
 )
+
+LanguageUpdateValidationErrorResponseSerializer = build_validation_error_serializer(
+    "LanguageUpdateValidationErrorResponse",
+    ["language"],
+)
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -79,7 +85,15 @@ class LoginSerializer(serializers.Serializer):
 class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "username", "userkey", "is_active"]
+        fields = ["id", "email", "username", "userkey", "is_active", "language"]
+
+
+class UserLanguageUpdateSerializer(serializers.ModelSerializer):
+    language = serializers.ChoiceField(choices=UserLanguage.choices)
+
+    class Meta:
+        model = User
+        fields = ["language"]
 
 
 class LoginResponseSerializer(serializers.Serializer):
@@ -99,6 +113,7 @@ def build_token_response_for_user(user: User) -> dict:
         "refresh": str(refresh),
         "user": UserMeSerializer(user).data,
     }
+
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(

@@ -15,7 +15,7 @@ from .push import (
     TemporaryPushProviderError,
     PushProviderError,
 )
-from .scheduling import get_quiet_period_end_for_application
+from .scheduling import get_quiet_period_end_for_application, get_quiet_period_end_from_iterable
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,37 @@ def get_target_devices_for_notification(notification: Notification):
     )
 
 
+def get_target_deliveries_for_notification(notification: Notification) -> list[NotificationDelivery]:
+    deliveries = list(
+        notification.deliveries.select_related("device")
+        .prefetch_related("device__quiet_periods")
+        .order_by("device_id")
+    )
+    if deliveries:
+        return deliveries
+
+    devices = list(
+        get_target_devices_for_notification(notification).prefetch_related("quiet_periods")
+    )
+    deliveries = []
+    for device in devices:
+        delivery = _get_or_create_delivery(notification, device)
+        delivery.device = device
+        deliveries.append(delivery)
+    return deliveries
+
+
 def get_current_quiet_period_end(notification: Notification, at=None):
     at = at or timezone.now()
     return get_quiet_period_end_for_application(notification.application, at)
+
+
+def get_current_device_quiet_period_end(device: Device, at=None):
+    at = at or timezone.now()
+    quiet_periods = getattr(device, "_prefetched_objects_cache", {}).get("quiet_periods")
+    if quiet_periods is None:
+        quiet_periods = device.quiet_periods.filter(is_active=True).order_by("id")
+    return get_quiet_period_end_from_iterable(quiet_periods, at)
 
 def _acquire_notification_for_processing(notification_id: int) -> Notification | None:
     """
@@ -127,6 +155,10 @@ def _should_skip_delivery(delivery: NotificationDelivery) -> bool:
     return delivery.status == DeliveryStatus.SENT
 
 
+def _should_wait_for_retry(delivery: NotificationDelivery) -> bool:
+    return delivery.next_retry_at is not None and delivery.next_retry_at > timezone.now()
+
+
 def _mark_delivery_as_sent(delivery: NotificationDelivery, provider_message_id: str) -> None:
     now = timezone.now()
     delivery.status = DeliveryStatus.SENT
@@ -142,6 +174,21 @@ def _mark_delivery_as_sent(delivery: NotificationDelivery, provider_message_id: 
             "error_message",
             "sent_at",
             "last_attempt_at",
+            "next_retry_at",
+        ]
+    )
+
+
+def _mark_delivery_as_deferred(delivery: NotificationDelivery, retry_at) -> None:
+    delivery.status = DeliveryStatus.PENDING
+    delivery.last_attempt_at = timezone.now()
+    delivery.error_message = "Deferred by device quiet period."
+    delivery.next_retry_at = retry_at
+    delivery.save(
+        update_fields=[
+            "status",
+            "last_attempt_at",
+            "error_message",
             "next_retry_at",
         ]
     )
@@ -220,13 +267,13 @@ def send_notification(notification_id: int) -> dict:
             skipped_count=0,
         ).as_dict()
 
-    devices = list(get_target_devices_for_notification(notification))
+    deliveries = get_target_deliveries_for_notification(notification)
     logger.info(
         "notification_send_started",
         extra={
             "notification_id": notification.id,
             "application_id": notification.application_id,
-            "target_count": len(devices),
+            "target_count": len(deliveries),
         },
     )
     increment_counter(
@@ -234,7 +281,7 @@ def send_notification(notification_id: int) -> dict:
         labels={"outcome": "started"},
     )
 
-    if not devices:
+    if not deliveries:
         Notification.objects.filter(id=notification.id).update(
             status=NotificationStatus.NO_TARGET,
             sent_at=None,
@@ -254,9 +301,11 @@ def send_notification(notification_id: int) -> dict:
     sent_count = 0
     failed_count = 0
     skipped_count = 0
+    deferred_count = 0
+    waiting_count = 0
 
-    for device in devices:
-        delivery = _get_or_create_delivery(notification, device)
+    for delivery in deliveries:
+        device = delivery.device
 
         if _should_skip_delivery(delivery):
             increment_counter(
@@ -264,6 +313,20 @@ def send_notification(notification_id: int) -> dict:
                 labels={"outcome": "skipped"},
             )
             skipped_count += 1
+            continue
+
+        if _should_wait_for_retry(delivery):
+            waiting_count += 1
+            continue
+
+        device_quiet_period_end = get_current_device_quiet_period_end(device, at=timezone.now())
+        if device_quiet_period_end is not None:
+            _mark_delivery_as_deferred(delivery, device_quiet_period_end)
+            increment_counter(
+                "pushit_notification_delivery_total",
+                labels={"outcome": "deferred_quiet_period_device"},
+            )
+            deferred_count += 1
             continue
 
         if not _can_retry_delivery(delivery):
@@ -390,7 +453,9 @@ def send_notification(notification_id: int) -> dict:
 
     successful_count_for_status = sent_count + skipped_count
 
-    if failed_count == 0 and successful_count_for_status > 0:
+    if deferred_count > 0 or waiting_count > 0:
+        final_status = NotificationStatus.PARTIAL
+    elif failed_count == 0 and successful_count_for_status > 0:
         final_status = NotificationStatus.SENT
     elif successful_count_for_status == 0 and failed_count > 0:
         final_status = NotificationStatus.FAILED
@@ -407,10 +472,11 @@ def send_notification(notification_id: int) -> dict:
         extra={
             "notification_id": notification.id,
             "status": final_status,
-            "target_count": len(devices),
+            "target_count": len(deliveries),
             "sent_count": sent_count,
             "failed_count": failed_count,
             "skipped_count": skipped_count,
+            "deferred_count": deferred_count,
         },
     )
     increment_counter(
@@ -420,7 +486,7 @@ def send_notification(notification_id: int) -> dict:
 
     return SendNotificationResult(
         notification_id=notification.id,
-        target_count=len(devices),
+        target_count=len(deliveries),
         sent_count=sent_count,
         failed_count=failed_count,
         skipped_count=skipped_count,

@@ -362,7 +362,7 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
         return (
             Notification.objects.filter(application=self.request.auth_application)
             .select_related("application")
-            .prefetch_related("application__quiet_periods")
+            .prefetch_related("application__quiet_periods", "deliveries")
             .order_by("-id")
         )
 

@@ -68,6 +68,13 @@ class JsonFormatter(logging.Formatter):
             "error",
             "path",
             "method",
+            "push_provider",
+            "push_token_suffix",
+            "push_token_length",
+            "notification_title",
+            "notification_message_preview",
+            "notification_message_length",
+            "provider_message_id",
         ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)

@@ -33,6 +33,9 @@ def test_accounts_validation_responses_are_documented_per_endpoint():
     _assert_json_response_ref(refresh_operation, "200", "TokenRefreshResponse")
     _assert_json_response_ref(refresh_operation, "400", "TokenRefreshValidationErrorResponse")
 
+    me_patch_operation = schema["paths"]["/api/v1/auth/me/"]["patch"]
+    _assert_json_response_ref(me_patch_operation, "400", "LanguageUpdateValidationErrorResponse")
+
 
 @pytest.mark.django_db
 def test_application_and_device_validation_responses_are_documented_per_endpoint():
@@ -43,6 +46,13 @@ def test_application_and_device_validation_responses_are_documented_per_endpoint
         application_create_operation,
         "400",
         "ApplicationCreateValidationErrorResponse",
+    )
+
+    application_patch_operation = schema["paths"]["/api/v1/apps/{app_id}/"]["patch"]
+    _assert_json_response_ref(
+        application_patch_operation,
+        "400",
+        "ApplicationUpdateValidationErrorResponse",
     )
 
     quiet_period_create_operation = schema["paths"]["/api/v1/apps/{app_id}/quiet-periods/"]["post"]
@@ -57,6 +67,13 @@ def test_application_and_device_validation_responses_are_documented_per_endpoint
 
     device_patch_operation = schema["paths"]["/api/v1/devices/{id}/"]["patch"]
     _assert_json_response_ref(device_patch_operation, "400", "DeviceUpdateValidationErrorResponse")
+
+    device_quiet_period_create_operation = schema["paths"]["/api/v1/devices/{device_id}/quiet-periods/"]["post"]
+    _assert_json_response_ref(
+        device_quiet_period_create_operation,
+        "400",
+        "DeviceQuietPeriodValidationErrorResponse",
+    )
 
     device_link_operation = schema["paths"]["/api/v1/devices/link/"]["post"]
     _assert_json_response_ref(
@@ -108,6 +125,8 @@ def test_notification_read_schema_exposes_effective_scheduled_for():
     notification_read_schema = schema["components"]["schemas"]["NotificationRead"]
     assert "effective_scheduled_for" in notification_read_schema["properties"]
     assert notification_read_schema["properties"]["effective_scheduled_for"]["format"] == "date-time"
+    assert "device_ids" in notification_read_schema["properties"]
+    assert notification_read_schema["properties"]["device_ids"]["type"] == "array"
 
 
 @pytest.mark.django_db

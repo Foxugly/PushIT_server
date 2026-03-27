@@ -6,10 +6,10 @@ from unittest.mock import patch
 from django.utils import timezone
 
 from accounts.models import User
-from applications.models import ApplicationQuietPeriod
+from applications.models import ApplicationQuietPeriod, QuietPeriodType
 from config.metrics import render_metrics, reset_metrics
 from applications.models import Application
-from devices.models import Device, DeviceApplicationLink, DeviceTokenStatus
+from devices.models import Device, DeviceApplicationLink, DeviceQuietPeriod, DeviceTokenStatus
 from notifications.models import Notification, NotificationDelivery, NotificationStatus, DeliveryStatus
 from notifications.push import InvalidPushTokenError, TemporaryPushProviderError
 from notifications.services import send_notification
@@ -83,6 +83,49 @@ def test_send_notification_success(mock_send):
     assert 'pushit_notification_send_total{outcome="started"} 1.0' in metrics
     assert 'pushit_notification_send_total{outcome="sent"} 1.0' in metrics
     assert 'pushit_notification_delivery_total{outcome="sent"} 2.0' in metrics
+
+
+@pytest.mark.django_db
+@patch("notifications.services.send_push_to_device")
+def test_send_notification_uses_precreated_target_deliveries_only(mock_send):
+    mock_send.return_value = "provider-123"
+
+    user = User.objects.create_user(username="u-targeted", password="1234")
+    app = Application.objects.create(owner=user, name="App")
+
+    device1 = Device.objects.create(
+        push_token="token_targeted_11111111111111111111",
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    )
+    device2 = Device.objects.create(
+        push_token="token_targeted_22222222222222222222",
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    )
+
+    DeviceApplicationLink.objects.create(device=device1, application=app)
+    DeviceApplicationLink.objects.create(device=device2, application=app)
+
+    notification = Notification.objects.create(
+        application=app,
+        title="Hello",
+        message="World",
+        status=NotificationStatus.DRAFT,
+    )
+    NotificationDelivery.objects.create(
+        notification=notification,
+        device=device2,
+        status=DeliveryStatus.PENDING,
+    )
+
+    result = send_notification(notification.id)
+
+    assert result["target_count"] == 1
+    assert result["sent_count"] == 1
+    assert result["failed_count"] == 0
+    assert result["skipped_count"] == 0
+    assert NotificationDelivery.objects.filter(notification=notification).count() == 1
+    assert NotificationDelivery.objects.get(notification=notification, device=device2).status == DeliveryStatus.SENT
+    assert mock_send.call_args.kwargs["push_token"] == device2.push_token
 
 
 @pytest.mark.django_db
@@ -351,3 +394,89 @@ def test_send_notification_is_deferred_during_quiet_period(mock_send):
     assert notification.status == NotificationStatus.SCHEDULED
     assert notification.scheduled_for == quiet_end
     mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("notifications.services.send_push_to_device")
+def test_send_notification_is_deferred_during_recurring_quiet_period(mock_send):
+    user = User.objects.create_user(username="u2", password="1234")
+    app = Application.objects.create(owner=user, name="App")
+    local_now = timezone.localtime()
+    local_start = local_now - timedelta(minutes=30)
+    local_end = local_now + timedelta(hours=2)
+    recurrence_day = local_start.weekday()
+
+    ApplicationQuietPeriod.objects.create(
+        application=app,
+        name="Nightly maintenance",
+        period_type=QuietPeriodType.RECURRING,
+        recurrence_days=[recurrence_day],
+        start_time=local_start.time().replace(tzinfo=None),
+        end_time=local_end.time().replace(tzinfo=None),
+        is_active=True,
+    )
+
+    notification = Notification.objects.create(
+        application=app,
+        title="Hello",
+        message="World",
+        status=NotificationStatus.QUEUED,
+    )
+
+    result = send_notification(notification.id)
+
+    assert result["target_count"] == 0
+    notification.refresh_from_db()
+    assert notification.status == NotificationStatus.SCHEDULED
+    assert notification.scheduled_for == local_end
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("notifications.services.send_push_to_device")
+def test_device_quiet_period_defers_only_impacted_device(mock_send):
+    mock_send.return_value = "provider-123"
+
+    user = User.objects.create_user(username="u3", password="1234")
+    app = Application.objects.create(owner=user, name="App")
+    device_blocked = Device.objects.create(
+        push_token="token_33333333333333333333",
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    )
+    device_open = Device.objects.create(
+        push_token="token_44444444444444444444",
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    )
+    DeviceApplicationLink.objects.create(device=device_blocked, application=app)
+    DeviceApplicationLink.objects.create(device=device_open, application=app)
+
+    quiet_end = timezone.now() + timedelta(hours=2)
+    DeviceQuietPeriod.objects.create(
+        device=device_blocked,
+        name="Device maintenance",
+        period_type=QuietPeriodType.ONCE,
+        start_at=timezone.now() - timedelta(minutes=10),
+        end_at=quiet_end,
+        is_active=True,
+    )
+
+    notification = Notification.objects.create(
+        application=app,
+        title="Hello",
+        message="World",
+        status=NotificationStatus.QUEUED,
+    )
+
+    result = send_notification(notification.id)
+
+    notification.refresh_from_db()
+    blocked_delivery = NotificationDelivery.objects.get(notification=notification, device=device_blocked)
+    open_delivery = NotificationDelivery.objects.get(notification=notification, device=device_open)
+
+    assert result["target_count"] == 2
+    assert result["sent_count"] == 1
+    assert notification.status == NotificationStatus.PARTIAL
+    assert blocked_delivery.status == DeliveryStatus.PENDING
+    assert blocked_delivery.next_retry_at == quiet_end
+    assert open_delivery.status == DeliveryStatus.SENT
+    assert mock_send.call_count == 1

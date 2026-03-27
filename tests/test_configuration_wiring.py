@@ -19,8 +19,10 @@ def test_core_url_wiring():
     assert reverse("health-metrics") == "/health/metrics/"
     assert reverse("auth-register") == "/api/v1/auth/register/"
     assert reverse("app-list-create") == "/api/v1/apps/"
+    assert reverse("app-detail", kwargs={"app_id": 1}) == "/api/v1/apps/1/"
     assert reverse("app-quiet-period-list-create", kwargs={"app_id": 1}) == "/api/v1/apps/1/quiet-periods/"
     assert reverse("device-link") == "/api/v1/devices/link/"
+    assert reverse("device-quiet-period-list-create", kwargs={"device_id": 1}) == "/api/v1/devices/1/quiet-periods/"
     assert reverse("notification-list-create") == "/api/v1/notifications/"
     assert reverse("notification-create-app-token") == "/api/v1/notifications/app/create/"
     assert reverse("notification-future-list") == "/api/v1/notifications/future/"
@@ -31,14 +33,20 @@ def test_core_url_wiring():
     assert resolve("/health/metrics/").view_name == "health-metrics"
     assert resolve("/api/v1/auth/register/").view_name == "auth-register"
     assert resolve("/api/v1/apps/").view_name == "app-list-create"
+    assert resolve("/api/v1/apps/1/").view_name == "app-detail"
     assert resolve("/api/v1/apps/1/quiet-periods/").view_name == "app-quiet-period-list-create"
     assert resolve("/api/v1/devices/link/").view_name == "device-link"
+    assert resolve("/api/v1/devices/1/quiet-periods/").view_name == "device-quiet-period-list-create"
     assert resolve("/api/v1/notifications/future/").view_name == "notification-future-list"
     assert resolve("/api/v1/notifications/app/create/").view_name == "notification-create-app-token"
 
 
 def test_rest_framework_and_schema_wiring():
     assert settings.AUTH_USER_MODEL == "accounts.User"
+    assert "corsheaders" in settings.INSTALLED_APPS
+    assert settings.MIDDLEWARE.index("corsheaders.middleware.CorsMiddleware") < settings.MIDDLEWARE.index(
+        "django.middleware.common.CommonMiddleware"
+    )
     assert (
         "rest_framework_simplejwt.authentication.JWTAuthentication"
         in settings.REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]
@@ -53,6 +61,8 @@ def test_rest_framework_and_schema_wiring():
     assert settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["login"] == "10/min"
     assert settings.SPECTACULAR_SETTINGS["COMPONENTS"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-App-Token"
     assert "config.middleware.RequestIdMiddleware" in settings.MIDDLEWARE
+    assert "http://localhost:4200" in settings.CORS_ALLOWED_ORIGINS
+    assert "http://127.0.0.1:4200" in settings.CORS_ALLOWED_ORIGINS
 
 
 def test_dev_state_enables_eager_celery():

@@ -1,29 +1,73 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from applications.models import Application, ApplicationQuietPeriod
+from django.utils import timezone
+
+from applications.models import Application, ApplicationQuietPeriod, QuietPeriodType
+
+
+MAX_QUIET_PERIOD_SHIFT_ITERATIONS = 32
+
+
+def _local_time(value: datetime):
+    return timezone.localtime(value).time().replace(tzinfo=None)
+
+
+def _build_local_datetime(date_value, time_value):
+    return timezone.make_aware(
+        datetime.combine(date_value, time_value),
+        timezone.get_current_timezone(),
+    )
+
+
+def get_quiet_period_end_for_period(quiet_period: ApplicationQuietPeriod, at: datetime):
+    if not quiet_period.is_active:
+        return None
+
+    if quiet_period.period_type == QuietPeriodType.ONCE:
+        if quiet_period.start_at is None or quiet_period.end_at is None:
+            return None
+        if quiet_period.start_at <= at < quiet_period.end_at:
+            return quiet_period.end_at
+        return None
+
+    recurrence_days = quiet_period.recurrence_days or []
+    if not recurrence_days or quiet_period.start_time is None or quiet_period.end_time is None:
+        return None
+
+    local_at = timezone.localtime(at)
+    weekday = local_at.weekday()
+    local_time = _local_time(at)
+
+    if quiet_period.end_time > quiet_period.start_time:
+        if weekday in recurrence_days and quiet_period.start_time <= local_time < quiet_period.end_time:
+            return _build_local_datetime(local_at.date(), quiet_period.end_time)
+        return None
+
+    if weekday in recurrence_days and local_time >= quiet_period.start_time:
+        return _build_local_datetime(local_at.date() + timedelta(days=1), quiet_period.end_time)
+
+    previous_weekday = (weekday - 1) % 7
+    if previous_weekday in recurrence_days and local_time < quiet_period.end_time:
+        return _build_local_datetime(local_at.date(), quiet_period.end_time)
+
+    return None
 
 
 def get_quiet_period_end_for_application(application: Application, at: datetime):
-    return (
-        ApplicationQuietPeriod.objects.filter(
-            application=application,
-            is_active=True,
-            start_at__lte=at,
-            end_at__gt=at,
-        )
-        .order_by("-end_at")
-        .values_list("end_at", flat=True)
-        .first()
-    )
+    quiet_periods = ApplicationQuietPeriod.objects.filter(
+        application=application,
+        is_active=True,
+    ).order_by("id")
+    return get_quiet_period_end_from_iterable(quiet_periods, at)
 
 
 def get_quiet_period_end_from_iterable(quiet_periods, at: datetime):
     matching_end_dates = [
-        quiet_period.end_at
+        quiet_period_end
         for quiet_period in quiet_periods
-        if quiet_period.is_active and quiet_period.start_at <= at < quiet_period.end_at
+        if (quiet_period_end := get_quiet_period_end_for_period(quiet_period, at)) is not None
     ]
     if not matching_end_dates:
         return None
@@ -39,7 +83,7 @@ def compute_effective_scheduled_for(
         return None
 
     effective = scheduled_for
-    while True:
+    for _ in range(MAX_QUIET_PERIOD_SHIFT_ITERATIONS):
         if quiet_periods is None:
             quiet_period_end = get_quiet_period_end_for_application(application, effective)
         else:
@@ -49,6 +93,7 @@ def compute_effective_scheduled_for(
         if quiet_period_end <= effective:
             return effective
         effective = quiet_period_end
+    return effective
 
 
 def compute_effective_scheduled_map(notifications):

@@ -15,6 +15,8 @@ from .serializers import (
     ApplicationReadSerializer,
     ApplicationRevokeTokenResponseSerializer,
     ApplicationTokenRegenerateResponseSerializer,
+    ApplicationUpdateSerializer,
+    ApplicationUpdateValidationErrorResponseSerializer,
     DetailResponseSerializer,
 )
 
@@ -65,6 +67,93 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
             context=self.get_serializer_context(),
         )
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="Detail d'une application",
+        description="Retourne le detail d'une application appartenant a l'utilisateur connecte.",
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        responses={
+            200: ApplicationReadSerializer,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+        },
+    ),
+    patch=extend_schema(
+        summary="Modifier une application",
+        description="Met a jour partiellement le nom ou la description d'une application.",
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        request=ApplicationUpdateSerializer,
+        responses={
+            200: ApplicationReadSerializer,
+            400: OpenApiResponse(
+                response=ApplicationUpdateValidationErrorResponseSerializer,
+                description="Donnees invalides",
+            ),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+        },
+    ),
+    delete=extend_schema(
+        summary="Supprimer une application",
+        description="Supprime une application appartenant a l'utilisateur connecte.",
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        responses={
+            204: None,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+        },
+    ),
+)
+class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "patch", "delete"]
+
+    def get_queryset(self):
+        return Application.objects.filter(owner=self.request.user).order_by("-id")
+
+    def get_serializer_class(self):
+        if self.request.method == "PATCH":
+            return ApplicationUpdateSerializer
+        return ApplicationReadSerializer
+
+    def get_object(self):
+        return self.get_queryset().filter(id=self.kwargs["app_id"]).first()
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance is None:
+            return error_response(
+                code="application_not_found",
+                detail="Application introuvable.",
+                http_status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(ApplicationReadSerializer(instance).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance is None:
+            return error_response(
+                code="application_not_found",
+                detail="Application introuvable.",
+                http_status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(ApplicationReadSerializer(instance).data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance is None:
+            return error_response(
+                code="application_not_found",
+                detail="Application introuvable.",
+                http_status=status.HTTP_404_NOT_FOUND,
+            )
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema_view(
@@ -191,11 +280,11 @@ class UserOwnedApplicationMixin:
         summary="Lister les periodes blanches",
         description=(
             "Retourne les periodes blanches configurees pour une application. Une "
-            "periode blanche est un intervalle absolu `start_at` / `end_at` pendant "
-            "lequel les notifications sont automatiquement reportees. La creation ou "
-            "la modification d'une periode blanche ne reecrit pas retroactivement "
-            "`scheduled_for`, mais impacte la valeur calculee `effective_scheduled_for` "
-            "visible sur les notifications."
+            "periode blanche peut etre ponctuelle (`period_type=ONCE`) avec "
+            "`start_at` / `end_at`, ou periodique (`period_type=RECURRING`) avec "
+            "`recurrence_days`, `start_time` et `end_time`. Les notifications "
+            "planifiees sont automatiquement reportees a la fin de la fenetre "
+            "active, sans reecriture retroactive de `scheduled_for`."
         ),
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
@@ -204,23 +293,41 @@ class UserOwnedApplicationMixin:
     post=extend_schema(
         summary="Creer une periode blanche",
         description=(
-            "Ajoute une periode pendant laquelle aucune notification ne doit etre "
-            "envoyee. Si une notification doit partir pendant cette periode, l'envoi "
-            "est replanifie a la fin de la fenetre. Cette operation ne reecrit pas "
-            "retroactivement `scheduled_for`, mais la valeur de lecture "
-            "`effective_scheduled_for` des notifications futures tiendra compte des "
-            "periodes blanches courantes."
+            "Ajoute une periode blanche ponctuelle ou periodique. Si une notification "
+            "doit partir pendant cette periode, l'envoi est replanifie a la fin de "
+            "la fenetre active. Cette operation ne reecrit pas retroactivement "
+            "`scheduled_for`, mais la valeur de lecture `effective_scheduled_for` "
+            "des notifications futures tiendra compte des periodes blanches "
+            "courantes."
         ),
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=ApplicationQuietPeriodWriteSerializer,
         examples=[
             OpenApiExample(
-                "Quiet period request",
+                "One-time quiet period request",
                 value={
                     "name": "Nuit marketing",
+                    "period_type": "ONCE",
                     "start_at": "2026-03-27T22:00:00+01:00",
                     "end_at": "2026-03-28T08:00:00+01:00",
+                    "recurrence_days": [],
+                    "start_time": None,
+                    "end_time": None,
+                    "is_active": True,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Recurring quiet period request",
+                value={
+                    "name": "Nuit en semaine",
+                    "period_type": "RECURRING",
+                    "start_at": None,
+                    "end_at": None,
+                    "recurrence_days": [0, 1, 2, 3, 4],
+                    "start_time": "22:00:00",
+                    "end_time": "08:00:00",
                     "is_active": True,
                 },
                 request_only=True,
@@ -310,7 +417,7 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
     ),
     patch=extend_schema(
         summary="Modifier une periode blanche",
-        description="Modifie une periode blanche existante.",
+        description="Modifie une periode blanche ponctuelle ou periodique existante.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=ApplicationQuietPeriodWriteSerializer,

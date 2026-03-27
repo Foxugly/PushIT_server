@@ -1,8 +1,15 @@
 import hashlib
 import secrets
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+
+
+class QuietPeriodType(models.TextChoices):
+    ONCE = "ONCE", "One-time"
+    RECURRING = "RECURRING", "Recurring"
+
 
 def generate_raw_app_token():
     return f"apt_{secrets.token_hex(24)}"
@@ -15,9 +22,9 @@ def hash_app_token(raw_token: str) -> str:
 def get_token_prefix(raw_token: str, visible_length: int = 12) -> str:
     return raw_token[:visible_length]
 
-# Create your models here.
+
 class Application(models.Model):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="applications",)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="applications")
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
     app_token_prefix = models.CharField(max_length=24, db_index=True)
@@ -68,14 +75,20 @@ class ApplicationQuietPeriod(models.Model):
         related_name="quiet_periods",
     )
     name = models.CharField(max_length=120, blank=True)
-    start_at = models.DateTimeField()
-    end_at = models.DateTimeField()
+    period_type = models.CharField(max_length=16, choices=QuietPeriodType.choices, default=QuietPeriodType.ONCE)
+    start_at = models.DateTimeField(null=True, blank=True)
+    end_at = models.DateTimeField(null=True, blank=True)
+    recurrence_days = models.JSONField(default=list, blank=True)
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["start_at", "id"]
+        ordering = ["id"]
 
     def __str__(self):
-        return self.name or f"quiet:{self.application_id}:{self.start_at.isoformat()}"
+        if self.period_type == QuietPeriodType.ONCE and self.start_at is not None:
+            return self.name or f"quiet:{self.application_id}:{self.start_at.isoformat()}"
+        return self.name or f"quiet:{self.application_id}:{self.period_type.lower()}"

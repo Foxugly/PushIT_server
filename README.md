@@ -64,6 +64,7 @@ DJANGO_SECRET_KEY=django-insecure-change-me
 STATE=DEV
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:4200,http://127.0.0.1:4200
 REDIS_URL=redis://127.0.0.1:6379/0
 JWT_ACCESS_MINUTES=30
 JWT_REFRESH_DAYS=7
@@ -74,6 +75,7 @@ METRICS_AUTH_TOKEN=
 Variables utiles :
 - `STATE=DEV|TEST|PROD`
 - `SQLITE_NAME` pour surcharger le chemin de la base SQLite
+- `CORS_ALLOWED_ORIGINS` pour autoriser le frontend local ou un domaine frontend donne
 - `METRICS_AUTH_TOKEN` pour protéger `/health/metrics/`
 - `REDIS_URL` pour Celery
 - `PROMETHEUS_MULTIPROC_DIR` pour agréger correctement les métriques en multi-worker

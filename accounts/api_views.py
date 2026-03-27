@@ -8,6 +8,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from config.api_errors import error_response
 from .api_serializers import (
     DetailResponseSerializer,
+    LanguageUpdateValidationErrorResponseSerializer,
     LoginResponseSerializer,
     LoginSerializer,
     LoginValidationErrorResponseSerializer,
@@ -17,6 +18,7 @@ from .api_serializers import (
     RegisterValidationErrorResponseSerializer,
     TokenRefreshResponseSerializer,
     TokenRefreshValidationErrorResponseSerializer,
+    UserLanguageUpdateSerializer,
     UserMeSerializer,
     build_token_response_for_user,
 )
@@ -134,7 +136,21 @@ class LogoutApiView(APIView):
         description="Retourne l'utilisateur actuellement connecte.",
         tags=["Accounts"],
         auth=[{"BearerAuth": []}],
-    )
+    ),
+    patch=extend_schema(
+        request=UserLanguageUpdateSerializer,
+        responses={
+            200: UserMeSerializer,
+            400: OpenApiResponse(
+                response=LanguageUpdateValidationErrorResponseSerializer,
+                description="Donnees invalides",
+            ),
+        },
+        summary="Modifier la langue du profil courant",
+        description="Met a jour la langue preferee de l'utilisateur connecte.",
+        tags=["Accounts"],
+        auth=[{"BearerAuth": []}],
+    ),
 )
 class MeApiView(APIView):
     serializer_class = UserMeSerializer
@@ -142,6 +158,12 @@ class MeApiView(APIView):
 
     def get(self, request):
         return Response(self.serializer_class(request.user).data)
+
+    def patch(self, request):
+        serializer = UserLanguageUpdateSerializer(request.user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(self.serializer_class(request.user).data, status=status.HTTP_200_OK)
 
 
 @extend_schema_view(

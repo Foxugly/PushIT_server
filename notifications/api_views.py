@@ -172,9 +172,10 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
         summary="Creer une notification",
         description=(
             "Cree une nouvelle notification pour une application appartenant a "
-            "l'utilisateur connecte. Si `scheduled_for` est fourni, la notification "
-            "est creee en statut `scheduled` et sera dispatchee automatiquement plus "
-            "tard. `scheduled_for` represente la date demandee. "
+            "l'utilisateur connecte et une liste explicite de devices cibles. "
+            "Si `scheduled_for` est fourni, la notification est creee en statut "
+            "`scheduled` et sera dispatchee automatiquement plus tard. "
+            "`scheduled_for` represente la date demandee. "
             "`effective_scheduled_for` represente la date effective d'envoi calculee "
             "a partir des periodes blanches actuellement configurees."
         ),
@@ -186,6 +187,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 "Immediate notification",
                 value={
                     "application_id": 12,
+                    "device_ids": [4, 5],
                     "title": "Promo flash",
                     "message": "Disponible maintenant.",
                 },
@@ -195,6 +197,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 "Scheduled notification",
                 value={
                     "application_id": 12,
+                    "device_ids": [4, 5],
                     "title": "Rappel ce soir",
                     "message": "Ouverture a 20h.",
                     "scheduled_for": "2026-03-27T20:00:00+01:00",
@@ -213,6 +216,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                             "id": 42,
                             "application_id": 12,
                             "application_name": "Demo Push App",
+                            "device_ids": [4, 5],
                             "title": "Rappel ce soir",
                             "message": "Ouverture a 20h.",
                             "status": "scheduled",
@@ -256,7 +260,7 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
         return (
             Notification.objects.filter(application__owner=self.request.user)
             .select_related("application")
-            .prefetch_related("application__quiet_periods")
+            .prefetch_related("application__quiet_periods", "deliveries")
             .order_by("-id")
         )
 
@@ -349,7 +353,7 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
         return (
             Notification.objects.filter(application__owner=self.request.user)
             .select_related("application")
-            .prefetch_related("application__quiet_periods")
+            .prefetch_related("application__quiet_periods", "deliveries")
         )
 
     def get_object(self):
@@ -495,7 +499,7 @@ class NotificationFutureListApiView(generics.ListAPIView):
                 scheduled_for__gt=timezone.now(),
             )
             .select_related("application")
-            .prefetch_related("application__quiet_periods")
+            .prefetch_related("application__quiet_periods", "deliveries")
             .order_by("scheduled_for", "id")
         )
 
@@ -653,7 +657,7 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
                 scheduled_for__gt=timezone.now(),
             )
             .select_related("application")
-            .prefetch_related("application__quiet_periods")
+            .prefetch_related("application__quiet_periods", "deliveries")
         )
 
     def get_serializer_class(self):
@@ -750,8 +754,23 @@ class NotificationSendApiView(APIView):
                     return self._build_not_sendable_response(notification.id, notification.status)
 
                 previous_status = notification.status
-                notification.status = NotificationStatus.QUEUED
-                notification.save(update_fields=["status"])
+                queued = Notification.objects.filter(
+                    id=notification.id,
+                    status=previous_status,
+                ).update(status=NotificationStatus.QUEUED)
+                if queued == 0:
+                    current_status = (
+                        Notification.objects.filter(id=notification.id)
+                        .values_list("status", flat=True)
+                        .first()
+                    )
+                    if current_status is None:
+                        return error_response(
+                            code="notification_not_found",
+                            detail="Notification introuvable.",
+                            http_status=status.HTTP_404_NOT_FOUND,
+                        )
+                    return self._build_not_sendable_response(notification.id, current_status)
         except OperationalError:
             if connection.vendor == "sqlite":
                 current_status = (

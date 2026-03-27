@@ -1,12 +1,13 @@
 from django.urls import path
 from .api_views import (
-    ApplicationListCreateApiView, ApplicationRegenerateTokenApiView,
+    ApplicationDetailApiView, ApplicationListCreateApiView, ApplicationRegenerateTokenApiView,
     ApplicationRevokeTokenApiView, ApplicationActivateApiView, ApplicationDeactivateApiView,
     ApplicationQuietPeriodListCreateApiView, ApplicationQuietPeriodDetailApiView,
 )
 
 urlpatterns = [
     path("", ApplicationListCreateApiView.as_view(), name="app-list-create"),
+    path("<int:app_id>/", ApplicationDetailApiView.as_view(), name="app-detail"),
     path("<int:app_id>/regenerate-token/", ApplicationRegenerateTokenApiView.as_view(), name="app-regenerate-token"),
     path("<int:app_id>/activate/", ApplicationActivateApiView.as_view(), name="app-activate"),
     path("<int:app_id>/deactivate/", ApplicationDeactivateApiView.as_view(), name="app-deactivate"),

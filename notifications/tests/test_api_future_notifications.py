@@ -6,8 +6,30 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
-from applications.models import Application, ApplicationQuietPeriod
+from applications.models import Application, ApplicationQuietPeriod, QuietPeriodType
+from devices.models import Device, DeviceApplicationLink, DeviceTokenStatus, DeviceQuietPeriod
 from notifications.models import Notification, NotificationStatus
+
+
+def _future_local_datetime(*, days: int = 1, hour: int = 10, minute: int = 30):
+    local_candidate = timezone.localtime(timezone.now() + timedelta(days=days)).replace(
+        hour=hour,
+        minute=minute,
+        second=0,
+        microsecond=0,
+    )
+    if local_candidate <= timezone.localtime():
+        local_candidate += timedelta(days=1)
+    return local_candidate
+
+
+def _create_target_device(app: Application, token: str) -> Device:
+    device = Device.objects.create(
+        push_token=token,
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    )
+    DeviceApplicationLink.objects.create(device=device, application=app)
+    return device
 
 
 @pytest.mark.django_db
@@ -19,6 +41,7 @@ def test_create_and_list_future_notifications():
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
+    device = _create_target_device(app, "token_future_11111111111111111111")
     access = str(RefreshToken.for_user(user).access_token)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
@@ -27,6 +50,7 @@ def test_create_and_list_future_notifications():
         "/api/v1/notifications/",
         {
             "application_id": app.id,
+            "device_ids": [device.id],
             "title": "Planifiée",
             "message": "Envoi plus tard",
             "scheduled_for": scheduled_for.isoformat(),
@@ -36,6 +60,7 @@ def test_create_and_list_future_notifications():
 
     assert create_response.status_code == 201
     assert create_response.data["status"] == NotificationStatus.SCHEDULED
+    assert create_response.data["device_ids"] == [device.id]
     assert create_response.data["scheduled_for"] is not None
 
     list_response = client.get("/api/v1/notifications/future/")
@@ -115,6 +140,7 @@ def test_effective_scheduled_for_is_shifted_by_existing_quiet_period():
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
+    device = _create_target_device(app, "token_future_22222222222222222222")
     scheduled_for = timezone.now() + timedelta(hours=2)
     quiet_end = scheduled_for + timedelta(hours=3)
     ApplicationQuietPeriod.objects.create(
@@ -132,6 +158,7 @@ def test_effective_scheduled_for_is_shifted_by_existing_quiet_period():
         "/api/v1/notifications/",
         {
             "application_id": app.id,
+            "device_ids": [device.id],
             "title": "Planifiee",
             "message": "Envoi plus tard",
             "scheduled_for": scheduled_for.isoformat(),
@@ -183,6 +210,92 @@ def test_effective_scheduled_for_reflects_quiet_period_created_after_notificatio
     assert response.data["effective_scheduled_for"] == quiet_end
     notification.refresh_from_db()
     assert notification.scheduled_for < quiet_end
+
+
+@pytest.mark.django_db
+def test_effective_scheduled_for_is_shifted_by_existing_recurring_quiet_period():
+    client = APIClient()
+    user = User.objects.create_user(
+        email="future-recurring@example.com",
+        username="future-recurring",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=user, name="Future App")
+    device = _create_target_device(app, "token_future_33333333333333333333")
+    scheduled_for = _future_local_datetime(hour=10, minute=30)
+    quiet_end = scheduled_for.replace(hour=12, minute=0, second=0, microsecond=0)
+    ApplicationQuietPeriod.objects.create(
+        application=app,
+        name="Recurring quiet window",
+        period_type=QuietPeriodType.RECURRING,
+        recurrence_days=[scheduled_for.weekday()],
+        start_time=scheduled_for.replace(hour=10, minute=0).time(),
+        end_time=quiet_end.time(),
+        is_active=True,
+    )
+
+    access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    response = client.post(
+        "/api/v1/notifications/",
+        {
+            "application_id": app.id,
+            "device_ids": [device.id],
+            "title": "Planifiee",
+            "message": "Envoi plus tard",
+            "scheduled_for": scheduled_for.isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["effective_scheduled_for"] == quiet_end
+
+
+@pytest.mark.django_db
+def test_device_quiet_period_does_not_change_notification_effective_scheduled_for():
+    client = APIClient()
+    user = User.objects.create_user(
+        email="future-device-quiet@example.com",
+        username="future-device-quiet",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=user, name="Future App")
+    device = Device.objects.create(
+        push_token="token_32345678901234567890",
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    )
+    DeviceApplicationLink.objects.create(device=device, application=app)
+    scheduled_for = _future_local_datetime(hour=10, minute=30)
+
+    DeviceQuietPeriod.objects.create(
+        device=device,
+        name="Device DND",
+        period_type=QuietPeriodType.RECURRING,
+        recurrence_days=[scheduled_for.weekday()],
+        start_time=scheduled_for.replace(hour=10, minute=0).time(),
+        end_time=scheduled_for.replace(hour=12, minute=0).time(),
+        is_active=True,
+    )
+
+    access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    response = client.post(
+        "/api/v1/notifications/",
+        {
+            "application_id": app.id,
+            "device_ids": [device.id],
+            "title": "Planifiee",
+            "message": "Envoi plus tard",
+            "scheduled_for": scheduled_for.isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["effective_scheduled_for"] == scheduled_for
 
 
 @pytest.mark.django_db

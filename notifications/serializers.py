@@ -1,5 +1,6 @@
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from django.utils import timezone
+from django.db import transaction
 from rest_framework import serializers
 
 from applications.models import Application
@@ -7,7 +8,8 @@ from config.api_errors import (
     ErrorResponseSerializer as DetailResponseSerializer,
     build_validation_error_serializer,
 )
-from .models import Notification, NotificationStatus
+from devices.models import Device, DeviceTokenStatus
+from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus
 from .scheduling import compute_effective_scheduled_for
 
 NotificationQueuedResponseSerializer = inline_serializer(
@@ -21,7 +23,7 @@ NotificationQueuedResponseSerializer = inline_serializer(
 
 NotificationCreateValidationErrorResponseSerializer = build_validation_error_serializer(
     "NotificationCreateValidationErrorResponse",
-    ["application_id", "title", "message", "scheduled_for"],
+    ["application_id", "device_ids", "title", "message", "scheduled_for"],
 )
 
 NotificationCreateWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -93,6 +95,7 @@ class NotificationListFilterSerializer(NotificationFutureFilterSerializer):
 class NotificationReadSerializer(serializers.ModelSerializer):
     application_id = serializers.IntegerField(source="application.id", read_only=True)
     application_name = serializers.CharField(source="application.name", read_only=True)
+    device_ids = serializers.SerializerMethodField()
     effective_scheduled_for = serializers.SerializerMethodField(
         help_text=(
             "Date effective d'envoi calculee a partir de `scheduled_for` et des "
@@ -110,12 +113,20 @@ class NotificationReadSerializer(serializers.ModelSerializer):
             quiet_periods=quiet_periods,
         )
 
+    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
+    def get_device_ids(self, obj):
+        deliveries = getattr(obj, "_prefetched_objects_cache", {}).get("deliveries")
+        if deliveries is not None:
+            return sorted(delivery.device_id for delivery in deliveries)
+        return list(obj.deliveries.order_by("device_id").values_list("device_id", flat=True))
+
     class Meta:
         model = Notification
         fields = [
             "id",
             "application_id",
             "application_name",
+            "device_ids",
             "title",
             "message",
             "status",
@@ -159,12 +170,18 @@ class BaseNotificationWriteSerializer(serializers.ModelSerializer):
 
 class NotificationCreateSerializer(BaseNotificationWriteSerializer):
     application_id = serializers.IntegerField(write_only=True)
+    device_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        write_only=True,
+        allow_empty=False,
+    )
 
     class Meta:
         model = Notification
         fields = [
             "id",
             "application_id",
+            "device_ids",
             "title",
             "message",
             "status",
@@ -174,25 +191,67 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
         ]
         read_only_fields = ["id", "status", "created_at", "sent_at"]
 
-    def validate_application_id(self, value):
+    def validate(self, attrs):
         request = self.context["request"]
+        application_id = attrs["application_id"]
+        device_ids = attrs["device_ids"]
+
         try:
-            app = Application.objects.get(id=value, owner=request.user)
+            app = Application.objects.get(id=application_id, owner=request.user)
         except Application.DoesNotExist:
-            raise serializers.ValidationError("Application introuvable.")
+            raise serializers.ValidationError({"application_id": ["Application introuvable."]})
+
+        normalized_device_ids = list(dict.fromkeys(device_ids))
+        devices_by_id = {
+            device.id: device
+            for device in Device.objects.filter(
+                id__in=normalized_device_ids,
+                application_links__application=app,
+                application_links__is_active=True,
+                push_token_status=DeviceTokenStatus.ACTIVE,
+                is_active=True,
+            ).distinct()
+        }
+        invalid_device_ids = [device_id for device_id in normalized_device_ids if device_id not in devices_by_id]
+        if invalid_device_ids:
+            raise serializers.ValidationError(
+                {
+                    "device_ids": [
+                        "Tous les devices doivent etre actifs et lies a l'application selectionnee."
+                    ]
+                }
+            )
+
         self.context["application"] = app
-        return value
+        self.context["target_devices"] = devices_by_id
+        attrs["device_ids"] = normalized_device_ids
+        return attrs
 
     def create(self, validated_data):
         validated_data.pop("application_id")
+        device_ids = validated_data.pop("device_ids")
         application = self.context["application"]
-        return Notification.objects.create(
-            application=application,
-            title=validated_data["title"],
-            message=validated_data["message"],
-            status=self.build_status_from_scheduled_for(validated_data.get("scheduled_for")),
-            scheduled_for=validated_data.get("scheduled_for"),
-        )
+        target_devices = self.context["target_devices"]
+
+        with transaction.atomic():
+            notification = Notification.objects.create(
+                application=application,
+                title=validated_data["title"],
+                message=validated_data["message"],
+                status=self.build_status_from_scheduled_for(validated_data.get("scheduled_for")),
+                scheduled_for=validated_data.get("scheduled_for"),
+            )
+            NotificationDelivery.objects.bulk_create(
+                [
+                    NotificationDelivery(
+                        notification=notification,
+                        device=target_devices[device_id],
+                        status=DeliveryStatus.PENDING,
+                    )
+                    for device_id in device_ids
+                ]
+            )
+        return notification
 
 
 class NotificationCreateWithAppTokenSerializer(BaseNotificationWriteSerializer):
