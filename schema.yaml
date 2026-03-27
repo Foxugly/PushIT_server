@@ -56,6 +56,102 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApplicationCreateValidationErrorResponse'
           description: Donnees invalides
+  /api/v1/apps/{app_id}/:
+    get:
+      operationId: api_v1_apps_retrieve
+      description: Retourne le detail d'une application appartenant a l'utilisateur
+        connecte.
+      summary: Detail d'une application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+    patch:
+      operationId: api_v1_apps_partial_update
+      description: Met a jour partiellement le nom ou la description d'une application.
+      summary: Modifier une application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationUpdate'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationUpdateValidationErrorResponse'
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+    delete:
+      operationId: api_v1_apps_destroy
+      description: Supprime une application appartenant a l'utilisateur connecte.
+      summary: Supprimer une application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
   /api/v1/apps/{app_id}/activate/:
     post:
       operationId: api_v1_apps_activate_create
@@ -116,11 +212,10 @@ paths:
     get:
       operationId: api_v1_apps_quiet_periods_list
       description: Retourne les periodes blanches configurees pour une application.
-        Une periode blanche est un intervalle absolu `start_at` / `end_at` pendant
-        lequel les notifications sont automatiquement reportees. La creation ou la
-        modification d'une periode blanche ne reecrit pas retroactivement `scheduled_for`,
-        mais impacte la valeur calculee `effective_scheduled_for` visible sur les
-        notifications.
+        Une periode blanche peut etre ponctuelle (`period_type=ONCE`) avec `start_at`
+        / `end_at`, ou periodique (`period_type=RECURRING`) avec `recurrence_days`,
+        `start_time` et `end_time`. Les notifications planifiees sont automatiquement
+        reportees a la fin de la fenetre active, sans reecriture retroactive de `scheduled_for`.
       summary: Lister les periodes blanches
       parameters:
       - in: path
@@ -143,11 +238,11 @@ paths:
           description: ''
     post:
       operationId: api_v1_apps_quiet_periods_create
-      description: Ajoute une periode pendant laquelle aucune notification ne doit
-        etre envoyee. Si une notification doit partir pendant cette periode, l'envoi
-        est replanifie a la fin de la fenetre. Cette operation ne reecrit pas retroactivement
-        `scheduled_for`, mais la valeur de lecture `effective_scheduled_for` des notifications
-        futures tiendra compte des periodes blanches courantes.
+      description: Ajoute une periode blanche ponctuelle ou periodique. Si une notification
+        doit partir pendant cette periode, l'envoi est replanifie a la fin de la fenetre
+        active. Cette operation ne reecrit pas retroactivement `scheduled_for`, mais
+        la valeur de lecture `effective_scheduled_for` des notifications futures tiendra
+        compte des periodes blanches courantes.
       summary: Creer une periode blanche
       parameters:
       - in: path
@@ -163,20 +258,39 @@ paths:
             schema:
               $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
             examples:
-              QuietPeriodRequest:
+              One-timeQuietPeriodRequest:
                 value:
                   name: Nuit marketing
+                  period_type: ONCE
                   start_at: '2026-03-27T22:00:00+01:00'
                   end_at: '2026-03-28T08:00:00+01:00'
+                  recurrence_days: []
+                  start_time: null
+                  end_time: null
                   is_active: true
-                summary: Quiet period request
+                summary: One-time quiet period request
+              RecurringQuietPeriodRequest:
+                value:
+                  name: Nuit en semaine
+                  period_type: RECURRING
+                  start_at: null
+                  end_at: null
+                  recurrence_days:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  start_time: '22:00:00'
+                  end_time: 08:00:00
+                  is_active: true
+                summary: Recurring quiet period request
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
-        required: true
       security:
       - BearerAuth: []
       responses:
@@ -242,7 +356,7 @@ paths:
           description: Periode blanche introuvable
     patch:
       operationId: api_v1_apps_quiet_periods_partial_update
-      description: Modifie une periode blanche existante.
+      description: Modifie une periode blanche ponctuelle ou periodique existante.
       summary: Modifier une periode blanche
       parameters:
       - in: path
@@ -461,6 +575,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserMe'
           description: ''
+    patch:
+      operationId: api_v1_auth_me_partial_update
+      description: Met a jour la langue preferee de l'utilisateur connecte.
+      summary: Modifier la langue du profil courant
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserLanguageUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserLanguageUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserLanguageUpdate'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMe'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LanguageUpdateValidationErrorResponse'
+          description: Donnees invalides
   /api/v1/auth/refresh/:
     post:
       operationId: api_v1_auth_refresh_create
@@ -549,6 +695,209 @@ paths:
                 items:
                   $ref: '#/components/schemas/DeviceRead'
           description: ''
+  /api/v1/devices/{device_id}/quiet-periods/:
+    get:
+      operationId: api_v1_devices_quiet_periods_list
+      description: Retourne les periodes blanches configurees pour un device. Elles
+        peuvent etre ponctuelles (`period_type=ONCE`) ou periodiques (`period_type=RECURRING`).
+        Elles s'appliquent aux deliveries de ce device sans bloquer les autres devices.
+      summary: Lister les periodes blanches d'un device
+      parameters:
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceQuietPeriodRead'
+          description: ''
+    post:
+      operationId: api_v1_devices_quiet_periods_create
+      description: Ajoute une periode blanche ponctuelle ou periodique sur un device.
+      summary: Creer une periode blanche pour un device
+      parameters:
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceQuietPeriodWrite'
+            examples:
+              One-timeDeviceQuietPeriod:
+                value:
+                  name: Indisponible ce soir
+                  period_type: ONCE
+                  start_at: '2026-03-27T22:00:00+01:00'
+                  end_at: '2026-03-28T08:00:00+01:00'
+                  is_active: true
+                summary: One-time device quiet period
+              RecurringDeviceQuietPeriod:
+                value:
+                  name: Do not disturb
+                  period_type: RECURRING
+                  recurrence_days:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  start_time: '22:00:00'
+                  end_time: 08:00:00
+                  is_active: true
+                summary: Recurring device quiet period
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceQuietPeriodWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceQuietPeriodWrite'
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceQuietPeriodRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceQuietPeriodValidationErrorResponse'
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Device introuvable
+  /api/v1/devices/{device_id}/quiet-periods/{quiet_period_id}/:
+    get:
+      operationId: api_v1_devices_quiet_periods_retrieve
+      description: Retourne le detail d'une periode blanche d'un device.
+      summary: Detail d'une periode blanche device
+      parameters:
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: quiet_period_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceQuietPeriodRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Periode blanche introuvable
+    patch:
+      operationId: api_v1_devices_quiet_periods_partial_update
+      description: Modifie une periode blanche ponctuelle ou periodique d'un device.
+      summary: Modifier une periode blanche device
+      parameters:
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: quiet_period_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWrite'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceQuietPeriodRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceQuietPeriodValidationErrorResponse'
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Periode blanche introuvable
+    delete:
+      operationId: api_v1_devices_quiet_periods_destroy
+      description: Supprime une periode blanche d'un device.
+      summary: Supprimer une periode blanche device
+      parameters:
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: quiet_period_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Periode blanche introuvable
   /api/v1/devices/{id}/:
     get:
       operationId: api_v1_devices_retrieve
@@ -848,11 +1197,11 @@ paths:
     post:
       operationId: api_v1_notifications_create
       description: Cree une nouvelle notification pour une application appartenant
-        a l'utilisateur connecte. Si `scheduled_for` est fourni, la notification est
-        creee en statut `scheduled` et sera dispatchee automatiquement plus tard.
-        `scheduled_for` represente la date demandee. `effective_scheduled_for` represente
-        la date effective d'envoi calculee a partir des periodes blanches actuellement
-        configurees.
+        a l'utilisateur connecte et une liste explicite de devices cibles. Si `scheduled_for`
+        est fourni, la notification est creee en statut `scheduled` et sera dispatchee
+        automatiquement plus tard. `scheduled_for` represente la date demandee. `effective_scheduled_for`
+        represente la date effective d'envoi calculee a partir des periodes blanches
+        actuellement configurees.
       summary: Creer une notification
       tags:
       - Notifications
@@ -865,12 +1214,18 @@ paths:
               ImmediateNotification:
                 value:
                   application_id: 12
+                  device_ids:
+                  - 4
+                  - 5
                   title: Promo flash
                   message: Disponible maintenant.
                 summary: Immediate notification
               ScheduledNotification:
                 value:
                   application_id: 12
+                  device_ids:
+                  - 4
+                  - 5
                   title: Rappel ce soir
                   message: Ouverture a 20h.
                   scheduled_for: '2026-03-27T20:00:00+01:00'
@@ -896,6 +1251,9 @@ paths:
                     id: 42
                     application_id: 12
                     application_name: Demo Push App
+                    device_ids:
+                    - 4
+                    - 5
                     title: Rappel ce soir
                     message: Ouverture a 20h.
                     status: scheduled
@@ -1689,14 +2047,32 @@ components:
         name:
           type: string
           readOnly: true
+        period_type:
+          allOf:
+          - $ref: '#/components/schemas/PeriodTypeEnum'
+          readOnly: true
         start_at:
           type: string
           format: date-time
           readOnly: true
+          nullable: true
         end_at:
           type: string
           format: date-time
           readOnly: true
+          nullable: true
+        recurrence_days:
+          readOnly: true
+        start_time:
+          type: string
+          format: time
+          readOnly: true
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          readOnly: true
+          nullable: true
         is_active:
           type: boolean
           readOnly: true
@@ -1712,10 +2088,14 @@ components:
       - application
       - created_at
       - end_at
+      - end_time
       - id
       - is_active
       - name
+      - period_type
+      - recurrence_days
       - start_at
+      - start_time
       - updated_at
     ApplicationQuietPeriodValidationErrorResponse:
       type: object
@@ -1737,11 +2117,27 @@ components:
           type: array
           items:
             type: string
+        period_type:
+          type: array
+          items:
+            type: string
         start_at:
           type: array
           items:
             type: string
         end_at:
+          type: array
+          items:
+            type: string
+        recurrence_days:
+          type: array
+          items:
+            type: string
+        start_time:
+          type: array
+          items:
+            type: string
+        end_time:
           type: array
           items:
             type: string
@@ -1758,12 +2154,30 @@ components:
         name:
           type: string
           maxLength: 120
+        period_type:
+          $ref: '#/components/schemas/PeriodTypeEnum'
         start_at:
           type: string
           format: date-time
+          nullable: true
         end_at:
           type: string
           format: date-time
+          nullable: true
+        recurrence_days:
+          type: array
+          items:
+            type: integer
+            maximum: 6
+            minimum: 0
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
         is_active:
           type: boolean
         created_at:
@@ -1776,9 +2190,7 @@ components:
           readOnly: true
       required:
       - created_at
-      - end_at
       - id
-      - start_at
       - updated_at
     ApplicationRead:
       type: object
@@ -1838,6 +2250,34 @@ components:
       - app_id
       - app_token_prefix
       - new_app_token
+    ApplicationUpdateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/ApplicationUpdateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    ApplicationUpdateValidationErrorResponseFields:
+      type: object
+      properties:
+        name:
+          type: array
+          items:
+            type: string
+        description:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     DeviceLinkWithAppToken:
       type: object
       properties:
@@ -1913,6 +2353,163 @@ components:
       description: |-
         * `android` - Android
         * `ios` - iOS
+    DeviceQuietPeriodRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        device:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        period_type:
+          allOf:
+          - $ref: '#/components/schemas/PeriodTypeEnum'
+          readOnly: true
+        start_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        end_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        recurrence_days:
+          readOnly: true
+        start_time:
+          type: string
+          format: time
+          readOnly: true
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - device
+      - end_at
+      - end_time
+      - id
+      - is_active
+      - name
+      - period_type
+      - recurrence_days
+      - start_at
+      - start_time
+      - updated_at
+    DeviceQuietPeriodValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/DeviceQuietPeriodValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    DeviceQuietPeriodValidationErrorResponseFields:
+      type: object
+      properties:
+        name:
+          type: array
+          items:
+            type: string
+        period_type:
+          type: array
+          items:
+            type: string
+        start_at:
+          type: array
+          items:
+            type: string
+        end_at:
+          type: array
+          items:
+            type: string
+        recurrence_days:
+          type: array
+          items:
+            type: string
+        start_time:
+          type: array
+          items:
+            type: string
+        end_time:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    DeviceQuietPeriodWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        period_type:
+          $ref: '#/components/schemas/PeriodTypeEnum'
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_at:
+          type: string
+          format: date-time
+          nullable: true
+        recurrence_days:
+          type: array
+          items:
+            type: integer
+            maximum: 6
+            minimum: 0
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - updated_at
     DeviceRead:
       type: object
       properties:
@@ -2024,6 +2621,40 @@ components:
       - check
       - service
       - status
+    LanguageEnum:
+      enum:
+      - FR
+      - NL
+      - EN
+      type: string
+      description: |-
+        * `FR` - French
+        * `NL` - Dutch
+        * `EN` - English
+    LanguageUpdateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/LanguageUpdateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    LanguageUpdateValidationErrorResponseFields:
+      type: object
+      properties:
+        language:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     Login:
       type: object
       properties:
@@ -2119,6 +2750,12 @@ components:
         application_id:
           type: integer
           writeOnly: true
+        device_ids:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          writeOnly: true
         title:
           type: string
           maxLength: 255
@@ -2144,6 +2781,7 @@ components:
       required:
       - application_id
       - created_at
+      - device_ids
       - id
       - message
       - sent_at
@@ -2166,6 +2804,10 @@ components:
       type: object
       properties:
         application_id:
+          type: array
+          items:
+            type: string
+        device_ids:
           type: array
           items:
             type: string
@@ -2389,6 +3031,11 @@ components:
         application_name:
           type: string
           readOnly: true
+        device_ids:
+          type: array
+          items:
+            type: integer
+          readOnly: true
         title:
           type: string
           maxLength: 255
@@ -2420,6 +3067,7 @@ components:
       - application_id
       - application_name
       - created_at
+      - device_ids
       - effective_scheduled_for
       - id
       - message
@@ -2443,12 +3091,81 @@ components:
         name:
           type: string
           maxLength: 120
+        period_type:
+          $ref: '#/components/schemas/PeriodTypeEnum'
         start_at:
           type: string
           format: date-time
+          nullable: true
         end_at:
           type: string
           format: date-time
+          nullable: true
+        recurrence_days:
+          type: array
+          items:
+            type: integer
+            maximum: 6
+            minimum: 0
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedApplicationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+    PatchedDeviceQuietPeriodWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        period_type:
+          $ref: '#/components/schemas/PeriodTypeEnum'
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_at:
+          type: string
+          format: date-time
+          nullable: true
+        recurrence_days:
+          type: array
+          items:
+            type: integer
+            maximum: 6
+            minimum: 0
+        start_time:
+          type: string
+          format: time
+          nullable: true
+        end_time:
+          type: string
+          format: time
+          nullable: true
         is_active:
           type: boolean
         created_at:
@@ -2497,6 +3214,19 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+    PatchedUserLanguageUpdate:
+      type: object
+      properties:
+        language:
+          $ref: '#/components/schemas/LanguageEnum'
+    PeriodTypeEnum:
+      enum:
+      - ONCE
+      - RECURRING
+      type: string
+      description: |-
+        * `ONCE` - One-time
+        * `RECURRING` - Recurring
     PushTokenStatusEnum:
       enum:
       - active
@@ -2646,6 +3376,8 @@ components:
           title: Active
           description: Designates whether this user should be treated as active. Unselect
             this instead of deleting accounts.
+        language:
+          $ref: '#/components/schemas/LanguageEnum'
       required:
       - email
       - id
