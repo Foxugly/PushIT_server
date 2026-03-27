@@ -1,5 +1,6 @@
-from django.db import IntegrityError, transaction
-from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
+from django.db import IntegrityError, OperationalError, connection, transaction
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, status
 from rest_framework.response import Response
 
@@ -11,7 +12,16 @@ from .serializers import (
     DetailResponseSerializer,
     NotificationCreateWithAppTokenSerializer,
     NotificationCreateWithAppTokenValidationErrorResponseSerializer,
+    NotificationFutureFilterSerializer,
+    NotificationFutureFilterValidationErrorResponseSerializer,
+    NotificationListFilterSerializer,
     NotificationReadSerializer,
+)
+from .scheduling import (
+    compute_effective_scheduled_map,
+    filter_notifications_by_effective_range,
+    filter_notifications_by_shift_flag,
+    order_notifications_by_effective,
 )
 from .utils import compute_request_fingerprint
 
@@ -19,16 +29,124 @@ from .utils import compute_request_fingerprint
 @extend_schema_view(
     post=extend_schema(
         summary="Creer une notification via app token",
-        description="Cree une nouvelle notification pour l'application authentifiee via le header `X-App-Token`.",
+        description=(
+            "Cree une nouvelle notification pour l'application authentifiee via le "
+            "header `X-App-Token`. Si `scheduled_for` est fourni, la notification "
+            "est creee en statut `scheduled`. `scheduled_for` represente la date "
+            "demandee. `effective_scheduled_for` represente la date effective "
+            "d'envoi calculee a partir des periodes blanches actuellement configurees. "
+            "Le header `Idempotency-Key` est obligatoire."
+        ),
         tags=["Notifications"],
+        auth=[{"AppTokenAuth": []}],
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Clé d'idempotence obligatoire pour dédupliquer les créations côté application.",
+            )
+        ],
         request=NotificationCreateWithAppTokenSerializer,
+        examples=[
+            OpenApiExample(
+                "Scheduled app-token notification",
+                value={
+                    "title": "Offre du soir",
+                    "message": "Disponible à partir de 19h.",
+                    "scheduled_for": "2026-03-27T19:00:00+01:00",
+                },
+                request_only=True,
+            )
+        ],
         responses={
-            200: NotificationReadSerializer,
-            201: NotificationReadSerializer,
-            400: OpenApiResponse(response=NotificationCreateWithAppTokenValidationErrorResponseSerializer, description="Donnees invalides"),
+            200: OpenApiResponse(
+                response=NotificationReadSerializer,
+                description="Notification existante retournee grace a l'idempotence",
+                examples=[
+                    OpenApiExample(
+                        "Existing scheduled notification deferred by quiet period",
+                        value={
+                            "id": 42,
+                            "application_id": 12,
+                            "application_name": "Demo Push App",
+                            "title": "Offre du soir",
+                            "message": "Disponible a partir de 19h.",
+                            "status": "scheduled",
+                            "created_at": "2026-03-27T10:00:00Z",
+                            "scheduled_for": "2026-03-27T19:00:00Z",
+                            "effective_scheduled_for": "2026-03-27T22:00:00Z",
+                            "sent_at": None,
+                        },
+                        response_only=True,
+                        status_codes=["200"],
+                    )
+                ],
+            ),
+            201: OpenApiResponse(
+                response=NotificationReadSerializer,
+                description="Notification creee",
+                examples=[
+                    OpenApiExample(
+                        "Created scheduled notification deferred by quiet period",
+                        value={
+                            "id": 42,
+                            "application_id": 12,
+                            "application_name": "Demo Push App",
+                            "title": "Offre du soir",
+                            "message": "Disponible a partir de 19h.",
+                            "status": "scheduled",
+                            "created_at": "2026-03-27T10:00:00Z",
+                            "scheduled_for": "2026-03-27T19:00:00Z",
+                            "effective_scheduled_for": "2026-03-27T22:00:00Z",
+                            "sent_at": None,
+                        },
+                        response_only=True,
+                        status_codes=["201"],
+                    )
+                ],
+            ),
+            400: OpenApiResponse(
+                response=NotificationCreateWithAppTokenValidationErrorResponseSerializer,
+                description="Donnees invalides",
+                examples=[
+                    OpenApiExample(
+                        "Validation error",
+                        value={
+                            "code": "validation_error",
+                            "detail": "Validation error.",
+                            "errors": {
+                                "scheduled_for": [
+                                    "La date planifiee doit etre dans le futur."
+                                ]
+                            },
+                        },
+                        response_only=True,
+                        status_codes=["400"],
+                    )
+                ],
+            ),
             401: OpenApiResponse(response=DetailResponseSerializer, description="App token invalide ou manquant"),
             403: OpenApiResponse(response=DetailResponseSerializer, description="Acces refuse"),
-            409: OpenApiResponse(response=DetailResponseSerializer, description="Cle d'idempotence deja utilisee avec un payload different"),
+            409: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Cle d'idempotence deja utilisee avec un payload different",
+                examples=[
+                    OpenApiExample(
+                        "Idempotency conflict",
+                        value={
+                            "code": "idempotency_conflict",
+                            "detail": (
+                                "Cette cle d'idempotence a deja ete utilisee "
+                                "avec un payload different."
+                            ),
+                        },
+                        response_only=True,
+                        status_codes=["409"],
+                    )
+                ],
+            ),
         },
     ),
 )
@@ -59,19 +177,48 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
 
         request_fingerprint = compute_request_fingerprint(validated_data)
 
+        created = False
+        savepoint_failed = False
         try:
             with transaction.atomic():
                 instance = Notification.objects.create(
                     application=application,
                     title=validated_data["title"],
                     message=validated_data["message"],
-                    status=NotificationStatus.DRAFT,
+                    status=NotificationCreateWithAppTokenSerializer.build_status_from_scheduled_for(
+                        validated_data.get("scheduled_for")
+                    ),
+                    scheduled_for=validated_data.get("scheduled_for"),
                     idempotency_key=idempotency_key,
                     request_fingerprint=request_fingerprint,
                 )
+                created = True
+        except OperationalError:
+            if connection.vendor != "sqlite":
+                raise
+            savepoint_failed = True
         except IntegrityError:
-            instance = Notification.objects.get(application=application, idempotency_key=idempotency_key)
+            pass
 
+        if savepoint_failed:
+            try:
+                instance = Notification.objects.create(
+                    application=application,
+                    title=validated_data["title"],
+                    message=validated_data["message"],
+                    status=NotificationCreateWithAppTokenSerializer.build_status_from_scheduled_for(
+                        validated_data.get("scheduled_for")
+                    ),
+                    scheduled_for=validated_data.get("scheduled_for"),
+                    idempotency_key=idempotency_key,
+                    request_fingerprint=request_fingerprint,
+                )
+                created = True
+            except IntegrityError:
+                pass
+
+        if not created:
+            instance = Notification.objects.get(application=application, idempotency_key=idempotency_key)
             if instance.request_fingerprint != request_fingerprint:
                 return Response(
                     {
@@ -91,10 +238,116 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
 @extend_schema_view(
     get=extend_schema(
         summary="Lister les notifications via app token",
-        description="Retourne la liste des notifications de l'application authentifiee via le header `X-App-Token`.",
+        description=(
+            "Retourne la liste des notifications de l'application authentifiee via "
+            "le header `X-App-Token`. Les filtres "
+            "`effective_scheduled_from` / `effective_scheduled_to` s'appliquent a "
+            "`effective_scheduled_for`. Les filtres `status` et "
+            "`has_quiet_period_shift` sont aussi disponibles. Le parametre "
+            "`ordering` permet de trier par date effective d'envoi."
+        ),
         tags=["Notifications"],
+        auth=[{"AppTokenAuth": []}],
+        parameters=[
+            OpenApiParameter(
+                name="effective_scheduled_from",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filtre inclusif sur la date effective minimale d'envoi.",
+            ),
+            OpenApiParameter(
+                name="effective_scheduled_to",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filtre inclusif sur la date effective maximale d'envoi.",
+            ),
+            OpenApiParameter(
+                name="status",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=[choice for choice, _ in NotificationStatus.choices],
+                description="Filtre par statut de notification.",
+            ),
+            OpenApiParameter(
+                name="has_quiet_period_shift",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Ne retourne que les notifications dont la date effective est decalee par une periode blanche.",
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["effective_scheduled_for", "-effective_scheduled_for"],
+                description="Tri optionnel par date effective d'envoi.",
+            ),
+        ],
         responses={
-            200: NotificationReadSerializer(many=True),
+            200: OpenApiResponse(
+                response=NotificationReadSerializer(many=True),
+                description="Liste des notifications de l'application",
+                examples=[
+                    OpenApiExample(
+                        "Notifications shifted by quiet period",
+                        value=[
+                            {
+                                "id": 42,
+                                "application_id": 12,
+                                "application_name": "Demo Push App",
+                                "title": "Offre du soir",
+                                "message": "Disponible a partir de 19h.",
+                                "status": "scheduled",
+                                "created_at": "2026-03-27T10:00:00Z",
+                                "scheduled_for": "2026-03-27T19:00:00Z",
+                                "effective_scheduled_for": "2026-03-27T22:00:00Z",
+                                "sent_at": None,
+                            }
+                        ],
+                        response_only=True,
+                        status_codes=["200"],
+                    ),
+                    OpenApiExample(
+                        "Notifications ordered by effective schedule desc",
+                        value=[
+                            {
+                                "id": 43,
+                                "application_id": 12,
+                                "application_name": "Demo Push App",
+                                "title": "Offre tardive",
+                                "message": "Disponible plus tard dans la nuit.",
+                                "status": "scheduled",
+                                "created_at": "2026-03-27T10:05:00Z",
+                                "scheduled_for": "2026-03-27T21:30:00Z",
+                                "effective_scheduled_for": "2026-03-27T23:00:00Z",
+                                "sent_at": None,
+                            },
+                            {
+                                "id": 42,
+                                "application_id": 12,
+                                "application_name": "Demo Push App",
+                                "title": "Offre du soir",
+                                "message": "Disponible a partir de 19h.",
+                                "status": "scheduled",
+                                "created_at": "2026-03-27T10:00:00Z",
+                                "scheduled_for": "2026-03-27T19:00:00Z",
+                                "effective_scheduled_for": "2026-03-27T22:00:00Z",
+                                "sent_at": None,
+                            },
+                        ],
+                        response_only=True,
+                        status_codes=["200"],
+                    ),
+                ],
+            ),
+            400: OpenApiResponse(
+                response=NotificationFutureFilterValidationErrorResponseSerializer,
+                description="Filtres invalides",
+            ),
             401: OpenApiResponse(response=DetailResponseSerializer, description="App token invalide ou manquant"),
             403: OpenApiResponse(response=DetailResponseSerializer, description="Acces refuse"),
         },
@@ -109,5 +362,56 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
         return (
             Notification.objects.filter(application=self.request.auth_application)
             .select_related("application")
+            .prefetch_related("application__quiet_periods")
             .order_by("-id")
         )
+
+    def list(self, request, *args, **kwargs):
+        filter_serializer = NotificationListFilterSerializer(data=request.query_params)
+        filter_serializer.is_valid(raise_exception=True)
+        list_filter = filter_serializer.validated_data
+
+        queryset = self.get_queryset()
+        status_filter = list_filter.get("status")
+        if status_filter is not None:
+            queryset = queryset.filter(status=status_filter)
+
+        queryset = list(queryset)
+        effective_scheduled_from = list_filter.get("effective_scheduled_from")
+        effective_scheduled_to = list_filter.get("effective_scheduled_to")
+        has_quiet_period_shift = (
+            list_filter.get("has_quiet_period_shift")
+            if "has_quiet_period_shift" in request.query_params
+            else None
+        )
+        ordering = list_filter.get("ordering")
+        effective_scheduled_map = None
+
+        if (
+            effective_scheduled_from is not None
+            or effective_scheduled_to is not None
+            or has_quiet_period_shift is not None
+            or ordering
+        ):
+            effective_scheduled_map = compute_effective_scheduled_map(queryset)
+
+        if effective_scheduled_from is not None or effective_scheduled_to is not None:
+            queryset = filter_notifications_by_effective_range(
+                queryset,
+                effective_scheduled_map,
+                effective_scheduled_from=effective_scheduled_from,
+                effective_scheduled_to=effective_scheduled_to,
+            )
+
+        if has_quiet_period_shift is not None:
+            queryset = filter_notifications_by_shift_flag(
+                queryset,
+                effective_scheduled_map,
+                has_quiet_period_shift,
+            )
+
+        if ordering:
+            queryset = order_notifications_by_effective(queryset, effective_scheduled_map, ordering)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

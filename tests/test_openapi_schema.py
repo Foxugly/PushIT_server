@@ -45,6 +45,13 @@ def test_application_and_device_validation_responses_are_documented_per_endpoint
         "ApplicationCreateValidationErrorResponse",
     )
 
+    quiet_period_create_operation = schema["paths"]["/api/v1/apps/{app_id}/quiet-periods/"]["post"]
+    _assert_json_response_ref(
+        quiet_period_create_operation,
+        "400",
+        "ApplicationQuietPeriodValidationErrorResponse",
+    )
+
     device_put_operation = schema["paths"]["/api/v1/devices/{id}/"]["put"]
     _assert_json_response_ref(device_put_operation, "400", "DeviceUpdateValidationErrorResponse")
 
@@ -83,5 +90,79 @@ def test_notification_validation_and_error_responses_are_documented_per_endpoint
     assert {"AppTokenAuth": []} in notification_app_create_operation["security"]
 
     notification_send_operation = schema["paths"]["/api/v1/notifications/{notification_id}/send/"]["post"]
-    assert set(["202", "404", "409"]).issubset(notification_send_operation["responses"].keys())
+    assert set(["202", "404", "409", "503"]).issubset(notification_send_operation["responses"].keys())
     assert {"BearerAuth": []} in notification_send_operation["security"]
+
+    notification_future_patch_operation = schema["paths"]["/api/v1/notifications/future/{id}/"]["patch"]
+    _assert_json_response_ref(
+        notification_future_patch_operation,
+        "400",
+        "NotificationFutureUpdateValidationErrorResponse",
+    )
+
+
+@pytest.mark.django_db
+def test_notification_read_schema_exposes_effective_scheduled_for():
+    schema = _load_schema()
+
+    notification_read_schema = schema["components"]["schemas"]["NotificationRead"]
+    assert "effective_scheduled_for" in notification_read_schema["properties"]
+    assert notification_read_schema["properties"]["effective_scheduled_for"]["format"] == "date-time"
+
+
+@pytest.mark.django_db
+def test_notification_future_list_documents_effective_scheduled_filters():
+    schema = _load_schema()
+
+    notification_list_operation = schema["paths"]["/api/v1/notifications/"]["get"]
+    notification_parameter_names = {parameter["name"] for parameter in notification_list_operation["parameters"]}
+    assert {
+        "application_id",
+        "status",
+        "effective_scheduled_from",
+        "effective_scheduled_to",
+        "has_quiet_period_shift",
+        "ordering",
+    }.issubset(notification_parameter_names)
+    assert "400" in notification_list_operation["responses"]
+
+    future_list_operation = schema["paths"]["/api/v1/notifications/future/"]["get"]
+    parameter_names = {parameter["name"] for parameter in future_list_operation["parameters"]}
+    assert {
+        "effective_scheduled_from",
+        "effective_scheduled_to",
+        "has_quiet_period_shift",
+        "ordering",
+    }.issubset(parameter_names)
+    assert "400" in future_list_operation["responses"]
+
+    app_list_operation = schema["paths"]["/api/v1/notifications/app/"]["get"]
+    app_parameter_names = {parameter["name"] for parameter in app_list_operation["parameters"]}
+    assert {
+        "status",
+        "effective_scheduled_from",
+        "effective_scheduled_to",
+        "has_quiet_period_shift",
+        "ordering",
+    }.issubset(app_parameter_names)
+    assert "400" in app_list_operation["responses"]
+
+
+@pytest.mark.django_db
+def test_notification_list_endpoints_document_shift_and_order_examples():
+    schema = _load_schema()
+
+    notification_list_examples = schema["paths"]["/api/v1/notifications/"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["examples"]
+    assert len(notification_list_examples) >= 2
+
+    future_list_examples = schema["paths"]["/api/v1/notifications/future/"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["examples"]
+    assert len(future_list_examples) >= 2
+
+    app_list_examples = schema["paths"]["/api/v1/notifications/app/"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["examples"]
+    assert len(app_list_examples) >= 2

@@ -59,3 +59,23 @@ class Application(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.owner})"
+
+
+class ApplicationQuietPeriod(models.Model):
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="quiet_periods",
+    )
+    name = models.CharField(max_length=120, blank=True)
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["start_at", "id"]
+
+    def __str__(self):
+        return self.name or f"quiet:{self.application_id}:{self.start_at.isoformat()}"

@@ -9,6 +9,7 @@ Le projet expose :
 - la création et l'envoi de notifications
 - une documentation OpenAPI
 - des health checks, logs structurés et métriques Prometheus
+- des notifications planifiées et des périodes blanches par application
 
 ## État du projet
 
@@ -23,12 +24,13 @@ Points importants :
 ## Stack
 
 - Python 3.14
-- Django 5
+- Django 6.0.3
 - Django REST Framework
 - SimpleJWT
 - Celery
 - SQLite en dev/test actuel
 - drf-spectacular pour OpenAPI
+- prometheus-client
 
 ## Structure rapide
 
@@ -74,6 +76,9 @@ Variables utiles :
 - `SQLITE_NAME` pour surcharger le chemin de la base SQLite
 - `METRICS_AUTH_TOKEN` pour protéger `/health/metrics/`
 - `REDIS_URL` pour Celery
+- `PROMETHEUS_MULTIPROC_DIR` pour agréger correctement les métriques en multi-worker
+
+En `PROD`, `DJANGO_SECRET_KEY` et `ALLOWED_HOSTS` sont désormais obligatoires. Le démarrage échoue si ces variables ne sont pas définies explicitement.
 
 ### 3. Migrer la base
 
@@ -123,14 +128,83 @@ Les settings sont séparés dans [config/settings](C:/Users/rvilain/PycharmProje
 1. créer un compte
 2. se connecter
 3. créer une application
-4. créer une notification
-5. mettre la notification en file d'envoi
+4. définir éventuellement des périodes blanches sur l'application
+5. créer une notification immédiate ou planifiée
+6. lister / modifier / supprimer une notification future si nécessaire
+7. mettre la notification en file d'envoi
 
 ### Flow applicatif
 
 1. créer ou régénérer un `app_token`
 2. lier un device via `/api/v1/devices/link/`
-3. créer une notification via `/api/v1/notifications/app/create/`
+3. créer une notification immédiate ou planifiée via `/api/v1/notifications/app/create/`
+
+## Planification et périodes blanches
+
+Une notification peut maintenant porter un champ `scheduled_for` :
+- absent ou `null` : notification immédiate classique
+- datetime futur : notification placée en statut `scheduled`
+
+Les réponses de lecture exposent aussi `effective_scheduled_for` :
+- `scheduled_for` = date demandée par le client
+- `effective_scheduled_for` = prochaine date effective d'envoi calculée à partir des périodes blanches actuellement configurées
+- créer ou modifier une période blanche ne réécrit pas rétroactivement `scheduled_for`, mais peut faire évoluer `effective_scheduled_for`
+
+Les notifications futures utilisateur sont exposées via :
+- `GET /api/v1/notifications/future/`
+- `GET /api/v1/notifications/future/{id}/`
+- `PATCH /api/v1/notifications/future/{id}/`
+- `DELETE /api/v1/notifications/future/{id}/`
+
+Le listing `GET /api/v1/notifications/future/` accepte aussi :
+- `effective_scheduled_from`
+- `effective_scheduled_to`
+- `has_quiet_period_shift=true|false`
+- `ordering=effective_scheduled_for`
+- `ordering=-effective_scheduled_for`
+
+Ces filtres s'appliquent à `effective_scheduled_for`, pas à la valeur brute `scheduled_for`.
+
+Le listing `GET /api/v1/notifications/app/` accepte les mêmes filtres et le même tri côté app token, avec en plus `status`.
+
+Le listing `GET /api/v1/notifications/` accepte :
+- `application_id`
+- `status`
+- `effective_scheduled_from`
+- `effective_scheduled_to`
+- `has_quiet_period_shift=true|false`
+- `ordering=effective_scheduled_for`
+- `ordering=-effective_scheduled_for`
+
+### Query params notifications
+
+| Endpoint | Paramètre | Type | Description |
+| --- | --- | --- | --- |
+| `/api/v1/notifications/` | `application_id` | integer | Filtre par application |
+| `/api/v1/notifications/` | `status` | string | Filtre par statut |
+| `/api/v1/notifications/` | `effective_scheduled_from` | datetime | Borne minimale sur `effective_scheduled_for` |
+| `/api/v1/notifications/` | `effective_scheduled_to` | datetime | Borne maximale sur `effective_scheduled_for` |
+| `/api/v1/notifications/` | `has_quiet_period_shift` | boolean | Garde uniquement les notifications décalées ou non par une période blanche |
+| `/api/v1/notifications/` | `ordering` | string | `effective_scheduled_for` ou `-effective_scheduled_for` |
+| `/api/v1/notifications/future/` | `effective_scheduled_from` | datetime | Borne minimale sur `effective_scheduled_for` |
+| `/api/v1/notifications/future/` | `effective_scheduled_to` | datetime | Borne maximale sur `effective_scheduled_for` |
+| `/api/v1/notifications/future/` | `has_quiet_period_shift` | boolean | Garde uniquement les notifications futures décalées ou non |
+| `/api/v1/notifications/future/` | `ordering` | string | `effective_scheduled_for` ou `-effective_scheduled_for` |
+| `/api/v1/notifications/app/` | `status` | string | Filtre par statut côté app token |
+| `/api/v1/notifications/app/` | `effective_scheduled_from` | datetime | Borne minimale sur `effective_scheduled_for` |
+| `/api/v1/notifications/app/` | `effective_scheduled_to` | datetime | Borne maximale sur `effective_scheduled_for` |
+| `/api/v1/notifications/app/` | `has_quiet_period_shift` | boolean | Garde uniquement les notifications décalées ou non |
+| `/api/v1/notifications/app/` | `ordering` | string | `effective_scheduled_for` ou `-effective_scheduled_for` |
+
+Les périodes blanches sont gérées par application via :
+- `GET /api/v1/apps/{app_id}/quiet-periods/`
+- `POST /api/v1/apps/{app_id}/quiet-periods/`
+- `GET /api/v1/apps/{app_id}/quiet-periods/{quiet_period_id}/`
+- `PATCH /api/v1/apps/{app_id}/quiet-periods/{quiet_period_id}/`
+- `DELETE /api/v1/apps/{app_id}/quiet-periods/{quiet_period_id}/`
+
+Si une notification doit partir pendant une période blanche active, l'envoi est reporté automatiquement à la fin de cette période.
+Ce report est appliqué au moment du dispatch/envoi. Il n'y a pas de réécriture immédiate de `scheduled_for` lors de la création d'une période blanche après coup.
 
 ## Script de démo
 
@@ -139,8 +213,17 @@ Le script [scripts/full_flow.py](C:/Users/rvilain/PycharmProjects/PushIT_server/
 - login
 - création de l'application
 - liaison du device
-- création de la notification
-- mise en file d'envoi
+- création, listing, modification et suppression d'une période blanche
+- création, listing, lecture, modification et suppression d'une notification planifiée
+- démonstration des filtres de listing `application_id`, `status`, `effective_scheduled_*`, `has_quiet_period_shift` et `ordering`
+- création d'une notification immédiate
+- mise en file d'envoi de la notification immédiate
+
+Exemples de requêtes avancées montrées dans le script :
+- `GET /api/v1/notifications/?application_id=<id>&status=scheduled&has_quiet_period_shift=true&ordering=-effective_scheduled_for`
+- `GET /api/v1/notifications/future/?effective_scheduled_from=<iso>&effective_scheduled_to=<iso>`
+- `GET /api/v1/notifications/future/?ordering=-effective_scheduled_for`
+- `GET /api/v1/notifications/app/?status=scheduled&has_quiet_period_shift=true&ordering=-effective_scheduled_for`
 
 Exécution :
 
@@ -154,6 +237,10 @@ Base URL personnalisée :
 $env:PUSHIT_BASE_URL="http://127.0.0.1:8000/api/v1"
 .\.venv\Scripts\python.exe scripts/full_flow.py
 ```
+
+## Workflow frontend
+
+Le Swagger expose désormais les endpoints, l'auth et des exemples de payloads métier. Pour le séquencement concret côté frontend, voir aussi [docs/frontend-workflows.md](C:/Users/rvilain/PycharmProjects/PushIT_server/docs/frontend-workflows.md).
 
 ## Tests
 

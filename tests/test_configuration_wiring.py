@@ -19,9 +19,11 @@ def test_core_url_wiring():
     assert reverse("health-metrics") == "/health/metrics/"
     assert reverse("auth-register") == "/api/v1/auth/register/"
     assert reverse("app-list-create") == "/api/v1/apps/"
+    assert reverse("app-quiet-period-list-create", kwargs={"app_id": 1}) == "/api/v1/apps/1/quiet-periods/"
     assert reverse("device-link") == "/api/v1/devices/link/"
     assert reverse("notification-list-create") == "/api/v1/notifications/"
     assert reverse("notification-create-app-token") == "/api/v1/notifications/app/create/"
+    assert reverse("notification-future-list") == "/api/v1/notifications/future/"
     assert reverse("schema") == "/api/schema/"
 
     assert resolve("/health/live/").view_name == "health-live"
@@ -29,7 +31,9 @@ def test_core_url_wiring():
     assert resolve("/health/metrics/").view_name == "health-metrics"
     assert resolve("/api/v1/auth/register/").view_name == "auth-register"
     assert resolve("/api/v1/apps/").view_name == "app-list-create"
+    assert resolve("/api/v1/apps/1/quiet-periods/").view_name == "app-quiet-period-list-create"
     assert resolve("/api/v1/devices/link/").view_name == "device-link"
+    assert resolve("/api/v1/notifications/future/").view_name == "notification-future-list"
     assert resolve("/api/v1/notifications/app/create/").view_name == "notification-create-app-token"
 
 
@@ -112,6 +116,30 @@ def test_manage_check_passes():
 
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
     assert "System check identified no issues" in result.stdout
+
+
+@pytest.mark.integration
+def test_prod_settings_require_explicit_secret_key_and_allowed_hosts():
+    env = os.environ.copy()
+    env["DJANGO_SETTINGS_MODULE"] = "config.settings"
+    env["DJANGO_ENV"] = "prod"
+    env["DJANGO_SECRET_KEY"] = ""
+    env["ALLOWED_HOSTS"] = ""
+
+    result = subprocess.run(
+        [sys.executable, "manage.py", "check"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode != 0
+    assert (
+        "DJANGO_SECRET_KEY must be explicitly set in PROD." in result.stderr
+        or "ALLOWED_HOSTS must be explicitly set in PROD." in result.stderr
+    )
 
 
 @pytest.mark.integration

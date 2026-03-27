@@ -10,6 +10,7 @@ class DeliveryStatus(models.TextChoices):
 
 class NotificationStatus(models.TextChoices):
     DRAFT = "draft", "Draft"
+    SCHEDULED = "scheduled", "Scheduled"
     QUEUED = "queued", "Queued"
     PROCESSING = "processing", "Processing"
     SENT = "sent", "Sent"
@@ -26,6 +27,7 @@ class Notification(models.Model):
     image = models.ImageField(upload_to="notification_images/", blank=True, null=True)
     status = models.CharField(max_length=20, choices=NotificationStatus.choices, default=NotificationStatus.DRAFT,)
     created_at = models.DateTimeField(auto_now_add=True)
+    scheduled_for = models.DateTimeField(blank=True, null=True)
     sent_at = models.DateTimeField(blank=True, null=True)
     idempotency_key = models.CharField(max_length=255, blank=True, db_index=True)
     request_fingerprint = models.CharField(max_length=64, blank=True)

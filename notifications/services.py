@@ -15,6 +15,7 @@ from .push import (
     TemporaryPushProviderError,
     PushProviderError,
 )
+from .scheduling import get_quiet_period_end_for_application
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,11 @@ def get_target_devices_for_notification(notification: Notification):
         .distinct()
         .order_by("id")
     )
+
+
+def get_current_quiet_period_end(notification: Notification, at=None):
+    at = at or timezone.now()
+    return get_quiet_period_end_for_application(notification.application, at)
 
 def _acquire_notification_for_processing(notification_id: int) -> Notification | None:
     """
@@ -182,6 +188,32 @@ def send_notification(notification_id: int) -> dict:
         )
         return SendNotificationResult(
             notification_id=notification_id,
+            target_count=0,
+            sent_count=0,
+            failed_count=0,
+            skipped_count=0,
+        ).as_dict()
+
+    quiet_period_end = get_current_quiet_period_end(notification, at=timezone.now())
+    if quiet_period_end is not None:
+        Notification.objects.filter(id=notification.id).update(
+            status=NotificationStatus.SCHEDULED,
+            scheduled_for=quiet_period_end,
+            sent_at=None,
+        )
+        logger.info(
+            "notification_deferred_quiet_period",
+            extra={
+                "notification_id": notification.id,
+                "application_id": notification.application_id,
+            },
+        )
+        increment_counter(
+            "pushit_notification_send_total",
+            labels={"outcome": "deferred_quiet_period"},
+        )
+        return SendNotificationResult(
+            notification_id=notification.id,
             target_count=0,
             sent_count=0,
             failed_count=0,

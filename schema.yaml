@@ -1,0 +1,2652 @@
+openapi: 3.0.3
+info:
+  title: PushIT API
+  version: 1.0.0
+  description: API backend pour Firebase Cloud Messaging
+paths:
+  /api/v1/apps/:
+    get:
+      operationId: api_v1_apps_list
+      description: Retourne la liste des applications appartenant a l'utilisateur
+        connecte.
+      summary: Lister les applications
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationRead'
+          description: ''
+    post:
+      operationId: api_v1_apps_create
+      description: Cree une nouvelle application pour l'utilisateur connecte.
+      summary: Creer une application
+      tags:
+      - Applications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationCreate'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationCreateValidationErrorResponse'
+          description: Donnees invalides
+  /api/v1/apps/{app_id}/activate/:
+    post:
+      operationId: api_v1_apps_activate_create
+      description: Active une application appartenant a l'utilisateur connecte.
+      summary: Activer une application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationActivationResponse'
+          description: Application activee
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+  /api/v1/apps/{app_id}/deactivate/:
+    post:
+      operationId: api_v1_apps_deactivate_create
+      description: Desactive une application appartenant a l'utilisateur connecte.
+      summary: Desactiver une application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationActivationResponse'
+          description: Application desactivee
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+  /api/v1/apps/{app_id}/quiet-periods/:
+    get:
+      operationId: api_v1_apps_quiet_periods_list
+      description: Retourne les periodes blanches configurees pour une application.
+        Une periode blanche est un intervalle absolu `start_at` / `end_at` pendant
+        lequel les notifications sont automatiquement reportees. La creation ou la
+        modification d'une periode blanche ne reecrit pas retroactivement `scheduled_for`,
+        mais impacte la valeur calculee `effective_scheduled_for` visible sur les
+        notifications.
+      summary: Lister les periodes blanches
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApplicationQuietPeriodRead'
+          description: ''
+    post:
+      operationId: api_v1_apps_quiet_periods_create
+      description: Ajoute une periode pendant laquelle aucune notification ne doit
+        etre envoyee. Si une notification doit partir pendant cette periode, l'envoi
+        est replanifie a la fin de la fenetre. Cette operation ne reecrit pas retroactivement
+        `scheduled_for`, mais la valeur de lecture `effective_scheduled_for` des notifications
+        futures tiendra compte des periodes blanches courantes.
+      summary: Creer une periode blanche
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
+            examples:
+              QuietPeriodRequest:
+                value:
+                  name: Nuit marketing
+                  start_at: '2026-03-27T22:00:00+01:00'
+                  end_at: '2026-03-28T08:00:00+01:00'
+                  is_active: true
+                summary: Quiet period request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationQuietPeriodRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationQuietPeriodValidationErrorResponse'
+              examples:
+                ValidationError:
+                  value:
+                    code: validation_error
+                    detail: Validation error.
+                    errors:
+                      end_at:
+                      - La fin de la periode blanche doit etre apres le debut.
+                  summary: Validation error
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+  /api/v1/apps/{app_id}/quiet-periods/{quiet_period_id}/:
+    get:
+      operationId: api_v1_apps_quiet_periods_retrieve
+      description: Retourne le detail d'une periode blanche.
+      summary: Detail d'une periode blanche
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: quiet_period_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationQuietPeriodRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Periode blanche introuvable
+    patch:
+      operationId: api_v1_apps_quiet_periods_partial_update
+      description: Modifie une periode blanche existante.
+      summary: Modifier une periode blanche
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: quiet_period_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWrite'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationQuietPeriodRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationQuietPeriodValidationErrorResponse'
+              examples:
+                ValidationError:
+                  value:
+                    code: validation_error
+                    detail: Validation error.
+                    errors:
+                      end_at:
+                      - La fin de la periode blanche doit etre apres le debut.
+                  summary: Validation error
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Periode blanche introuvable
+    delete:
+      operationId: api_v1_apps_quiet_periods_destroy
+      description: Supprime une periode blanche.
+      summary: Supprimer une periode blanche
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: quiet_period_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Periode blanche introuvable
+  /api/v1/apps/{app_id}/regenerate-token/:
+    post:
+      operationId: api_v1_apps_regenerate_token_create
+      description: Genere un nouveau token serveur pour une application de l'utilisateur
+        connecte.
+      summary: Regenerer le token d'application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationTokenRegenerateResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+  /api/v1/apps/{app_id}/revoke-token/:
+    post:
+      operationId: api_v1_apps_revoke_token_create
+      description: Revoque le token actuel de l'application.
+      summary: Revoquer le token d'application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRevokeTokenResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application introuvable
+  /api/v1/auth/login/:
+    post:
+      operationId: api_v1_auth_login_create
+      description: Authentifie un utilisateur et retourne les tokens JWT.
+      summary: Connexion utilisateur
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Login'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Login'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginValidationErrorResponse'
+          description: Identifiants invalides ou donnees invalides
+  /api/v1/auth/logout/:
+    post:
+      operationId: api_v1_auth_logout_create
+      description: Blackliste le refresh token courant.
+      summary: Deconnexion
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Logout'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Logout'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Logout'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutValidationErrorResponse'
+          description: Refresh token invalide ou donnees invalides
+  /api/v1/auth/me/:
+    get:
+      operationId: api_v1_auth_me_retrieve
+      description: Retourne l'utilisateur actuellement connecte.
+      summary: Profil courant
+      tags:
+      - Accounts
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMe'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: api_v1_auth_refresh_create
+      description: Genere un nouveau access token a partir d'un refresh token.
+      summary: Rafraichir un token
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefreshResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefreshValidationErrorResponse'
+          description: Refresh token invalide ou donnees invalides
+  /api/v1/auth/register/:
+    post:
+      operationId: api_v1_auth_register_create
+      description: Cree un nouveau compte utilisateur et retourne le profil cree.
+      summary: Creer un compte
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Register'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Register'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Register'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMe'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterValidationErrorResponse'
+          description: Donnees invalides
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Trop de tentatives d'inscription
+  /api/v1/devices/:
+    get:
+      operationId: api_v1_devices_list
+      description: Retourne la liste des devices appartenant a l'utilisateur connecte.
+      summary: Lister les devices
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceRead'
+          description: ''
+  /api/v1/devices/{id}/:
+    get:
+      operationId: api_v1_devices_retrieve
+      description: Retourne le detail d'un device appartenant a l'utilisateur connecte.
+      summary: Detail d'un device
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Device introuvable
+    put:
+      operationId: api_v1_devices_update
+      description: Met a jour completement un device appartenant a l'utilisateur connecte.
+      summary: Modifier completement un device
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceUpdateValidationErrorResponse'
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Device introuvable
+    patch:
+      operationId: api_v1_devices_partial_update
+      description: Met a jour partiellement un device appartenant a l'utilisateur
+        connecte.
+      summary: Modifier partiellement un device
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDeviceUpdate'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceUpdateValidationErrorResponse'
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Device introuvable
+    delete:
+      operationId: api_v1_devices_destroy
+      description: Supprime un device appartenant a l'utilisateur connecte.
+      summary: Supprimer un device
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Device introuvable
+  /api/v1/devices/link/:
+    post:
+      operationId: api_v1_devices_link_create
+      description: Cree ou met a jour un device a partir du header `X-App-Token` puis
+        l'associe a l'application.
+      summary: Associer un device a une application via app token
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceLinkWithAppToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceLinkWithAppToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceLinkWithAppToken'
+        required: true
+      security:
+      - AppTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceLinkWithAppTokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceLinkWithAppTokenValidationErrorResponse'
+          description: Donnees invalides
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: App token invalide ou manquant
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Acces refuse
+  /api/v1/notifications/:
+    get:
+      operationId: api_v1_notifications_list
+      description: Retourne la liste des notifications des applications appartenant
+        a l'utilisateur connecte. Le listing peut etre filtre par application, statut,
+        date effective et presence d'un decalage du a une periode blanche.
+      summary: Lister les notifications
+      parameters:
+      - in: query
+        name: application_id
+        schema:
+          type: integer
+        description: Filtre par application.
+      - in: query
+        name: effective_scheduled_from
+        schema:
+          type: string
+          format: date-time
+        description: Filtre inclusif sur la date effective minimale d'envoi.
+      - in: query
+        name: effective_scheduled_to
+        schema:
+          type: string
+          format: date-time
+        description: Filtre inclusif sur la date effective maximale d'envoi.
+      - in: query
+        name: has_quiet_period_shift
+        schema:
+          type: boolean
+        description: Ne retourne que les notifications dont la date effective est
+          decalee par une periode blanche.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+          enum:
+          - -effective_scheduled_for
+          - effective_scheduled_for
+        description: Tri optionnel par date effective d'envoi.
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - draft
+          - failed
+          - no_target
+          - partial
+          - processing
+          - queued
+          - scheduled
+          - sent
+        description: Filtre par statut de notification.
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationRead'
+              examples:
+                ShiftedScheduledNotificationsForOneApplication:
+                  value:
+                  - - id: 42
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Rappel ce soir
+                      message: Ouverture a 20h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:00:00Z'
+                      scheduled_for: '2026-03-27T22:30:00Z'
+                      effective_scheduled_for: '2026-03-28T08:00:00Z'
+                      sent_at: null
+                  summary: Shifted scheduled notifications for one application
+                NotificationsOrderedByEffectiveScheduleDesc:
+                  value:
+                  - - id: 43
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Annonce tardive
+                      message: Envoi a 23h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:05:00Z'
+                      scheduled_for: '2026-03-27T23:00:00Z'
+                      effective_scheduled_for: '2026-03-28T09:00:00Z'
+                      sent_at: null
+                    - id: 42
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Rappel ce soir
+                      message: Ouverture a 20h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:00:00Z'
+                      scheduled_for: '2026-03-27T22:30:00Z'
+                      effective_scheduled_for: '2026-03-28T08:00:00Z'
+                      sent_at: null
+                  summary: Notifications ordered by effective schedule desc
+          description: Liste des notifications
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListFilterValidationErrorResponse'
+          description: Filtres invalides
+    post:
+      operationId: api_v1_notifications_create
+      description: Cree une nouvelle notification pour une application appartenant
+        a l'utilisateur connecte. Si `scheduled_for` est fourni, la notification est
+        creee en statut `scheduled` et sera dispatchee automatiquement plus tard.
+        `scheduled_for` represente la date demandee. `effective_scheduled_for` represente
+        la date effective d'envoi calculee a partir des periodes blanches actuellement
+        configurees.
+      summary: Creer une notification
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationCreate'
+            examples:
+              ImmediateNotification:
+                value:
+                  application_id: 12
+                  title: Promo flash
+                  message: Disponible maintenant.
+                summary: Immediate notification
+              ScheduledNotification:
+                value:
+                  application_id: 12
+                  title: Rappel ce soir
+                  message: Ouverture a 20h.
+                  scheduled_for: '2026-03-27T20:00:00+01:00'
+                summary: Scheduled notification
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationCreate'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+              examples:
+                ScheduledNotificationDeferredByQuietPeriod:
+                  value:
+                    id: 42
+                    application_id: 12
+                    application_name: Demo Push App
+                    title: Rappel ce soir
+                    message: Ouverture a 20h.
+                    status: scheduled
+                    created_at: '2026-03-27T10:00:00Z'
+                    scheduled_for: '2026-03-27T22:30:00Z'
+                    effective_scheduled_for: '2026-03-28T08:00:00Z'
+                    sent_at: null
+                  summary: Scheduled notification deferred by quiet period
+          description: Notification creee
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationCreateValidationErrorResponse'
+              examples:
+                ValidationError:
+                  value:
+                    code: validation_error
+                    detail: Validation error.
+                    errors:
+                      scheduled_for:
+                      - La date planifiee doit etre dans le futur.
+                  summary: Validation error
+          description: Donnees invalides
+  /api/v1/notifications/{notification_id}/send/:
+    post:
+      operationId: api_v1_notifications_send_create
+      description: Planifie l'envoi asynchrone d'une notification via Celery. Les
+        notifications futures (`scheduled`) ne sont pas envoyables manuellement tant
+        que `scheduled_for` n'est pas atteint.
+      summary: Mettre une notification en file d'envoi
+      parameters:
+      - in: path
+        name: notification_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationQueuedResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Notification introuvable
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ScheduledNotificationNotSendableYet:
+                  value:
+                    code: notification_not_sendable
+                    detail: La notification 42 ne peut pas etre mise en file depuis
+                      le statut 'scheduled'.
+                  summary: Scheduled notification not sendable yet
+          description: Notification deja envoyee, deja en file ou non envoyable
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                QueueUnavailable:
+                  value:
+                    code: notification_queue_unavailable
+                    detail: La file d'envoi est temporairement indisponible.
+                  summary: Queue unavailable
+          description: Broker Celery indisponible
+  /api/v1/notifications/{id}/:
+    get:
+      operationId: api_v1_notifications_retrieve
+      description: Retourne le detail d'une notification appartenant a une application
+        de l'utilisateur connecte.
+      summary: Detail d'une notification
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Notification introuvable
+  /api/v1/notifications/app/:
+    get:
+      operationId: api_v1_notifications_app_list
+      description: Retourne la liste des notifications de l'application authentifiee
+        via le header `X-App-Token`. Les filtres `effective_scheduled_from` / `effective_scheduled_to`
+        s'appliquent a `effective_scheduled_for`. Les filtres `status` et `has_quiet_period_shift`
+        sont aussi disponibles. Le parametre `ordering` permet de trier par date effective
+        d'envoi.
+      summary: Lister les notifications via app token
+      parameters:
+      - in: query
+        name: effective_scheduled_from
+        schema:
+          type: string
+          format: date-time
+        description: Filtre inclusif sur la date effective minimale d'envoi.
+      - in: query
+        name: effective_scheduled_to
+        schema:
+          type: string
+          format: date-time
+        description: Filtre inclusif sur la date effective maximale d'envoi.
+      - in: query
+        name: has_quiet_period_shift
+        schema:
+          type: boolean
+        description: Ne retourne que les notifications dont la date effective est
+          decalee par une periode blanche.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+          enum:
+          - -effective_scheduled_for
+          - effective_scheduled_for
+        description: Tri optionnel par date effective d'envoi.
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - draft
+          - failed
+          - no_target
+          - partial
+          - processing
+          - queued
+          - scheduled
+          - sent
+        description: Filtre par statut de notification.
+      tags:
+      - Notifications
+      security:
+      - AppTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationRead'
+              examples:
+                NotificationsShiftedByQuietPeriod:
+                  value:
+                  - - id: 42
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Offre du soir
+                      message: Disponible a partir de 19h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:00:00Z'
+                      scheduled_for: '2026-03-27T19:00:00Z'
+                      effective_scheduled_for: '2026-03-27T22:00:00Z'
+                      sent_at: null
+                  summary: Notifications shifted by quiet period
+                NotificationsOrderedByEffectiveScheduleDesc:
+                  value:
+                  - - id: 43
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Offre tardive
+                      message: Disponible plus tard dans la nuit.
+                      status: scheduled
+                      created_at: '2026-03-27T10:05:00Z'
+                      scheduled_for: '2026-03-27T21:30:00Z'
+                      effective_scheduled_for: '2026-03-27T23:00:00Z'
+                      sent_at: null
+                    - id: 42
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Offre du soir
+                      message: Disponible a partir de 19h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:00:00Z'
+                      scheduled_for: '2026-03-27T19:00:00Z'
+                      effective_scheduled_for: '2026-03-27T22:00:00Z'
+                      sent_at: null
+                  summary: Notifications ordered by effective schedule desc
+          description: Liste des notifications de l'application
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationFutureFilterValidationErrorResponse'
+          description: Filtres invalides
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: App token invalide ou manquant
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Acces refuse
+  /api/v1/notifications/app/create/:
+    post:
+      operationId: api_v1_notifications_app_create_create
+      description: Cree une nouvelle notification pour l'application authentifiee
+        via le header `X-App-Token`. Si `scheduled_for` est fourni, la notification
+        est creee en statut `scheduled`. `scheduled_for` represente la date demandee.
+        `effective_scheduled_for` represente la date effective d'envoi calculee a
+        partir des periodes blanches actuellement configurees. Le header `Idempotency-Key`
+        est obligatoire.
+      summary: Creer une notification via app token
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: Clé d'idempotence obligatoire pour dédupliquer les créations
+          côté application.
+        required: true
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateWithAppToken'
+            examples:
+              ScheduledApp-tokenNotification:
+                value:
+                  title: Offre du soir
+                  message: Disponible à partir de 19h.
+                  scheduled_for: '2026-03-27T19:00:00+01:00'
+                summary: Scheduled app-token notification
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateWithAppToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateWithAppToken'
+        required: true
+      security:
+      - AppTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+              examples:
+                ExistingScheduledNotificationDeferredByQuietPeriod:
+                  value:
+                    id: 42
+                    application_id: 12
+                    application_name: Demo Push App
+                    title: Offre du soir
+                    message: Disponible a partir de 19h.
+                    status: scheduled
+                    created_at: '2026-03-27T10:00:00Z'
+                    scheduled_for: '2026-03-27T19:00:00Z'
+                    effective_scheduled_for: '2026-03-27T22:00:00Z'
+                    sent_at: null
+                  summary: Existing scheduled notification deferred by quiet period
+          description: Notification existante retournee grace a l'idempotence
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+              examples:
+                CreatedScheduledNotificationDeferredByQuietPeriod:
+                  value:
+                    id: 42
+                    application_id: 12
+                    application_name: Demo Push App
+                    title: Offre du soir
+                    message: Disponible a partir de 19h.
+                    status: scheduled
+                    created_at: '2026-03-27T10:00:00Z'
+                    scheduled_for: '2026-03-27T19:00:00Z'
+                    effective_scheduled_for: '2026-03-27T22:00:00Z'
+                    sent_at: null
+                  summary: Created scheduled notification deferred by quiet period
+          description: Notification creee
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationCreateWithAppTokenValidationErrorResponse'
+              examples:
+                ValidationError:
+                  value:
+                    code: validation_error
+                    detail: Validation error.
+                    errors:
+                      scheduled_for:
+                      - La date planifiee doit etre dans le futur.
+                  summary: Validation error
+          description: Donnees invalides
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: App token invalide ou manquant
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Acces refuse
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                IdempotencyConflict:
+                  value:
+                    code: idempotency_conflict
+                    detail: Cette cle d'idempotence a deja ete utilisee avec un payload
+                      different.
+                  summary: Idempotency conflict
+          description: Cle d'idempotence deja utilisee avec un payload different
+  /api/v1/notifications/future/:
+    get:
+      operationId: api_v1_notifications_future_list
+      description: Retourne uniquement les notifications en statut `scheduled` dont
+        `scheduled_for` est strictement dans le futur. Ces notifications peuvent encore
+        etre modifiees ou supprimees. `scheduled_for` represente la date demandee,
+        tandis que `effective_scheduled_for` represente la prochaine date de dispatch
+        estimee selon les periodes blanches actuellement configurees.
+      summary: Lister les notifications futures
+      parameters:
+      - in: query
+        name: effective_scheduled_from
+        schema:
+          type: string
+          format: date-time
+        description: Filtre inclusif sur la date effective minimale d'envoi.
+      - in: query
+        name: effective_scheduled_to
+        schema:
+          type: string
+          format: date-time
+        description: Filtre inclusif sur la date effective maximale d'envoi.
+      - in: query
+        name: has_quiet_period_shift
+        schema:
+          type: boolean
+        description: Ne retourne que les notifications dont la date effective est
+          decalee par une periode blanche.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+          enum:
+          - -effective_scheduled_for
+          - effective_scheduled_for
+        description: Tri optionnel par date effective d'envoi.
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationRead'
+              examples:
+                FutureNotificationsShiftedByQuietPeriod:
+                  value:
+                  - - id: 42
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Rappel ce soir
+                      message: Ouverture a 20h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:00:00Z'
+                      scheduled_for: '2026-03-27T22:30:00Z'
+                      effective_scheduled_for: '2026-03-28T08:00:00Z'
+                      sent_at: null
+                  summary: Future notifications shifted by quiet period
+                FutureNotificationsOrderedByEffectiveScheduleDesc:
+                  value:
+                  - - id: 43
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Annonce tardive
+                      message: Envoi a 23h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:05:00Z'
+                      scheduled_for: '2026-03-27T23:00:00Z'
+                      effective_scheduled_for: '2026-03-28T09:00:00Z'
+                      sent_at: null
+                    - id: 42
+                      application_id: 12
+                      application_name: Demo Push App
+                      title: Rappel ce soir
+                      message: Ouverture a 20h.
+                      status: scheduled
+                      created_at: '2026-03-27T10:00:00Z'
+                      scheduled_for: '2026-03-27T22:30:00Z'
+                      effective_scheduled_for: '2026-03-28T08:00:00Z'
+                      sent_at: null
+                  summary: Future notifications ordered by effective schedule desc
+          description: Liste des notifications futures
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationFutureFilterValidationErrorResponse'
+              examples:
+                InvalidEffectiveRange:
+                  value:
+                    code: validation_error
+                    detail: Validation error.
+                    errors:
+                      effective_scheduled_to:
+                      - La borne de fin doit etre apres ou egale a la borne de debut.
+                  summary: Invalid effective range
+          description: Filtres invalides
+  /api/v1/notifications/future/{id}/:
+    get:
+      operationId: api_v1_notifications_future_retrieve
+      description: Retourne une notification planifiee encore modifiable. `scheduled_for`
+        represente la date demandee par l'utilisateur. `effective_scheduled_for` represente
+        la date effective d'envoi calculee a partir des periodes blanches courantes.
+      summary: Detail d'une notification future
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+              examples:
+                FutureNotificationDeferredByQuietPeriod:
+                  value:
+                    id: 42
+                    application_id: 12
+                    application_name: Demo Push App
+                    title: Rappel ce soir
+                    message: Ouverture a 20h.
+                    status: scheduled
+                    created_at: '2026-03-27T10:00:00Z'
+                    scheduled_for: '2026-03-27T22:30:00Z'
+                    effective_scheduled_for: '2026-03-28T08:00:00Z'
+                    sent_at: null
+                  summary: Future notification deferred by quiet period
+          description: Notification future
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Notification future introuvable
+    patch:
+      operationId: api_v1_notifications_future_partial_update
+      description: Modifie le contenu ou la date d'envoi d'une notification planifiee.
+        L'endpoint n'accepte que les notifications encore futures. Modifier une periode
+        blanche ne reecrit pas retroactivement `scheduled_for`, mais la valeur de
+        lecture `effective_scheduled_for` refletera la date effective tenant compte
+        des periodes blanches actuelles.
+      summary: Modifier une notification future
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationFutureUpdate'
+            examples:
+              RescheduleFutureNotification:
+                value:
+                  title: Rappel repousse
+                  scheduled_for: '2026-03-27T21:30:00+01:00'
+                summary: Reschedule future notification
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationFutureUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationFutureUpdate'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationFutureUpdateValidationErrorResponse'
+              examples:
+                ValidationError:
+                  value:
+                    code: validation_error
+                    detail: Validation error.
+                    errors:
+                      scheduled_for:
+                      - La date planifiee doit etre dans le futur.
+                  summary: Validation error
+          description: Donnees invalides
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Notification future introuvable
+    delete:
+      operationId: api_v1_notifications_future_destroy
+      description: Supprime une notification planifiee tant qu'elle n'a pas ete envoyee.
+      summary: Supprimer une notification future
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Notification future introuvable
+  /api/v1/notifications/stats/:
+    get:
+      operationId: api_v1_notifications_stats_list
+      description: Retourne le nombre de notifications par statut pour les applications
+        appartenant a l'utilisateur connecte.
+      summary: Lister les statistiques des notifications
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationStats'
+          description: ''
+  /health/live/:
+    get:
+      operationId: health_live_retrieve
+      description: Vérifie que le process HTTP est vivant. Endpoint public utilisé
+        par l'infra.
+      summary: Liveness probe
+      tags:
+      - Health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              examples:
+                LivenessOK:
+                  value:
+                    status: ok
+                    service: pushit
+                    check: live
+                  summary: Liveness OK
+          description: Service vivant
+  /health/metrics/:
+    get:
+      operationId: health_metrics_retrieve
+      description: Expose les métriques Prometheus. Peut être protégé via le header
+        `X-Metrics-Token`.
+      summary: Prometheus metrics
+      parameters:
+      - in: header
+        name: X-Metrics-Token
+        schema:
+          type: string
+        description: Token optionnel pour protéger l'accès à `/health/metrics/`.
+      tags:
+      - Health
+      responses:
+        '200':
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                MetricsSample:
+                  value: |-
+                    # HELP pushit_process_uptime_seconds Process uptime in seconds
+                    # TYPE pushit_process_uptime_seconds gauge
+                    pushit_process_uptime_seconds 12.345
+                  summary: Metrics sample
+          description: Payload Prometheus au format texte
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthError'
+              examples:
+                MetricsForbidden:
+                  value:
+                    status: error
+                    service: pushit
+                    check: metrics
+                    detail: metrics_token_invalid
+                  summary: Metrics forbidden
+          description: Token metrics invalide
+  /health/ready/:
+    get:
+      operationId: health_ready_retrieve
+      description: Vérifie que le service est prêt à servir du trafic, notamment l'accès
+        base de données.
+      summary: Readiness probe
+      tags:
+      - Health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              examples:
+                ReadinessOK:
+                  value:
+                    status: ok
+                    service: pushit
+                    check: ready
+                  summary: Readiness OK
+          description: Service prêt
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthError'
+              examples:
+                DatabaseUnavailable:
+                  value:
+                    status: error
+                    service: pushit
+                    check: ready
+                    detail: 'database_unavailable: database is locked'
+                  summary: Database unavailable
+          description: Dépendance indisponible
+components:
+  schemas:
+    ApplicationActivationResponse:
+      type: object
+      properties:
+        app_id:
+          type: integer
+        is_active:
+          type: boolean
+      required:
+      - app_id
+      - is_active
+    ApplicationCreate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+        app_token_prefix:
+          type: string
+          readOnly: true
+        app_token:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        revoked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - app_token
+      - app_token_prefix
+      - created_at
+      - id
+      - is_active
+      - last_used_at
+      - name
+      - revoked_at
+    ApplicationCreateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/ApplicationCreateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    ApplicationCreateValidationErrorResponseFields:
+      type: object
+      properties:
+        name:
+          type: array
+          items:
+            type: string
+        description:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    ApplicationQuietPeriodRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        application:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        start_at:
+          type: string
+          format: date-time
+          readOnly: true
+        end_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - application
+      - created_at
+      - end_at
+      - id
+      - is_active
+      - name
+      - start_at
+      - updated_at
+    ApplicationQuietPeriodValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/ApplicationQuietPeriodValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    ApplicationQuietPeriodValidationErrorResponseFields:
+      type: object
+      properties:
+        name:
+          type: array
+          items:
+            type: string
+        start_at:
+          type: array
+          items:
+            type: string
+        end_at:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    ApplicationQuietPeriodWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - end_at
+      - id
+      - start_at
+      - updated_at
+    ApplicationRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+        app_token_prefix:
+          type: string
+          maxLength: 24
+        is_active:
+          type: boolean
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - app_token_prefix
+      - created_at
+      - id
+      - name
+    ApplicationRevokeTokenResponse:
+      type: object
+      properties:
+        app_id:
+          type: integer
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - app_id
+      - revoked_at
+    ApplicationTokenRegenerateResponse:
+      type: object
+      properties:
+        app_id:
+          type: integer
+        app_token_prefix:
+          type: string
+        new_app_token:
+          type: string
+      required:
+      - app_id
+      - app_token_prefix
+      - new_app_token
+    DeviceLinkWithAppToken:
+      type: object
+      properties:
+        device_name:
+          type: string
+          maxLength: 120
+        platform:
+          allOf:
+          - $ref: '#/components/schemas/DevicePlatformEnum'
+          default: android
+        push_token:
+          type: string
+          maxLength: 512
+          minLength: 20
+      required:
+      - push_token
+    DeviceLinkWithAppTokenResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        device_id:
+          type: integer
+        device_created:
+          type: boolean
+        link_created:
+          type: boolean
+        application_id:
+          type: integer
+      required:
+      - application_id
+      - device_created
+      - device_id
+      - link_created
+      - status
+    DeviceLinkWithAppTokenValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/DeviceLinkWithAppTokenValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    DeviceLinkWithAppTokenValidationErrorResponseFields:
+      type: object
+      properties:
+        device_name:
+          type: array
+          items:
+            type: string
+        platform:
+          type: array
+          items:
+            type: string
+        push_token:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    DevicePlatformEnum:
+      enum:
+      - android
+      - ios
+      type: string
+      description: |-
+        * `android` - Android
+        * `ios` - iOS
+    DeviceRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        device_name:
+          type: string
+          maxLength: 120
+        platform:
+          $ref: '#/components/schemas/DevicePlatformEnum'
+        push_token_status:
+          $ref: '#/components/schemas/PushTokenStatusEnum'
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        application_ids:
+          type: array
+          items:
+            type: integer
+          readOnly: true
+      required:
+      - application_ids
+      - created_at
+      - id
+    DeviceUpdate:
+      type: object
+      properties:
+        device_name:
+          type: string
+          maxLength: 120
+        platform:
+          $ref: '#/components/schemas/DevicePlatformEnum'
+        push_token_status:
+          $ref: '#/components/schemas/PushTokenStatusEnum'
+    DeviceUpdateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/DeviceUpdateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    DeviceUpdateValidationErrorResponseFields:
+      type: object
+      properties:
+        device_name:
+          type: array
+          items:
+            type: string
+        platform:
+          type: array
+          items:
+            type: string
+        push_token_status:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+    HealthError:
+      type: object
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        check:
+          type: string
+        detail:
+          type: string
+      required:
+      - check
+      - detail
+      - service
+      - status
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        check:
+          type: string
+      required:
+      - check
+      - service
+      - status
+    Login:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - password
+    LoginResponse:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserMe'
+      required:
+      - access
+      - refresh
+      - user
+    LoginValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/LoginValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    LoginValidationErrorResponseFields:
+      type: object
+      properties:
+        email:
+          type: array
+          items:
+            type: string
+        password:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    Logout:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+          description: Refresh token à invalider
+      required:
+      - refresh
+    LogoutValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/LogoutValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    LogoutValidationErrorResponseFields:
+      type: object
+      properties:
+        refresh:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationCreate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        application_id:
+          type: integer
+          writeOnly: true
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+        sent_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - application_id
+      - created_at
+      - id
+      - message
+      - sent_at
+      - status
+      - title
+    NotificationCreateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationCreateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationCreateValidationErrorResponseFields:
+      type: object
+      properties:
+        application_id:
+          type: array
+          items:
+            type: string
+        title:
+          type: array
+          items:
+            type: string
+        message:
+          type: array
+          items:
+            type: string
+        scheduled_for:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationCreateWithAppToken:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+        sent_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - id
+      - message
+      - sent_at
+      - status
+      - title
+    NotificationCreateWithAppTokenValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationCreateWithAppTokenValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationCreateWithAppTokenValidationErrorResponseFields:
+      type: object
+      properties:
+        title:
+          type: array
+          items:
+            type: string
+        message:
+          type: array
+          items:
+            type: string
+        scheduled_for:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationFutureFilterValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationFutureFilterValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationFutureFilterValidationErrorResponseFields:
+      type: object
+      properties:
+        effective_scheduled_from:
+          type: array
+          items:
+            type: string
+        effective_scheduled_to:
+          type: array
+          items:
+            type: string
+        ordering:
+          type: array
+          items:
+            type: string
+        has_quiet_period_shift:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationFutureUpdateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationFutureUpdateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationFutureUpdateValidationErrorResponseFields:
+      type: object
+      properties:
+        title:
+          type: array
+          items:
+            type: string
+        message:
+          type: array
+          items:
+            type: string
+        scheduled_for:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationListFilterValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationListFilterValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationListFilterValidationErrorResponseFields:
+      type: object
+      properties:
+        application_id:
+          type: array
+          items:
+            type: string
+        status:
+          type: array
+          items:
+            type: string
+        effective_scheduled_from:
+          type: array
+          items:
+            type: string
+        effective_scheduled_to:
+          type: array
+          items:
+            type: string
+        has_quiet_period_shift:
+          type: array
+          items:
+            type: string
+        ordering:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationQueuedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        notification_id:
+          type: integer
+        task_id:
+          type: string
+      required:
+      - notification_id
+      - status
+      - task_id
+    NotificationRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        application_id:
+          type: integer
+          readOnly: true
+        application_name:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+        effective_scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: Date effective d'envoi calculee a partir de `scheduled_for`
+            et des periodes blanches actuellement configurees. Cette valeur peut changer
+            si les periodes blanches changent, meme sans modifier `scheduled_for`.
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - application_id
+      - application_name
+      - created_at
+      - effective_scheduled_for
+      - id
+      - message
+      - title
+    NotificationStats:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required:
+      - count
+      - status
+    PatchedApplicationQuietPeriodWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        start_at:
+          type: string
+          format: date-time
+        end_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    PatchedDeviceUpdate:
+      type: object
+      properties:
+        device_name:
+          type: string
+          maxLength: 120
+        platform:
+          $ref: '#/components/schemas/DevicePlatformEnum'
+        push_token_status:
+          $ref: '#/components/schemas/PushTokenStatusEnum'
+    PatchedNotificationFutureUpdate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        sent_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+    PushTokenStatusEnum:
+      enum:
+      - active
+      - invalid
+      - revoked
+      type: string
+      description: |-
+        * `active` - Active
+        * `invalid` - Invalid
+        * `revoked` - Revoked
+    Register:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - email
+      - password
+      - username
+    RegisterValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/RegisterValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    RegisterValidationErrorResponseFields:
+      type: object
+      properties:
+        email:
+          type: array
+          items:
+            type: string
+        username:
+          type: array
+          items:
+            type: string
+        password:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    StatusEnum:
+      enum:
+      - draft
+      - scheduled
+      - queued
+      - processing
+      - sent
+      - failed
+      - partial
+      - no_target
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `scheduled` - Scheduled
+        * `queued` - Queued
+        * `processing` - Processing
+        * `sent` - Sent
+        * `failed` - Failed
+        * `partial` - Partial
+        * `no_target` - No target
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshResponse:
+      type: object
+      properties:
+        access:
+          type: string
+      required:
+      - access
+    TokenRefreshValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/TokenRefreshValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    TokenRefreshValidationErrorResponseFields:
+      type: object
+      properties:
+        refresh:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    UserMe:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        userkey:
+          type: string
+          maxLength: 16
+        is_active:
+          type: boolean
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+      required:
+      - email
+      - id
+      - username

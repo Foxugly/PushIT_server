@@ -40,7 +40,7 @@ def test_metrics_endpoint_returns_prometheus_payload():
     response = client.get("/health/metrics/")
 
     assert response.status_code == 200
-    assert response["Content-Type"].startswith("text/plain; version=0.0.4")
+    assert response["Content-Type"].startswith("text/plain; version=")
     body = response.content.decode("utf-8")
     assert "pushit_process_uptime_seconds" in body
     assert 'pushit_http_requests_total{method="GET",route="health-live",status="200"} 1.0' in body

@@ -31,17 +31,7 @@ def test_send_notification_endpoint_accepts_draft(mock_delay):
         status=NotificationStatus.DRAFT,
     )
 
-    login_response = client.post(
-        "/api/v1/auth/login/",
-        {
-            "email": "u1@example.com",
-            "password": "1234Test!!",
-        },
-        format="json",
-    )
-    assert login_response.status_code == 200
-
-    access = login_response.data["access"]
+    access = str(RefreshToken.for_user(user).access_token)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
     response = client.post(
@@ -77,17 +67,7 @@ def test_send_notification_endpoint_rejects_already_queued(mock_delay):
         status=NotificationStatus.QUEUED,
     )
 
-    login_response = client.post(
-        "/api/v1/auth/login/",
-        {
-            "email": "u1@example.com",
-            "password": "1234Test!!",
-        },
-        format="json",
-    )
-    assert login_response.status_code == 200
-
-    access = login_response.data["access"]
+    access = str(RefreshToken.for_user(user).access_token)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
     response = client.post(
@@ -162,17 +142,7 @@ def test_send_notification_endpoint_rejects_already_sent(mock_delay):
         status=NotificationStatus.SENT,
     )
 
-    login_response = client.post(
-        "/api/v1/auth/login/",
-        {
-            "email": "u1@example.com",
-            "password": "1234Test!!",
-        },
-        format="json",
-    )
-    assert login_response.status_code == 200
-
-    access = login_response.data["access"]
+    access = str(RefreshToken.for_user(user).access_token)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
     response = client.post(
@@ -188,6 +158,42 @@ def test_send_notification_endpoint_rejects_already_sent(mock_delay):
 
 
 @pytest.mark.django_db
+@patch("notifications.api_views.send_notification_task.delay")
+def test_send_notification_endpoint_restores_status_when_queue_publish_fails(mock_delay):
+    mock_delay.side_effect = RuntimeError("redis unavailable")
+
+    client = APIClient()
+
+    user = User.objects.create_user(
+        email="u1@example.com",
+        username="u1",
+        password="1234Test!!",
+    )
+    app = Application.objects.create(owner=user, name="App")
+    notification = Notification.objects.create(
+        application=app,
+        title="Hello",
+        message="World",
+        status=NotificationStatus.DRAFT,
+    )
+
+    access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    response = client.post(
+        f"/api/v1/notifications/{notification.id}/send/",
+        {},
+        format="json",
+    )
+
+    assert response.status_code == 503
+    assert response.data["code"] == "notification_queue_unavailable"
+
+    notification.refresh_from_db()
+    assert notification.status == NotificationStatus.DRAFT
+
+
+@pytest.mark.django_db
 def test_notification_detail_not_found_returns_notification_not_found_code():
     client = APIClient()
 
@@ -198,15 +204,7 @@ def test_notification_detail_not_found_returns_notification_not_found_code():
     )
     Application.objects.create(owner=user, name="App")
 
-    login_response = client.post(
-        "/api/v1/auth/login/",
-        {
-            "email": "u1@example.com",
-            "password": "1234Test!!",
-        },
-        format="json",
-    )
-    access = login_response.data["access"]
+    access = str(RefreshToken.for_user(user).access_token)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
     response = client.get("/api/v1/notifications/999999/")

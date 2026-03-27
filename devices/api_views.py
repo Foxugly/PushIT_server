@@ -17,6 +17,7 @@ from .serializers import (
         summary="Lister les devices",
         description="Retourne la liste des devices appartenant a l'utilisateur connecte.",
         tags=["Devices"],
+        auth=[{"BearerAuth": []}],
         responses={200: DeviceReadSerializer(many=True)},
     ),
 )
@@ -40,6 +41,7 @@ class DeviceListApiView(generics.ListAPIView):
         summary="Detail d'un device",
         description="Retourne le detail d'un device appartenant a l'utilisateur connecte.",
         tags=["Devices"],
+        auth=[{"BearerAuth": []}],
         responses={
             200: DeviceReadSerializer,
             404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),
@@ -49,6 +51,7 @@ class DeviceListApiView(generics.ListAPIView):
         summary="Modifier completement un device",
         description="Met a jour completement un device appartenant a l'utilisateur connecte.",
         tags=["Devices"],
+        auth=[{"BearerAuth": []}],
         request=DeviceUpdateSerializer,
         responses={
             200: DeviceReadSerializer,
@@ -60,6 +63,7 @@ class DeviceListApiView(generics.ListAPIView):
         summary="Modifier partiellement un device",
         description="Met a jour partiellement un device appartenant a l'utilisateur connecte.",
         tags=["Devices"],
+        auth=[{"BearerAuth": []}],
         request=DeviceUpdateSerializer,
         responses={
             200: DeviceReadSerializer,
@@ -71,6 +75,7 @@ class DeviceListApiView(generics.ListAPIView):
         summary="Supprimer un device",
         description="Supprime un device appartenant a l'utilisateur connecte.",
         tags=["Devices"],
+        auth=[{"BearerAuth": []}],
         responses={
             204: None,
             404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),

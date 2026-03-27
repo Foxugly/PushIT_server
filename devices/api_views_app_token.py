@@ -20,6 +20,7 @@ from .serializers import (
         summary="Associer un device a une application via app token",
         description="Cree ou met a jour un device a partir du header `X-App-Token` puis l'associe a l'application.",
         tags=["Devices"],
+        auth=[{"AppTokenAuth": []}],
         request=DeviceLinkWithAppTokenSerializer,
         responses={
             200: DeviceLinkWithAppTokenResponseSerializer,

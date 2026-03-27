@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -124,6 +125,16 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Europe/Brussels"
+CELERY_BEAT_SCHEDULE = {
+    "pushit-dispatch-scheduled-notifications": {
+        "task": "notifications.tasks.dispatch_scheduled_notifications_task",
+        "schedule": crontab(minute="*"),
+    },
+    "pushit-retry-pending-deliveries": {
+        "task": "notifications.tasks.retry_pending_deliveries_task",
+        "schedule": crontab(minute="*"),
+    },
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -162,10 +173,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "PushIT API",
     "DESCRIPTION": "API backend pour Firebase Cloud Messaging",
     "VERSION": "1.0.0",
-    "SECURITY": [
-        {"BearerAuth": []},
-        {"ApiKeyAuth": []},
-    ],
+    "SECURITY": [],
     "ENUM_NAME_OVERRIDES": {
         "DevicePlatformEnum": "devices.models.DevicePlatform",
     },

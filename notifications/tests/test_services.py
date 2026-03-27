@@ -1,7 +1,12 @@
+from datetime import timedelta
+
 import pytest
 from unittest.mock import patch
 
+from django.utils import timezone
+
 from accounts.models import User
+from applications.models import ApplicationQuietPeriod
 from config.metrics import render_metrics, reset_metrics
 from applications.models import Application
 from devices.models import Device, DeviceApplicationLink, DeviceTokenStatus
@@ -316,3 +321,33 @@ def test_temporary_provider_error_does_not_invalidate_device(mock_send):
     assert "Temporary provider error" in delivery.error_message
 
     assert notification.status == NotificationStatus.FAILED
+
+
+@pytest.mark.django_db
+@patch("notifications.services.send_push_to_device")
+def test_send_notification_is_deferred_during_quiet_period(mock_send):
+    user = User.objects.create_user(username="u1", password="1234")
+    app = Application.objects.create(owner=user, name="App")
+    quiet_end = timezone.now() + timedelta(hours=2)
+    ApplicationQuietPeriod.objects.create(
+        application=app,
+        name="Maintenance",
+        start_at=timezone.now() - timedelta(minutes=30),
+        end_at=quiet_end,
+        is_active=True,
+    )
+
+    notification = Notification.objects.create(
+        application=app,
+        title="Hello",
+        message="World",
+        status=NotificationStatus.QUEUED,
+    )
+
+    result = send_notification(notification.id)
+
+    assert result["target_count"] == 0
+    notification.refresh_from_db()
+    assert notification.status == NotificationStatus.SCHEDULED
+    assert notification.scheduled_for == quiet_end
+    mock_send.assert_not_called()

@@ -28,6 +28,7 @@ from .throttles import LoginRateThrottle, RegisterRateThrottle
         summary="Creer un compte",
         description="Cree un nouveau compte utilisateur et retourne le profil cree.",
         tags=["Accounts"],
+        auth=[],
         request=RegisterSerializer,
         responses={
             201: UserMeSerializer,
@@ -57,6 +58,7 @@ class RegisterApiView(APIView):
 @extend_schema_view(
     post=extend_schema(
         request=LoginSerializer,
+        auth=[],
         responses={
             200: LoginResponseSerializer,
             400: OpenApiResponse(
@@ -85,6 +87,7 @@ class LoginApiView(APIView):
 @extend_schema_view(
     post=extend_schema(
         request=LogoutSerializer,
+        auth=[{"BearerAuth": []}],
         responses={
             204: None,
             400: OpenApiResponse(
@@ -130,6 +133,7 @@ class LogoutApiView(APIView):
         summary="Profil courant",
         description="Retourne l'utilisateur actuellement connecte.",
         tags=["Accounts"],
+        auth=[{"BearerAuth": []}],
     )
 )
 class MeApiView(APIView):
@@ -145,6 +149,7 @@ class MeApiView(APIView):
         summary="Rafraichir un token",
         description="Genere un nouveau access token a partir d'un refresh token.",
         tags=["Accounts"],
+        auth=[],
         responses={
             200: TokenRefreshResponseSerializer,
             400: OpenApiResponse(

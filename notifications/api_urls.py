@@ -2,6 +2,8 @@ from django.urls import path
 from .api_views import (
     NotificationListCreateApiView,
     NotificationDetailApiView,
+    NotificationFutureDetailApiView,
+    NotificationFutureListApiView,
     NotificationSendApiView, NotificationStatsApiView,
 )
 from .api_views_app_token import (
@@ -11,6 +13,8 @@ from .api_views_app_token import (
 
 urlpatterns = [
     path("", NotificationListCreateApiView.as_view(), name="notification-list-create"),
+    path("future/", NotificationFutureListApiView.as_view(), name="notification-future-list"),
+    path("future/<int:pk>/", NotificationFutureDetailApiView.as_view(), name="notification-future-detail"),
     path("<int:pk>/", NotificationDetailApiView.as_view(), name="notification-detail"),
     path("<int:notification_id>/send/", NotificationSendApiView.as_view(), name="notification-send"),
     path("app/", NotificationListWithAppTokenApiView.as_view(), name="notification-list-app-token"),

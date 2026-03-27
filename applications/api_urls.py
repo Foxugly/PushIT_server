@@ -2,6 +2,7 @@ from django.urls import path
 from .api_views import (
     ApplicationListCreateApiView, ApplicationRegenerateTokenApiView,
     ApplicationRevokeTokenApiView, ApplicationActivateApiView, ApplicationDeactivateApiView,
+    ApplicationQuietPeriodListCreateApiView, ApplicationQuietPeriodDetailApiView,
 )
 
 urlpatterns = [
@@ -10,4 +11,6 @@ urlpatterns = [
     path("<int:app_id>/activate/", ApplicationActivateApiView.as_view(), name="app-activate"),
     path("<int:app_id>/deactivate/", ApplicationDeactivateApiView.as_view(), name="app-deactivate"),
     path("<int:app_id>/revoke-token/", ApplicationRevokeTokenApiView.as_view(), name="app-revoke-token"),
+    path("<int:app_id>/quiet-periods/", ApplicationQuietPeriodListCreateApiView.as_view(), name="app-quiet-period-list-create"),
+    path("<int:app_id>/quiet-periods/<int:quiet_period_id>/", ApplicationQuietPeriodDetailApiView.as_view(), name="app-quiet-period-detail"),
 ]
