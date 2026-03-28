@@ -734,7 +734,84 @@ class NotificationSendApiView(APIView):
             status=status.HTTP_409_CONFLICT,
         )
 
+    @staticmethod
+    def _queue_notification_task(notification, previous_status):
+        try:
+            task = send_notification_task.delay(notification.id)
+        except Exception:
+            Notification.objects.filter(
+                id=notification.id,
+                status=NotificationStatus.QUEUED,
+            ).update(status=previous_status)
+            return error_response(
+                code="notification_queue_unavailable",
+                detail="La file d'envoi est temporairement indisponible.",
+                http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                "status": NotificationStatus.QUEUED,
+                "notification_id": notification.id,
+                "task_id": task.id,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    def _post_sqlite(self, request, notification_id):
+        notification = (
+            Notification.objects.select_related("application")
+            .filter(id=notification_id, application__owner=request.user)
+            .first()
+        )
+        if notification is None:
+            return error_response(
+                code="notification_not_found",
+                detail="Notification introuvable.",
+                http_status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if (
+            notification.status == NotificationStatus.SCHEDULED
+            and notification.scheduled_for is not None
+            and notification.scheduled_for > timezone.now()
+        ):
+            return self._build_not_sendable_response(notification.id, notification.status)
+
+        if notification.status not in ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE:
+            return self._build_not_sendable_response(notification.id, notification.status)
+
+        previous_status = notification.status
+        try:
+            queued = Notification.objects.filter(
+                id=notification.id,
+                application__owner=request.user,
+                status=previous_status,
+            ).update(status=NotificationStatus.QUEUED)
+        except OperationalError:
+            return self._build_not_sendable_response(notification.id, notification.status)
+
+        if queued == 0:
+            current_status = (
+                Notification.objects.filter(id=notification.id)
+                .values_list("status", flat=True)
+                .first()
+            )
+            if current_status is None:
+                return error_response(
+                    code="notification_not_found",
+                    detail="Notification introuvable.",
+                    http_status=status.HTTP_404_NOT_FOUND,
+                )
+            return self._build_not_sendable_response(notification.id, current_status)
+
+        notification.status = NotificationStatus.QUEUED
+        return self._queue_notification_task(notification, previous_status)
+
     def post(self, request, notification_id):
+        if connection.vendor == "sqlite":
+            return self._post_sqlite(request, notification_id)
+
         try:
             with transaction.atomic():
                 notification = (
@@ -773,20 +850,49 @@ class NotificationSendApiView(APIView):
                     return self._build_not_sendable_response(notification.id, current_status)
         except OperationalError:
             if connection.vendor == "sqlite":
-                current_status = (
-                    Notification.objects.filter(id=notification_id, application__owner=request.user)
-                    .values_list("status", flat=True)
+                notification = (
+                    Notification.objects.select_related("application")
+                    .filter(id=notification_id, application__owner=request.user)
                     .first()
                 )
-                if current_status is None:
+                if notification is None:
                     return error_response(
                         code="notification_not_found",
                         detail="Notification introuvable.",
                         http_status=status.HTTP_404_NOT_FOUND,
                     )
-                if current_status not in ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE:
-                    return self._build_not_sendable_response(notification_id, current_status)
-            raise
+                if (
+                    notification.status == NotificationStatus.SCHEDULED
+                    and notification.scheduled_for is not None
+                    and notification.scheduled_for > timezone.now()
+                ):
+                    return self._build_not_sendable_response(notification.id, notification.status)
+                if notification.status not in ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE:
+                    return self._build_not_sendable_response(notification.id, notification.status)
+
+                previous_status = notification.status
+                queued = Notification.objects.filter(
+                    id=notification.id,
+                    application__owner=request.user,
+                    status=previous_status,
+                ).update(status=NotificationStatus.QUEUED)
+                if queued == 0:
+                    current_status = (
+                        Notification.objects.filter(id=notification.id)
+                        .values_list("status", flat=True)
+                        .first()
+                    )
+                    if current_status is None:
+                        return error_response(
+                            code="notification_not_found",
+                            detail="Notification introuvable.",
+                            http_status=status.HTTP_404_NOT_FOUND,
+                        )
+                    return self._build_not_sendable_response(notification.id, current_status)
+
+                notification.status = NotificationStatus.QUEUED
+            else:
+                raise
         except Notification.DoesNotExist:
             return error_response(
                 code="notification_not_found",
@@ -794,27 +900,7 @@ class NotificationSendApiView(APIView):
                 http_status=status.HTTP_404_NOT_FOUND,
             )
 
-        try:
-            task = send_notification_task.delay(notification.id)
-        except Exception:
-            Notification.objects.filter(
-                id=notification.id,
-                status=NotificationStatus.QUEUED,
-            ).update(status=previous_status)
-            return error_response(
-                code="notification_queue_unavailable",
-                detail="La file d'envoi est temporairement indisponible.",
-                http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        return Response(
-            {
-                "status": NotificationStatus.QUEUED,
-                "notification_id": notification.id,
-                "task_id": task.id,
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        return self._queue_notification_task(notification, previous_status)
 
 
 @extend_schema_view(

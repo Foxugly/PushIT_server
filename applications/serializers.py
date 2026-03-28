@@ -50,6 +50,8 @@ ApplicationQuietPeriodValidationErrorResponseSerializer = build_validation_error
 
 
 class ApplicationReadSerializer(serializers.ModelSerializer):
+    inbound_email_address = serializers.CharField(read_only=True)
+
     class Meta:
         model = Application
         fields = [
@@ -57,6 +59,8 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "app_token_prefix",
+            "inbound_email_alias",
+            "inbound_email_address",
             "is_active",
             "revoked_at",
             "last_used_at",
@@ -66,6 +70,7 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
 
 class ApplicationCreateSerializer(serializers.ModelSerializer):
     app_token = serializers.CharField(read_only=True)
+    inbound_email_address = serializers.CharField(read_only=True)
 
     class Meta:
         model = Application
@@ -74,6 +79,8 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "app_token_prefix",
+            "inbound_email_alias",
+            "inbound_email_address",
             "app_token",
             "is_active",
             "revoked_at",
@@ -83,6 +90,8 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "app_token_prefix",
+            "inbound_email_alias",
+            "inbound_email_address",
             "app_token",
             "is_active",
             "revoked_at",

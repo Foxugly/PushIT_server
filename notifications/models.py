@@ -19,6 +19,19 @@ class NotificationStatus(models.TextChoices):
     NO_TARGET = "no_target", "No target"
 
 
+class InboundEmailSource(models.TextChoices):
+    IMAP = "imap", "IMAP"
+    WEBHOOK = "webhook", "Webhook"
+
+
+class InboundEmailIngestionStatus(models.TextChoices):
+    CREATED = "created", "Created"
+    EXISTING = "existing", "Existing"
+    REJECTED = "rejected", "Rejected"
+    CONFLICT = "conflict", "Conflict"
+    ERROR = "error", "Error"
+
+
 # Create your models here.
 class Notification(models.Model):
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="notifications",)
@@ -66,3 +79,36 @@ class NotificationDelivery(models.Model):
                 name="uniq_notification_device",
             )
         ]
+
+
+class InboundEmailIngestionLog(models.Model):
+    source = models.CharField(max_length=20, choices=InboundEmailSource.choices)
+    status = models.CharField(max_length=20, choices=InboundEmailIngestionStatus.choices, db_index=True)
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inbound_email_logs",
+    )
+    notification = models.ForeignKey(
+        Notification,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inbound_email_logs",
+    )
+    sender = models.EmailField(blank=True)
+    recipient = models.EmailField(blank=True)
+    subject = models.CharField(max_length=255, blank=True)
+    message_id = models.CharField(max_length=255, blank=True, db_index=True)
+    mailbox_uid = models.CharField(max_length=255, blank=True, db_index=True)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-processed_at", "-id"]
+
+    def __str__(self):
+        return f"{self.source}:{self.status}:{self.recipient or 'unknown'}"

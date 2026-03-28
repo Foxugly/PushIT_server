@@ -50,7 +50,9 @@ def send_push_to_device(push_token: str, title: str, message: str) -> str:
         "push_send_requested",
         extra=log_extra,
     )
-
+    print(push_token)
+    print(title)
+    print(message)
     try:
         # TODO: brancher le vrai provider FCM ici.
         # Exemple futur :

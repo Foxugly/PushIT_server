@@ -3,6 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import Notification, NotificationDelivery, NotificationStatus
+from .inbound_mailbox import poll_inbound_mailbox
 from .services import send_notification
 
 
@@ -65,3 +66,8 @@ def dispatch_scheduled_notifications_task():
         queued_count += 1
 
     return {"queued_count": queued_count}
+
+
+@shared_task
+def poll_inbound_mailbox_task():
+    return poll_inbound_mailbox()

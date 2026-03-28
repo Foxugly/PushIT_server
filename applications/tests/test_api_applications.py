@@ -25,6 +25,8 @@ def test_get_patch_and_delete_application():
     get_response = client.get(f"/api/v1/apps/{app.id}/")
     assert get_response.status_code == 200
     assert get_response.data["name"] == "PushIT"
+    assert get_response.data["inbound_email_alias"] == app.inbound_email_alias
+    assert get_response.data["inbound_email_address"].endswith("@pushit.com")
 
     patch_response = client.patch(
         f"/api/v1/apps/{app.id}/",
@@ -37,6 +39,7 @@ def test_get_patch_and_delete_application():
     assert patch_response.status_code == 200
     assert patch_response.data["name"] == "PushIT Mobile"
     assert patch_response.data["description"] == "Updated description"
+    assert patch_response.data["inbound_email_alias"] == app.inbound_email_alias
 
     app.refresh_from_db()
     assert app.name == "PushIT Mobile"

@@ -15,6 +15,10 @@ def generate_raw_app_token():
     return f"apt_{secrets.token_hex(24)}"
 
 
+def generate_inbound_email_alias():
+    return f"apt_{secrets.token_hex(8)}"
+
+
 def hash_app_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
@@ -29,6 +33,7 @@ class Application(models.Model):
     description = models.TextField(blank=True)
     app_token_prefix = models.CharField(max_length=24, db_index=True)
     app_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    inbound_email_alias = models.CharField(max_length=24, unique=True, db_index=True)
 
     is_active = models.BooleanField(default=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
@@ -37,6 +42,10 @@ class Application(models.Model):
     icon = models.ImageField(upload_to="app_icons/", blank=True, null=True)
     logo = models.ImageField(upload_to="app_logo/", blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def inbound_email_address(self) -> str:
+        return f"{self.inbound_email_alias}@{settings.INBOUND_EMAIL_DOMAIN.strip().lower()}"
 
     def check_app_token(self, raw_token: str) -> bool:
         return self.app_token_hash == hash_app_token(raw_token)
@@ -62,6 +71,12 @@ class Application(models.Model):
     def save(self, *args, **kwargs):
         if not self.app_token_hash:
             self.set_new_app_token()
+        if not self.inbound_email_alias:
+            while True:
+                candidate = generate_inbound_email_alias()
+                if not type(self).objects.filter(inbound_email_alias=candidate).exists():
+                    self.inbound_email_alias = candidate
+                    break
         super().save(*args, **kwargs)
 
     def __str__(self):

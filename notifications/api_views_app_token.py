@@ -1,4 +1,3 @@
-from django.db import IntegrityError, OperationalError, connection, transaction
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, status
@@ -7,6 +6,7 @@ from rest_framework.response import Response
 from applications.authentication import AppTokenAuthentication
 from applications.permissions import HasAppToken
 from config.api_errors import error_response
+from .creation import create_notification_with_optional_idempotency
 from .models import Notification, NotificationStatus
 from .serializers import (
     DetailResponseSerializer,
@@ -176,63 +176,29 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
             )
 
         request_fingerprint = compute_request_fingerprint(validated_data)
+        outcome = create_notification_with_optional_idempotency(
+            application=application,
+            title=validated_data["title"],
+            message=validated_data["message"],
+            scheduled_for=validated_data.get("scheduled_for"),
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+        )
 
-        created = False
-        savepoint_failed = False
-        try:
-            with transaction.atomic():
-                instance = Notification.objects.create(
-                    application=application,
-                    title=validated_data["title"],
-                    message=validated_data["message"],
-                    status=NotificationCreateWithAppTokenSerializer.build_status_from_scheduled_for(
-                        validated_data.get("scheduled_for")
-                    ),
-                    scheduled_for=validated_data.get("scheduled_for"),
-                    idempotency_key=idempotency_key,
-                    request_fingerprint=request_fingerprint,
-                )
-                created = True
-        except OperationalError:
-            if connection.vendor != "sqlite":
-                raise
-            savepoint_failed = True
-        except IntegrityError:
-            pass
+        if outcome.conflict:
+            return Response(
+                {
+                    "code": "idempotency_conflict",
+                    "detail": "Cette clé d'idempotence a déjà été utilisée avec un payload différent.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
-        if savepoint_failed:
-            try:
-                instance = Notification.objects.create(
-                    application=application,
-                    title=validated_data["title"],
-                    message=validated_data["message"],
-                    status=NotificationCreateWithAppTokenSerializer.build_status_from_scheduled_for(
-                        validated_data.get("scheduled_for")
-                    ),
-                    scheduled_for=validated_data.get("scheduled_for"),
-                    idempotency_key=idempotency_key,
-                    request_fingerprint=request_fingerprint,
-                )
-                created = True
-            except IntegrityError:
-                pass
-
-        if not created:
-            instance = Notification.objects.get(application=application, idempotency_key=idempotency_key)
-            if instance.request_fingerprint != request_fingerprint:
-                return Response(
-                    {
-                        "code": "idempotency_conflict",
-                        "detail": "Cette clé d'idempotence a déjà été utilisée avec un payload différent.",
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-            read_serializer = NotificationReadSerializer(instance, context=self.get_serializer_context())
-            return Response(read_serializer.data, status=status.HTTP_200_OK)
-
-        read_serializer = NotificationReadSerializer(instance, context=self.get_serializer_context())
-        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+        read_serializer = NotificationReadSerializer(outcome.notification, context=self.get_serializer_context())
+        return Response(
+            read_serializer.data,
+            status=status.HTTP_201_CREATED if outcome.created else status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(

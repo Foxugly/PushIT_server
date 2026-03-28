@@ -24,6 +24,7 @@ def test_core_url_wiring():
     assert reverse("device-link") == "/api/v1/devices/link/"
     assert reverse("device-quiet-period-list-create", kwargs={"device_id": 1}) == "/api/v1/devices/1/quiet-periods/"
     assert reverse("notification-list-create") == "/api/v1/notifications/"
+    assert reverse("notification-inbound-email") == "/api/v1/notifications/inbound/email/"
     assert reverse("notification-create-app-token") == "/api/v1/notifications/app/create/"
     assert reverse("notification-future-list") == "/api/v1/notifications/future/"
     assert reverse("schema") == "/api/schema/"
@@ -38,6 +39,7 @@ def test_core_url_wiring():
     assert resolve("/api/v1/devices/link/").view_name == "device-link"
     assert resolve("/api/v1/devices/1/quiet-periods/").view_name == "device-quiet-period-list-create"
     assert resolve("/api/v1/notifications/future/").view_name == "notification-future-list"
+    assert resolve("/api/v1/notifications/inbound/email/").view_name == "notification-inbound-email"
     assert resolve("/api/v1/notifications/app/create/").view_name == "notification-create-app-token"
 
 
@@ -63,6 +65,9 @@ def test_rest_framework_and_schema_wiring():
     assert "config.middleware.RequestIdMiddleware" in settings.MIDDLEWARE
     assert "http://localhost:4200" in settings.CORS_ALLOWED_ORIGINS
     assert "http://127.0.0.1:4200" in settings.CORS_ALLOWED_ORIGINS
+    assert settings.INBOUND_EMAIL_DOMAIN == "pushit.com"
+    assert "pushit-poll-inbound-mailbox" in settings.CELERY_BEAT_SCHEDULE
+    assert settings.CELERY_BEAT_SCHEDULE["pushit-poll-inbound-mailbox"]["task"] == "notifications.tasks.poll_inbound_mailbox_task"
 
 
 def test_dev_state_enables_eager_celery():

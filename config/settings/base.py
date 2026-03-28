@@ -140,6 +140,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notifications.tasks.retry_pending_deliveries_task",
         "schedule": crontab(minute="*"),
     },
+    "pushit-poll-inbound-mailbox": {
+        "task": "notifications.tasks.poll_inbound_mailbox_task",
+        "schedule": crontab(minute="*"),
+    },
 }
 
 REST_FRAMEWORK = {
@@ -174,6 +178,15 @@ SIMPLE_JWT = {
 
 FCM_API_KEY = env("FCM_API_KEY", default=None)
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
+INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="pushit.com")
+INBOUND_EMAIL_SECRET = env("INBOUND_EMAIL_SECRET", default="dev-inbound-email-secret")
+INBOUND_EMAIL_IMAP_ENABLED = env.bool("INBOUND_EMAIL_IMAP_ENABLED", default=False)
+INBOUND_EMAIL_IMAP_HOST = env("INBOUND_EMAIL_IMAP_HOST", default="")
+INBOUND_EMAIL_IMAP_PORT = env.int("INBOUND_EMAIL_IMAP_PORT", default=993)
+INBOUND_EMAIL_IMAP_USERNAME = env("INBOUND_EMAIL_IMAP_USERNAME", default="")
+INBOUND_EMAIL_IMAP_PASSWORD = env("INBOUND_EMAIL_IMAP_PASSWORD", default="")
+INBOUND_EMAIL_IMAP_FOLDER = env("INBOUND_EMAIL_IMAP_FOLDER", default="INBOX")
+INBOUND_EMAIL_IMAP_USE_SSL = env.bool("INBOUND_EMAIL_IMAP_USE_SSL", default=True)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "PushIT API",

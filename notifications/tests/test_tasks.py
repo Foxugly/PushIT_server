@@ -9,7 +9,7 @@ from devices.models import Device, DeviceApplicationLink, DeviceTokenStatus
 from django.utils import timezone
 
 from notifications.models import Notification, NotificationDelivery, NotificationStatus
-from notifications.tasks import dispatch_scheduled_notifications_task, send_notification_task
+from notifications.tasks import dispatch_scheduled_notifications_task, poll_inbound_mailbox_task, send_notification_task
 
 VALID_PUSH_TOKEN = "token_11111111111111111111"
 
@@ -58,3 +58,20 @@ def test_dispatch_scheduled_notifications_task(mock_delay):
     notification.refresh_from_db()
     assert notification.status == NotificationStatus.QUEUED
     mock_delay.assert_called_once_with(notification.id)
+
+
+@pytest.mark.django_db
+@patch("notifications.tasks.poll_inbound_mailbox")
+def test_poll_inbound_mailbox_task(mock_poll):
+    mock_poll.return_value = {
+        "status": "ok",
+        "processed_count": 2,
+        "created_count": 1,
+        "rejected_count": 1,
+    }
+
+    result = poll_inbound_mailbox_task()
+
+    assert result["status"] == "ok"
+    assert result["processed_count"] == 2
+    mock_poll.assert_called_once_with()

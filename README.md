@@ -7,6 +7,7 @@ Le projet expose :
 - une authentification applicative via `X-App-Token`
 - la gestion des applications et des devices
 - la création et l'envoi de notifications
+- l'ingestion d'emails entrants via une boite IMAP catch-all
 - une documentation OpenAPI
 - des health checks, logs structurés et métriques Prometheus
 - des notifications planifiées et des périodes blanches par application
@@ -78,6 +79,9 @@ Variables utiles :
 - `CORS_ALLOWED_ORIGINS` pour autoriser le frontend local ou un domaine frontend donne
 - `METRICS_AUTH_TOKEN` pour protéger `/health/metrics/`
 - `REDIS_URL` pour Celery
+- `INBOUND_EMAIL_DOMAIN` pour le domaine email entrant, par exemple `pushit.com`
+- `INBOUND_EMAIL_IMAP_ENABLED` pour activer la surveillance IMAP
+- `INBOUND_EMAIL_IMAP_HOST`, `INBOUND_EMAIL_IMAP_PORT`, `INBOUND_EMAIL_IMAP_USERNAME`, `INBOUND_EMAIL_IMAP_PASSWORD`, `INBOUND_EMAIL_IMAP_FOLDER`
 - `PROMETHEUS_MULTIPROC_DIR` pour agréger correctement les métriques en multi-worker
 
 En `PROD`, `DJANGO_SECRET_KEY` et `ALLOWED_HOSTS` sont désormais obligatoires. Le démarrage échoue si ces variables ne sont pas définies explicitement.
@@ -140,6 +144,21 @@ Les settings sont séparés dans [config/settings](C:/Users/rvilain/PycharmProje
 1. créer ou régénérer un `app_token`
 2. lier un device via `/api/v1/devices/link/`
 3. créer une notification immédiate ou planifiée via `/api/v1/notifications/app/create/`
+
+### Flow email entrant
+
+1. configurer une boite mail catch-all sur le domaine, par exemple `*@pushit.com`
+2. configurer le backend avec les accès IMAP de cette boite
+3. un worker Celery interroge périodiquement la boite IMAP
+4. pour chaque mail non lu :
+5. le backend lit l'expéditeur
+6. le backend lit le destinataire et extrait le préfixe avant `@`
+7. le préfixe doit correspondre à `app_token_prefix`
+8. l'expéditeur doit correspondre à un utilisateur existant
+9. l'application ciblée doit appartenir à cet utilisateur
+10. le sujet devient le titre de la notification
+11. le contenu texte devient le message
+12. un marqueur `[SEND_AT:2026-03-28T20:00:00+01:00]` dans le sujet permet de planifier l'envoi
 
 ## Planification et périodes blanches
 

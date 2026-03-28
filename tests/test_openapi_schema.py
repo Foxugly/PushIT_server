@@ -85,6 +85,15 @@ def test_application_and_device_validation_responses_are_documented_per_endpoint
 
 
 @pytest.mark.django_db
+def test_application_read_schema_exposes_inbound_email_fields():
+    schema = _load_schema()
+
+    application_read_schema = schema["components"]["schemas"]["ApplicationRead"]
+    assert "inbound_email_alias" in application_read_schema["properties"]
+    assert "inbound_email_address" in application_read_schema["properties"]
+
+
+@pytest.mark.django_db
 def test_notification_validation_and_error_responses_are_documented_per_endpoint():
     schema = _load_schema()
 
@@ -109,6 +118,14 @@ def test_notification_validation_and_error_responses_are_documented_per_endpoint
     notification_send_operation = schema["paths"]["/api/v1/notifications/{notification_id}/send/"]["post"]
     assert set(["202", "404", "409", "503"]).issubset(notification_send_operation["responses"].keys())
     assert {"BearerAuth": []} in notification_send_operation["security"]
+
+    notification_inbound_operation = schema["paths"]["/api/v1/notifications/inbound/email/"]["post"]
+    _assert_json_response_ref(
+        notification_inbound_operation,
+        "400",
+        "NotificationInboundEmailValidationErrorResponse",
+    )
+    assert set(["200", "201", "400", "403", "409"]).issubset(notification_inbound_operation["responses"].keys())
 
     notification_future_patch_operation = schema["paths"]["/api/v1/notifications/future/{id}/"]["patch"]
     _assert_json_response_ref(

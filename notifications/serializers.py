@@ -1,14 +1,17 @@
 from drf_spectacular.utils import extend_schema_field, inline_serializer
+from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from rest_framework import serializers
 
+from accounts.models import User
 from applications.models import Application
 from config.api_errors import (
     ErrorResponseSerializer as DetailResponseSerializer,
     build_validation_error_serializer,
 )
 from devices.models import Device, DeviceTokenStatus
+from .inbound_email import extract_subject_schedule
 from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus
 from .scheduling import compute_effective_scheduled_for
 
@@ -29,6 +32,11 @@ NotificationCreateValidationErrorResponseSerializer = build_validation_error_ser
 NotificationCreateWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
     "NotificationCreateWithAppTokenValidationErrorResponse",
     ["title", "message", "scheduled_for"],
+)
+
+NotificationInboundEmailValidationErrorResponseSerializer = build_validation_error_serializer(
+    "NotificationInboundEmailValidationErrorResponse",
+    ["sender", "recipient", "subject", "text", "message_id"],
 )
 
 NotificationFutureUpdateValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -279,6 +287,91 @@ class NotificationCreateWithAppTokenSerializer(BaseNotificationWriteSerializer):
         raise NotImplementedError(
             "La création doit être effectuée dans NotificationCreateWithAppTokenApiView.post()."
         )
+
+
+class NotificationInboundEmailSerializer(serializers.Serializer):
+    sender = serializers.EmailField()
+    recipient = serializers.EmailField()
+    subject = serializers.CharField(max_length=255, trim_whitespace=True)
+    text = serializers.CharField(trim_whitespace=True)
+    message_id = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+
+    def validate(self, attrs):
+        errors = {}
+
+        sender = attrs["sender"].strip().lower()
+        recipient = attrs["recipient"].strip().lower()
+        subject = attrs["subject"]
+        text = attrs["text"]
+
+        try:
+            local_part, domain = recipient.split("@", 1)
+        except ValueError:
+            raise serializers.ValidationError({"recipient": ["Adresse email invalide."]})
+
+        expected_domain = settings.INBOUND_EMAIL_DOMAIN.strip().lower()
+        if domain != expected_domain:
+            errors["recipient"] = [f"Le domaine entrant doit etre {expected_domain}."]
+
+        try:
+            title, scheduled_for = extract_subject_schedule(subject)
+        except ValueError as exc:
+            errors["subject"] = [str(exc)]
+            title = ""
+            scheduled_for = None
+
+        if not title:
+            errors.setdefault("subject", []).append("Le sujet ne peut pas etre vide.")
+
+        if not text.strip():
+            errors["text"] = ["Le contenu du mail ne peut pas etre vide."]
+        elif len(text.strip()) > 5000:
+            errors["text"] = ["Le contenu du mail est trop long."]
+
+        if scheduled_for is not None and scheduled_for <= timezone.now():
+            errors.setdefault("subject", []).append("La date planifiee doit etre dans le futur.")
+
+        application = (
+            Application.objects.filter(
+                inbound_email_alias=local_part,
+                is_active=True,
+                revoked_at__isnull=True,
+            )
+            .order_by("id")
+            .first()
+        )
+        if application is None:
+            errors.setdefault("recipient", []).append("Aucune application ne correspond a cette adresse email.")
+
+        user = User.objects.filter(email=sender).first()
+        if user is None:
+            errors.setdefault("sender", []).append("Aucun utilisateur ne correspond a cette adresse email.")
+        elif application is not None and application.owner_id != user.id:
+            errors.setdefault("sender", []).append(
+                "L'expediteur doit correspondre au proprietaire de l'application ciblee."
+            )
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        self.context["user"] = user
+        self.context["normalized_sender"] = sender
+        self.context["application"] = application
+        self.context["normalized_recipient"] = recipient
+        self.context["normalized_title"] = title
+        self.context["scheduled_for"] = scheduled_for
+        attrs["sender"] = sender
+        attrs["recipient"] = recipient
+        attrs["subject"] = title
+        attrs["text"] = text.strip()
+        attrs["message_id"] = attrs.get("message_id", "").strip()
+        return attrs
+
 
 class NotificationFutureUpdateSerializer(BaseNotificationWriteSerializer):
     class Meta:
