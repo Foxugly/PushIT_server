@@ -9,54 +9,16 @@ from applications.graph_mail import (
     GraphEmail,
     fetch_unread_emails,
     mark_email_read,
-    send_email,
     _is_configured,
 )
 from .creation import create_notification_with_optional_idempotency
 from .inbound_journal import record_inbound_email_ingestion
+from .inbound_reply import send_unknown_address_reply
 from .models import InboundEmailIngestionStatus, InboundEmailSource
 from .serializers import NotificationInboundEmailSerializer
 from .utils import compute_request_fingerprint
 
 logger = logging.getLogger(__name__)
-
-
-def _build_unknown_address_reply(sender_email: str, tried_recipient: str) -> tuple[str, str]:
-    from accounts.models import User
-    from applications.models import Application
-
-    user = User.objects.filter(email=sender_email).first()
-    if user is None:
-        return "", ""
-
-    apps = Application.objects.filter(
-        owner=user,
-        is_active=True,
-        revoked_at__isnull=True,
-    ).order_by("name")
-
-    if not apps.exists():
-        body = (
-            f"Your email to {tried_recipient} could not be delivered.\n\n"
-            "You don't have any active applications configured.\n"
-            "Please create an application first on PushIT."
-        )
-        return "Undeliverable: no active application", body
-
-    lines = [
-        f"Your email to {tried_recipient} could not be delivered "
-        "because this address does not match any of your applications.",
-        "",
-        "Here are your valid inbound email addresses:",
-        "",
-    ]
-    for app in apps:
-        lines.append(f"  - {app.name}: {app.inbound_email_address}")
-
-    lines.append("")
-    lines.append("Please resend your email to the correct address.")
-
-    return "Undeliverable: unknown recipient address", "\n".join(lines)
 
 
 def _process_email(email: GraphEmail) -> tuple[bool, str]:
@@ -86,16 +48,10 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
         ) and not any("No user matches" in str(e) for e in sender_errors)
 
         if is_known_user_wrong_address:
-            subject, body = _build_unknown_address_reply(sender, email.recipient)
-            if subject and body:
-                send_email(to=sender, subject=subject, body=body)
-                logger.info(
-                    "inbound_email_unknown_address_reply_sent",
-                    extra={"sender": sender, "recipient": email.recipient},
-                )
+            send_unknown_address_reply(sender, email.recipient)
 
         record_inbound_email_ingestion(
-            source=InboundEmailSource.IMAP,
+            source=InboundEmailSource.POLLING,
             status=InboundEmailIngestionStatus.REJECTED,
             sender=email.sender,
             recipient=email.recipient,
@@ -131,7 +87,7 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
 
     if outcome.conflict:
         record_inbound_email_ingestion(
-            source=InboundEmailSource.IMAP,
+            source=InboundEmailSource.POLLING,
             status=InboundEmailIngestionStatus.CONFLICT,
             sender=email.sender,
             recipient=email.recipient,
@@ -153,7 +109,7 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
         return True, "conflict"
 
     record_inbound_email_ingestion(
-        source=InboundEmailSource.IMAP,
+        source=InboundEmailSource.POLLING,
         status=InboundEmailIngestionStatus.CREATED if outcome.created else InboundEmailIngestionStatus.EXISTING,
         sender=email.sender,
         recipient=email.recipient,
@@ -194,7 +150,7 @@ def poll_inbound_mailbox() -> dict:
             mark_seen, outcome = _process_email(email)
         except Exception as exc:
             record_inbound_email_ingestion(
-                source=InboundEmailSource.IMAP,
+                source=InboundEmailSource.POLLING,
                 status=InboundEmailIngestionStatus.ERROR,
                 sender=email.sender,
                 recipient=email.recipient,

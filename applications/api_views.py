@@ -1,9 +1,9 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from config.api_errors import error_response
 from .models import Application
 from .serializers import (
     ApplicationActivationResponseSerializer,
@@ -19,6 +19,14 @@ from .serializers import (
     ApplicationUpdateValidationErrorResponseSerializer,
     DetailResponseSerializer,
 )
+
+
+def _raise_app_not_found():
+    raise NotFound("Application not found.", code="application_not_found")
+
+
+def _raise_quiet_period_not_found():
+    raise NotFound("Quiet period not found.", code="quiet_period_not_found")
 
 
 @extend_schema_view(
@@ -119,41 +127,24 @@ class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         return ApplicationReadSerializer
 
     def get_object(self):
-        return self.get_queryset().filter(id=self.kwargs["app_id"]).first()
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
+        instance = self.get_queryset().filter(id=self.kwargs["app_id"]).first()
         if instance is None:
-            return error_response(
-                code="application_not_found",
-                detail="Application not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
-        return Response(ApplicationReadSerializer(instance).data)
+            _raise_app_not_found()
+        return instance
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance is None:
-            return error_response(
-                code="application_not_found",
-                detail="Application not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(ApplicationReadSerializer(instance).data)
 
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance is None:
-            return error_response(
-                code="application_not_found",
-                detail="Application not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
-        instance.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+
+def _get_app_or_404(app_id, user):
+    try:
+        return Application.objects.get(id=app_id, owner=user)
+    except Application.DoesNotExist:
+        _raise_app_not_found()
 
 
 @extend_schema_view(
@@ -173,11 +164,7 @@ class ApplicationRegenerateTokenApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, app_id):
-        try:
-            app = Application.objects.get(id=app_id, owner=request.user)
-        except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
-
+        app = _get_app_or_404(app_id, request.user)
         raw_token = app.set_new_app_token()
         app.save(update_fields=["app_token_prefix", "app_token_hash", "revoked_at", "last_used_at"])
         return Response(
@@ -203,11 +190,7 @@ class ApplicationActivateApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, app_id):
-        try:
-            app = Application.objects.get(id=app_id, owner=request.user)
-        except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
-
+        app = _get_app_or_404(app_id, request.user)
         if not app.is_active:
             app.is_active = True
             app.save(update_fields=["is_active"])
@@ -231,11 +214,7 @@ class ApplicationDeactivateApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, app_id):
-        try:
-            app = Application.objects.get(id=app_id, owner=request.user)
-        except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
-
+        app = _get_app_or_404(app_id, request.user)
         if app.is_active:
             app.is_active = False
             app.save(update_fields=["is_active"])
@@ -259,10 +238,7 @@ class ApplicationRevokeTokenApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, app_id):
-        try:
-            app = Application.objects.get(id=app_id, owner=request.user)
-        except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
+        app = _get_app_or_404(app_id, request.user)
         app.revoke_token()
         return Response({"app_id": app.id, "revoked_at": app.revoked_at}, status=status.HTTP_200_OK)
 
@@ -378,21 +354,12 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
 
     def list(self, request, *args, **kwargs):
         if self.get_application() is None:
-            return error_response(
-                code="application_not_found",
-                detail="Application not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
+            _raise_app_not_found()
         return super().list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
-        application = self.get_application()
-        if application is None:
-            return error_response(
-                code="application_not_found",
-                detail="Application not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
+        if self.get_application() is None:
+            _raise_app_not_found()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
@@ -473,42 +440,15 @@ class ApplicationQuietPeriodDetailApiView(UserOwnedApplicationMixin, generics.Re
     def get_object(self):
         application = self.get_application()
         if application is None:
-            raise Application.DoesNotExist
+            _raise_app_not_found()
         try:
             return application.quiet_periods.get(id=self.kwargs["quiet_period_id"])
         except application.quiet_periods.model.DoesNotExist:
-            return None
-
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance is None:
-            return error_response(
-                code="quiet_period_not_found",
-                detail="Quiet period not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
-        return Response(ApplicationQuietPeriodReadSerializer(instance).data)
+            _raise_quiet_period_not_found()
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance is None:
-            return error_response(
-                code="quiet_period_not_found",
-                detail="Quiet period not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(ApplicationQuietPeriodReadSerializer(instance).data)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance is None:
-            return error_response(
-                code="quiet_period_not_found",
-                detail="Quiet period not found.",
-                http_status=status.HTTP_404_NOT_FOUND,
-            )
-        instance.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)

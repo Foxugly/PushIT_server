@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from config.api_errors import error_response
 from .creation import create_notification_with_optional_idempotency
 from .inbound_journal import record_inbound_email_ingestion
+from .inbound_reply import send_unknown_address_reply
 from .models import InboundEmailIngestionStatus, InboundEmailSource
 from .serializers import (
     DetailResponseSerializer,
@@ -49,8 +50,8 @@ from .utils import compute_request_fingerprint
                 value={
                     "sender": "owner@pushit.com",
                     "recipient": "apt_fc4471fe12345678@pushit.com",
-                    "subject": "Alerte production",
-                    "text": "Le batch est termine.",
+                    "subject": "Production alert",
+                    "text": "The batch is done.",
                     "message_id": "mail-001@example.com",
                 },
                 request_only=True,
@@ -61,7 +62,7 @@ from .utils import compute_request_fingerprint
                     "sender": "owner@pushit.com",
                     "recipient": "apt_fc4471fe12345678@pushit.com",
                     "subject": "Maintenance [SEND_AT:2026-03-27T20:00:00+01:00]",
-                    "text": "Maintenance ce soir.",
+                    "text": "Maintenance tonight.",
                     "message_id": "mail-002@example.com",
                 },
                 request_only=True,
@@ -99,14 +100,28 @@ class NotificationCreateFromInboundEmailApiView(APIView):
         try:
             write_serializer.is_valid(raise_exception=True)
         except serializers.ValidationError:
+            sender = str(request.data.get("sender", "")).strip().lower()
+            recipient = str(request.data.get("recipient", "")).strip().lower()
+            errors = write_serializer.errors
+
+            recipient_errors = errors.get("recipient", [])
+            sender_errors = errors.get("sender", [])
+            is_known_user_wrong_address = (
+                any("No application matches" in str(e) for e in recipient_errors)
+                or any("must match the owner" in str(e) for e in sender_errors)
+            ) and not any("No user matches" in str(e) for e in sender_errors)
+
+            if is_known_user_wrong_address:
+                send_unknown_address_reply(sender, recipient)
+
             record_inbound_email_ingestion(
                 source=InboundEmailSource.WEBHOOK,
                 status=InboundEmailIngestionStatus.REJECTED,
-                sender=str(request.data.get("sender", "")).strip().lower(),
-                recipient=str(request.data.get("recipient", "")).strip().lower(),
+                sender=sender,
+                recipient=recipient,
                 subject=str(request.data.get("subject", "")).strip(),
                 message_id=str(request.data.get("message_id", "")).strip(),
-                error_message=str(write_serializer.errors),
+                error_message=str(errors),
             )
             raise
 

@@ -1,4 +1,4 @@
-from unittest.mock import patch, call
+from unittest.mock import patch
 
 import pytest
 from django.test import override_settings
@@ -7,6 +7,7 @@ from accounts.models import User
 from applications.graph_mail import GraphEmail
 from applications.models import Application
 from notifications.inbound_mailbox import poll_inbound_mailbox
+from notifications.inbound_reply import build_unknown_address_reply
 from notifications.models import InboundEmailIngestionLog, Notification, NotificationStatus
 
 
@@ -20,10 +21,10 @@ from notifications.models import InboundEmailIngestionLog, Notification, Notific
 )
 @patch("applications.graph_mail.add_email_alias")
 @patch("notifications.inbound_mailbox.mark_email_read")
-@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_poll_inbound_mailbox_creates_notification_for_matching_owner(
-    mock_fetch, mock_send_email, mock_mark_read, _mock_add_alias,
+    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
@@ -102,17 +103,17 @@ def test_poll_inbound_mailbox_returns_skipped_when_not_configured():
 )
 @patch("applications.graph_mail.add_email_alias")
 @patch("notifications.inbound_mailbox.mark_email_read")
-@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
-    mock_fetch, mock_send_email, mock_mark_read, _mock_add_alias,
+    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
         username="owner",
         password="MotDePasseTresSolide123!",
     )
-    app = Application.objects.create(owner=owner, name="My App")
+    Application.objects.create(owner=owner, name="My App")
 
     mock_fetch.return_value = [
         GraphEmail(
@@ -130,12 +131,7 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
     assert result["status"] == "ok"
     assert result["rejected_count"] == 1
     assert Notification.objects.count() == 0
-
-    mock_send_email.assert_called_once()
-    call_args = mock_send_email.call_args
-    assert call_args[1]["to"] == "owner@example.com"
-    assert "unknown recipient" in call_args[1]["subject"].lower()
-    assert app.inbound_email_address in call_args[1]["body"]
+    mock_send_reply.assert_called_once_with("owner@example.com", "nonexistent@pushit.com")
 
 
 @pytest.mark.django_db
@@ -148,10 +144,10 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
 )
 @patch("applications.graph_mail.add_email_alias")
 @patch("notifications.inbound_mailbox.mark_email_read")
-@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
-    mock_fetch, mock_send_email, mock_mark_read, _mock_add_alias,
+    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
@@ -164,7 +160,7 @@ def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
         password="MotDePasseTresSolide123!",
     )
     other_app = Application.objects.create(owner=other, name="Other App")
-    owner_app = Application.objects.create(owner=owner, name="Owner App")
+    Application.objects.create(owner=owner, name="Owner App")
 
     mock_fetch.return_value = [
         GraphEmail(
@@ -180,12 +176,7 @@ def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
     result = poll_inbound_mailbox()
 
     assert result["rejected_count"] == 1
-    mock_send_email.assert_called_once()
-    body = mock_send_email.call_args[1]["body"]
-    # The valid addresses section should list owner's app, not other's app
-    address_list_section = body.split("valid inbound email addresses:")[1]
-    assert owner_app.inbound_email_address in address_list_section
-    assert other_app.inbound_email_address not in address_list_section
+    mock_send_reply.assert_called_once_with("owner@example.com", f"{other_app.inbound_email_alias}@pushit.com")
 
 
 @pytest.mark.django_db
@@ -197,10 +188,10 @@ def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
     GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
 @patch("notifications.inbound_mailbox.mark_email_read")
-@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_poll_does_not_send_reply_for_unknown_sender(
-    mock_fetch, mock_send_email, mock_mark_read,
+    mock_fetch, mock_send_reply, mock_mark_read,
 ):
     mock_fetch.return_value = [
         GraphEmail(
@@ -216,4 +207,30 @@ def test_poll_does_not_send_reply_for_unknown_sender(
     result = poll_inbound_mailbox()
 
     assert result["rejected_count"] == 1
-    mock_send_email.assert_not_called()
+    mock_send_reply.assert_not_called()
+
+
+@pytest.mark.django_db
+@override_settings(INBOUND_EMAIL_DOMAIN="pushit.com")
+def test_build_unknown_address_reply_lists_user_apps():
+    owner = User.objects.create_user(
+        email="owner@example.com",
+        username="owner",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=owner, name="My App")
+
+    subject, body = build_unknown_address_reply("owner@example.com", "wrong@pushit.com")
+
+    assert "unknown recipient" in subject.lower()
+    assert app.inbound_email_address in body
+    assert "wrong@pushit.com" in body
+
+
+@pytest.mark.django_db
+@override_settings(INBOUND_EMAIL_DOMAIN="pushit.com")
+def test_build_unknown_address_reply_returns_empty_for_unknown_user():
+    subject, body = build_unknown_address_reply("stranger@example.com", "whatever@pushit.com")
+
+    assert subject == ""
+    assert body == ""

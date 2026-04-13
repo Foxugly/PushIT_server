@@ -12,7 +12,6 @@ from drf_spectacular.utils import (
 )
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -788,7 +787,7 @@ class NotificationSendApiView(APIView):
     ),
 )
 class NotificationStatsApiView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         stats = (

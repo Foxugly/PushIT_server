@@ -2,14 +2,20 @@ openapi: 3.0.3
 info:
   title: PushIT API
   version: 1.0.0
-  description: API backend pour Firebase Cloud Messaging
+  description: Push notification API backend for Firebase Cloud Messaging
 paths:
   /api/v1/apps/:
     get:
       operationId: api_v1_apps_list
-      description: Retourne la liste des applications appartenant a l'utilisateur
-        connecte.
-      summary: Lister les applications
+      description: Returns the list of applications owned by the authenticated user.
+      summary: List applications
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       tags:
       - Applications
       security:
@@ -19,14 +25,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ApplicationRead'
+                $ref: '#/components/schemas/PaginatedApplicationReadList'
           description: ''
     post:
       operationId: api_v1_apps_create
-      description: Cree une nouvelle application pour l'utilisateur connecte.
-      summary: Creer une application
+      description: Creates a new application for the authenticated user.
+      summary: Create an application
       tags:
       - Applications
       requestBody:
@@ -55,13 +59,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationCreateValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
   /api/v1/apps/{app_id}/:
     get:
       operationId: api_v1_apps_retrieve
-      description: Retourne le detail d'une application appartenant a l'utilisateur
-        connecte.
-      summary: Detail d'une application
+      description: Returns the detail of an application owned by the authenticated
+        user.
+      summary: Application detail
       parameters:
       - in: path
         name: app_id
@@ -84,11 +88,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
     patch:
       operationId: api_v1_apps_partial_update
-      description: Met a jour partiellement le nom ou la description d'une application.
-      summary: Modifier une application
+      description: Partially updates the name or description of an application.
+      summary: Update an application
       parameters:
       - in: path
         name: app_id
@@ -122,17 +126,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationUpdateValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
     delete:
       operationId: api_v1_apps_destroy
-      description: Supprime une application appartenant a l'utilisateur connecte.
-      summary: Supprimer une application
+      description: Deletes an application owned by the authenticated user.
+      summary: Delete an application
       parameters:
       - in: path
         name: app_id
@@ -151,12 +155,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
   /api/v1/apps/{app_id}/activate/:
     post:
       operationId: api_v1_apps_activate_create
-      description: Active une application appartenant a l'utilisateur connecte.
-      summary: Activer une application
+      description: Activates an application owned by the authenticated user.
+      summary: Activate an application
       parameters:
       - in: path
         name: app_id
@@ -173,18 +177,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationActivationResponse'
-          description: Application activee
+          description: Application activated
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
   /api/v1/apps/{app_id}/deactivate/:
     post:
       operationId: api_v1_apps_deactivate_create
-      description: Desactive une application appartenant a l'utilisateur connecte.
-      summary: Desactiver une application
+      description: Deactivates an application owned by the authenticated user.
+      summary: Deactivate an application
       parameters:
       - in: path
         name: app_id
@@ -201,28 +205,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationActivationResponse'
-          description: Application desactivee
+          description: Application deactivated
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
   /api/v1/apps/{app_id}/quiet-periods/:
     get:
       operationId: api_v1_apps_quiet_periods_list
-      description: Retourne les periodes blanches configurees pour une application.
-        Une periode blanche peut etre ponctuelle (`period_type=ONCE`) avec `start_at`
-        / `end_at`, ou periodique (`period_type=RECURRING`) avec `recurrence_days`,
-        `start_time` et `end_time`. Les notifications planifiees sont automatiquement
-        reportees a la fin de la fenetre active, sans reecriture retroactive de `scheduled_for`.
-      summary: Lister les periodes blanches
+      description: Returns the quiet periods configured for an application. A quiet
+        period can be one-time (`period_type=ONCE`) with `start_at` / `end_at`, or
+        recurring (`period_type=RECURRING`) with `recurrence_days`, `start_time` and
+        `end_time`. Scheduled notifications are automatically deferred to the end
+        of the active window, without retroactively rewriting `scheduled_for`.
+      summary: List quiet periods
       parameters:
       - in: path
         name: app_id
         schema:
           type: integer
         required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       tags:
       - Applications
       security:
@@ -232,18 +242,16 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ApplicationQuietPeriodRead'
+                $ref: '#/components/schemas/PaginatedApplicationQuietPeriodReadList'
           description: ''
     post:
       operationId: api_v1_apps_quiet_periods_create
-      description: Ajoute une periode blanche ponctuelle ou periodique. Si une notification
-        doit partir pendant cette periode, l'envoi est replanifie a la fin de la fenetre
-        active. Cette operation ne reecrit pas retroactivement `scheduled_for`, mais
-        la valeur de lecture `effective_scheduled_for` des notifications futures tiendra
-        compte des periodes blanches courantes.
-      summary: Creer une periode blanche
+      description: Adds a one-time or recurring quiet period. If a notification is
+        scheduled during this period, sending is deferred to the end of the active
+        window. This does not retroactively rewrite `scheduled_for`, but the read
+        value `effective_scheduled_for` of future notifications will reflect the current
+        quiet periods.
+      summary: Create a quiet period
       parameters:
       - in: path
         name: app_id
@@ -260,7 +268,7 @@ paths:
             examples:
               One-timeQuietPeriodRequest:
                 value:
-                  name: Nuit marketing
+                  name: Marketing blackout
                   period_type: ONCE
                   start_at: '2026-03-27T22:00:00+01:00'
                   end_at: '2026-03-28T08:00:00+01:00'
@@ -271,7 +279,7 @@ paths:
                 summary: One-time quiet period request
               RecurringQuietPeriodRequest:
                 value:
-                  name: Nuit en semaine
+                  name: Weeknight quiet
                   period_type: RECURRING
                   start_at: null
                   end_at: null
@@ -312,20 +320,20 @@ paths:
                     detail: Validation error.
                     errors:
                       end_at:
-                      - La fin de la periode blanche doit etre apres le debut.
+                      - Quiet period end must be after the start.
                   summary: Validation error
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
   /api/v1/apps/{app_id}/quiet-periods/{quiet_period_id}/:
     get:
       operationId: api_v1_apps_quiet_periods_retrieve
-      description: Retourne le detail d'une periode blanche.
-      summary: Detail d'une periode blanche
+      description: Returns the detail of a quiet period.
+      summary: Quiet period detail
       parameters:
       - in: path
         name: app_id
@@ -353,11 +361,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Periode blanche introuvable
+          description: Quiet period not found
     patch:
       operationId: api_v1_apps_quiet_periods_partial_update
-      description: Modifie une periode blanche ponctuelle ou periodique existante.
-      summary: Modifier une periode blanche
+      description: Updates an existing one-time or recurring quiet period.
+      summary: Update a quiet period
       parameters:
       - in: path
         name: app_id
@@ -403,19 +411,19 @@ paths:
                     detail: Validation error.
                     errors:
                       end_at:
-                      - La fin de la periode blanche doit etre apres le debut.
+                      - Quiet period end must be after the start.
                   summary: Validation error
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Periode blanche introuvable
+          description: Quiet period not found
     delete:
       operationId: api_v1_apps_quiet_periods_destroy
-      description: Supprime une periode blanche.
-      summary: Supprimer une periode blanche
+      description: Deletes a quiet period.
+      summary: Delete a quiet period
       parameters:
       - in: path
         name: app_id
@@ -439,13 +447,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Periode blanche introuvable
+          description: Quiet period not found
   /api/v1/apps/{app_id}/regenerate-token/:
     post:
       operationId: api_v1_apps_regenerate_token_create
-      description: Genere un nouveau token serveur pour une application de l'utilisateur
-        connecte.
-      summary: Regenerer le token d'application
+      description: Generates a new server token for an application owned by the authenticated
+        user.
+      summary: Regenerate application token
       parameters:
       - in: path
         name: app_id
@@ -468,12 +476,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
   /api/v1/apps/{app_id}/revoke-token/:
     post:
       operationId: api_v1_apps_revoke_token_create
-      description: Revoque le token actuel de l'application.
-      summary: Revoquer le token d'application
+      description: Revokes the current application token.
+      summary: Revoke application token
       parameters:
       - in: path
         name: app_id
@@ -496,12 +504,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Application introuvable
+          description: Application not found
   /api/v1/auth/login/:
     post:
       operationId: api_v1_auth_login_create
-      description: Authentifie un utilisateur et retourne les tokens JWT.
-      summary: Connexion utilisateur
+      description: Authenticates a user and returns JWT tokens.
+      summary: User login
       tags:
       - Accounts
       requestBody:
@@ -528,12 +536,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginValidationErrorResponse'
-          description: Identifiants invalides ou donnees invalides
+          description: Invalid credentials or invalid data
   /api/v1/auth/logout/:
     post:
       operationId: api_v1_auth_logout_create
-      description: Blackliste le refresh token courant.
-      summary: Deconnexion
+      description: Blacklists the current refresh token.
+      summary: Logout
       tags:
       - Accounts
       requestBody:
@@ -558,12 +566,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LogoutValidationErrorResponse'
-          description: Refresh token invalide ou donnees invalides
+          description: Invalid refresh token or invalid data
   /api/v1/auth/me/:
     get:
       operationId: api_v1_auth_me_retrieve
-      description: Retourne l'utilisateur actuellement connecte.
-      summary: Profil courant
+      description: Returns the currently authenticated user.
+      summary: Current profile
       tags:
       - Accounts
       security:
@@ -577,8 +585,8 @@ paths:
           description: ''
     patch:
       operationId: api_v1_auth_me_partial_update
-      description: Met a jour la langue preferee de l'utilisateur connecte.
-      summary: Modifier la langue du profil courant
+      description: Updates the preferred language of the authenticated user.
+      summary: Update profile language
       tags:
       - Accounts
       requestBody:
@@ -606,12 +614,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LanguageUpdateValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
   /api/v1/auth/refresh/:
     post:
       operationId: api_v1_auth_refresh_create
-      description: Genere un nouveau access token a partir d'un refresh token.
-      summary: Rafraichir un token
+      description: Generates a new access token from a refresh token.
+      summary: Refresh a token
       tags:
       - Accounts
       requestBody:
@@ -638,12 +646,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenRefreshValidationErrorResponse'
-          description: Refresh token invalide ou donnees invalides
+          description: Invalid refresh token or invalid data
   /api/v1/auth/register/:
     post:
       operationId: api_v1_auth_register_create
-      description: Cree un nouveau compte utilisateur et retourne le profil cree.
-      summary: Creer un compte
+      description: Creates a new user account and returns the created profile.
+      summary: Create an account
       tags:
       - Accounts
       requestBody:
@@ -670,18 +678,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisterValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '429':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Trop de tentatives d'inscription
+          description: Too many registration attempts
   /api/v1/devices/:
     get:
       operationId: api_v1_devices_list
-      description: Retourne la liste des devices appartenant a l'utilisateur connecte.
-      summary: Lister les devices
+      description: Returns the list of devices owned by the authenticated user.
+      summary: List devices
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       tags:
       - Devices
       security:
@@ -691,23 +706,27 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DeviceRead'
+                $ref: '#/components/schemas/PaginatedDeviceReadList'
           description: ''
   /api/v1/devices/{device_id}/quiet-periods/:
     get:
       operationId: api_v1_devices_quiet_periods_list
-      description: Retourne les periodes blanches configurees pour un device. Elles
-        peuvent etre ponctuelles (`period_type=ONCE`) ou periodiques (`period_type=RECURRING`).
-        Elles s'appliquent aux deliveries de ce device sans bloquer les autres devices.
-      summary: Lister les periodes blanches d'un device
+      description: Returns the quiet periods configured for a device. They can be
+        one-time (`period_type=ONCE`) or recurring (`period_type=RECURRING`). They
+        apply to deliveries for this device without blocking other devices.
+      summary: List device quiet periods
       parameters:
       - in: path
         name: device_id
         schema:
           type: integer
         required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       tags:
       - Devices
       security:
@@ -717,14 +736,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DeviceQuietPeriodRead'
+                $ref: '#/components/schemas/PaginatedDeviceQuietPeriodReadList'
           description: ''
     post:
       operationId: api_v1_devices_quiet_periods_create
-      description: Ajoute une periode blanche ponctuelle ou periodique sur un device.
-      summary: Creer une periode blanche pour un device
+      description: Adds a one-time or recurring quiet period on a device.
+      summary: Create a device quiet period
       parameters:
       - in: path
         name: device_id
@@ -741,7 +758,7 @@ paths:
             examples:
               One-timeDeviceQuietPeriod:
                 value:
-                  name: Indisponible ce soir
+                  name: Unavailable tonight
                   period_type: ONCE
                   start_at: '2026-03-27T22:00:00+01:00'
                   end_at: '2026-03-28T08:00:00+01:00'
@@ -781,18 +798,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeviceQuietPeriodValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Device introuvable
+          description: Device not found
   /api/v1/devices/{device_id}/quiet-periods/{quiet_period_id}/:
     get:
       operationId: api_v1_devices_quiet_periods_retrieve
-      description: Retourne le detail d'une periode blanche d'un device.
-      summary: Detail d'une periode blanche device
+      description: Returns the detail of a device quiet period.
+      summary: Device quiet period detail
       parameters:
       - in: path
         name: device_id
@@ -820,11 +837,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Periode blanche introuvable
+          description: Quiet period not found
     patch:
       operationId: api_v1_devices_quiet_periods_partial_update
-      description: Modifie une periode blanche ponctuelle ou periodique d'un device.
-      summary: Modifier une periode blanche device
+      description: Updates a one-time or recurring device quiet period.
+      summary: Update a device quiet period
       parameters:
       - in: path
         name: device_id
@@ -863,17 +880,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeviceQuietPeriodValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Periode blanche introuvable
+          description: Quiet period not found
     delete:
       operationId: api_v1_devices_quiet_periods_destroy
-      description: Supprime une periode blanche d'un device.
-      summary: Supprimer une periode blanche device
+      description: Deletes a device quiet period.
+      summary: Delete a device quiet period
       parameters:
       - in: path
         name: device_id
@@ -897,12 +914,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Periode blanche introuvable
+          description: Quiet period not found
   /api/v1/devices/{id}/:
     get:
       operationId: api_v1_devices_retrieve
-      description: Retourne le detail d'un device appartenant a l'utilisateur connecte.
-      summary: Detail d'un device
+      description: Returns the detail of a device owned by the authenticated user.
+      summary: Device detail
       parameters:
       - in: path
         name: id
@@ -925,11 +942,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Device introuvable
+          description: Device not found
     put:
       operationId: api_v1_devices_update
-      description: Met a jour completement un device appartenant a l'utilisateur connecte.
-      summary: Modifier completement un device
+      description: Fully updates a device owned by the authenticated user.
+      summary: Fully update a device
       parameters:
       - in: path
         name: id
@@ -963,18 +980,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeviceUpdateValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Device introuvable
+          description: Device not found
     patch:
       operationId: api_v1_devices_partial_update
-      description: Met a jour partiellement un device appartenant a l'utilisateur
-        connecte.
-      summary: Modifier partiellement un device
+      description: Partially updates a device owned by the authenticated user.
+      summary: Partially update a device
       parameters:
       - in: path
         name: id
@@ -1008,17 +1024,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeviceUpdateValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Device introuvable
+          description: Device not found
     delete:
       operationId: api_v1_devices_destroy
-      description: Supprime un device appartenant a l'utilisateur connecte.
-      summary: Supprimer un device
+      description: Deletes a device owned by the authenticated user.
+      summary: Delete a device
       parameters:
       - in: path
         name: id
@@ -1037,13 +1053,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Device introuvable
+          description: Device not found
   /api/v1/devices/link/:
     post:
       operationId: api_v1_devices_link_create
-      description: Cree ou met a jour un device a partir du header `X-App-Token` puis
-        l'associe a l'application.
-      summary: Associer un device a une application via app token
+      description: Creates or updates a device from the `X-App-Token` header and links
+        it to the application.
+      summary: Link a device to an application via app token
       tags:
       - Devices
       requestBody:
@@ -1072,50 +1088,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeviceLinkWithAppTokenValidationErrorResponse'
-          description: Donnees invalides
+          description: Invalid data
         '401':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: App token invalide ou manquant
+          description: Invalid or missing app token
         '403':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Acces refuse
+          description: Access denied
   /api/v1/notifications/:
     get:
       operationId: api_v1_notifications_list
-      description: Retourne la liste des notifications des applications appartenant
-        a l'utilisateur connecte. Le listing peut etre filtre par application, statut,
-        date effective et presence d'un decalage du a une periode blanche.
-      summary: Lister les notifications
+      description: Returns the list of notifications for applications owned by the
+        authenticated user. The listing can be filtered by application, status, effective
+        date, and quiet period shift presence.
+      summary: List notifications
       parameters:
       - in: query
         name: application_id
         schema:
           type: integer
-        description: Filtre par application.
+        description: Filter by application.
       - in: query
         name: effective_scheduled_from
         schema:
           type: string
           format: date-time
-        description: Filtre inclusif sur la date effective minimale d'envoi.
+        description: Inclusive filter on minimum effective send date.
       - in: query
         name: effective_scheduled_to
         schema:
           type: string
           format: date-time
-        description: Filtre inclusif sur la date effective maximale d'envoi.
+        description: Inclusive filter on maximum effective send date.
       - in: query
         name: has_quiet_period_shift
         schema:
           type: boolean
-        description: Ne retourne que les notifications dont la date effective est
-          decalee par une periode blanche.
+        description: Only return notifications whose effective date is shifted by
+          a quiet period.
       - in: query
         name: ordering
         schema:
@@ -1123,7 +1139,13 @@ paths:
           enum:
           - -effective_scheduled_for
           - effective_scheduled_for
-        description: Tri optionnel par date effective d'envoi.
+        description: Optional ordering by effective send date.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       - in: query
         name: status
         schema:
@@ -1137,7 +1159,7 @@ paths:
           - queued
           - scheduled
           - sent
-        description: Filtre par statut de notification.
+        description: Filter by notification status.
       tags:
       - Notifications
       security:
@@ -1147,62 +1169,68 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NotificationRead'
+                $ref: '#/components/schemas/PaginatedNotificationReadList'
               examples:
                 ShiftedScheduledNotificationsForOneApplication:
                   value:
-                  - - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Rappel ce soir
-                      message: Ouverture a 20h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Shifted scheduled notifications for one application
                 NotificationsOrderedByEffectiveScheduleDesc:
                   value:
-                  - - id: 43
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Annonce tardive
-                      message: Envoi a 23h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:05:00Z'
-                      scheduled_for: '2026-03-27T23:00:00Z'
-                      effective_scheduled_for: '2026-03-28T09:00:00Z'
-                      sent_at: null
-                    - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Rappel ce soir
-                      message: Ouverture a 20h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 43
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Late announcement
+                        message: Sending at 11pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:05:00Z'
+                        scheduled_for: '2026-03-27T23:00:00Z'
+                        effective_scheduled_for: '2026-03-28T09:00:00Z'
+                        sent_at: null
+                      - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Notifications ordered by effective schedule desc
-          description: Liste des notifications
+          description: List of notifications
         '400':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationListFilterValidationErrorResponse'
-          description: Filtres invalides
+          description: Invalid filters
     post:
       operationId: api_v1_notifications_create
-      description: Cree une nouvelle notification pour une application appartenant
-        a l'utilisateur connecte et une liste explicite de devices cibles. Si `scheduled_for`
-        est fourni, la notification est creee en statut `scheduled` et sera dispatchee
-        automatiquement plus tard. `scheduled_for` represente la date demandee. `effective_scheduled_for`
-        represente la date effective d'envoi calculee a partir des periodes blanches
-        actuellement configurees.
-      summary: Creer une notification
+      description: Creates a new notification for an application owned by the authenticated
+        user and an explicit list of target devices. If `scheduled_for` is provided,
+        the notification is created with `scheduled` status and will be dispatched
+        automatically later. `scheduled_for` represents the requested date. `effective_scheduled_for`
+        represents the effective send date computed from currently configured quiet
+        periods.
+      summary: Create a notification
       tags:
       - Notifications
       requestBody:
@@ -1217,8 +1245,8 @@ paths:
                   device_ids:
                   - 4
                   - 5
-                  title: Promo flash
-                  message: Disponible maintenant.
+                  title: Flash promo
+                  message: Available now.
                 summary: Immediate notification
               ScheduledNotification:
                 value:
@@ -1226,8 +1254,8 @@ paths:
                   device_ids:
                   - 4
                   - 5
-                  title: Rappel ce soir
-                  message: Ouverture a 20h.
+                  title: Evening reminder
+                  message: Opens at 8pm.
                   scheduled_for: '2026-03-27T20:00:00+01:00'
                 summary: Scheduled notification
           application/x-www-form-urlencoded:
@@ -1254,15 +1282,15 @@ paths:
                     device_ids:
                     - 4
                     - 5
-                    title: Rappel ce soir
-                    message: Ouverture a 20h.
+                    title: Evening reminder
+                    message: Opens at 8pm.
                     status: scheduled
                     created_at: '2026-03-27T10:00:00Z'
                     scheduled_for: '2026-03-27T22:30:00Z'
                     effective_scheduled_for: '2026-03-28T08:00:00Z'
                     sent_at: null
                   summary: Scheduled notification deferred by quiet period
-          description: Notification creee
+          description: Notification created
         '400':
           content:
             application/json:
@@ -1275,16 +1303,16 @@ paths:
                     detail: Validation error.
                     errors:
                       scheduled_for:
-                      - La date planifiee doit etre dans le futur.
+                      - Scheduled date must be in the future.
                   summary: Validation error
-          description: Donnees invalides
+          description: Invalid data
   /api/v1/notifications/{notification_id}/send/:
     post:
       operationId: api_v1_notifications_send_create
-      description: Planifie l'envoi asynchrone d'une notification via Celery. Les
-        notifications futures (`scheduled`) ne sont pas envoyables manuellement tant
-        que `scheduled_for` n'est pas atteint.
-      summary: Mettre une notification en file d'envoi
+      description: Schedules asynchronous sending of a notification via Celery. Future
+        notifications (`scheduled`) cannot be manually sent until `scheduled_for`
+        is reached.
+      summary: Queue a notification for sending
       parameters:
       - in: path
         name: notification_id
@@ -1307,7 +1335,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Notification introuvable
+          description: Notification not found
         '409':
           content:
             application/json:
@@ -1317,10 +1345,9 @@ paths:
                 ScheduledNotificationNotSendableYet:
                   value:
                     code: notification_not_sendable
-                    detail: La notification 42 ne peut pas etre mise en file depuis
-                      le statut 'scheduled'.
+                    detail: Notification 42 cannot be queued from status 'scheduled'.
                   summary: Scheduled notification not sendable yet
-          description: Notification deja envoyee, deja en file ou non envoyable
+          description: Notification already sent, already queued, or not sendable
         '503':
           content:
             application/json:
@@ -1330,15 +1357,15 @@ paths:
                 QueueUnavailable:
                   value:
                     code: notification_queue_unavailable
-                    detail: La file d'envoi est temporairement indisponible.
+                    detail: Send queue is temporarily unavailable.
                   summary: Queue unavailable
-          description: Broker Celery indisponible
+          description: Celery broker unavailable
   /api/v1/notifications/{id}/:
     get:
       operationId: api_v1_notifications_retrieve
-      description: Retourne le detail d'une notification appartenant a une application
-        de l'utilisateur connecte.
-      summary: Detail d'une notification
+      description: Returns the detail of a notification belonging to an application
+        of the authenticated user.
+      summary: Notification detail
       parameters:
       - in: path
         name: id
@@ -1361,35 +1388,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Notification introuvable
+          description: Notification not found
   /api/v1/notifications/app/:
     get:
       operationId: api_v1_notifications_app_list
-      description: Retourne la liste des notifications de l'application authentifiee
-        via le header `X-App-Token`. Les filtres `effective_scheduled_from` / `effective_scheduled_to`
-        s'appliquent a `effective_scheduled_for`. Les filtres `status` et `has_quiet_period_shift`
-        sont aussi disponibles. Le parametre `ordering` permet de trier par date effective
-        d'envoi.
-      summary: Lister les notifications via app token
+      description: Returns the list of notifications for the application authenticated
+        via the `X-App-Token` header. Filters `effective_scheduled_from` / `effective_scheduled_to`
+        apply to `effective_scheduled_for`. Filters `status` and `has_quiet_period_shift`
+        are also available. The `ordering` parameter allows sorting by effective send
+        date.
+      summary: List notifications via app token
       parameters:
       - in: query
         name: effective_scheduled_from
         schema:
           type: string
           format: date-time
-        description: Filtre inclusif sur la date effective minimale d'envoi.
+        description: Inclusive filter on minimum effective send date.
       - in: query
         name: effective_scheduled_to
         schema:
           type: string
           format: date-time
-        description: Filtre inclusif sur la date effective maximale d'envoi.
+        description: Inclusive filter on maximum effective send date.
       - in: query
         name: has_quiet_period_shift
         schema:
           type: boolean
-        description: Ne retourne que les notifications dont la date effective est
-          decalee par une periode blanche.
+        description: Only return notifications whose effective date is shifted by
+          a quiet period.
       - in: query
         name: ordering
         schema:
@@ -1397,7 +1424,13 @@ paths:
           enum:
           - -effective_scheduled_for
           - effective_scheduled_for
-        description: Tri optionnel par date effective d'envoi.
+        description: Optional ordering by effective send date.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       - in: query
         name: status
         schema:
@@ -1411,7 +1444,7 @@ paths:
           - queued
           - scheduled
           - sent
-        description: Filtre par statut de notification.
+        description: Filter by notification status.
       tags:
       - Notifications
       security:
@@ -1421,82 +1454,87 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NotificationRead'
+                $ref: '#/components/schemas/PaginatedNotificationReadList'
               examples:
                 NotificationsShiftedByQuietPeriod:
                   value:
-                  - - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Offre du soir
-                      message: Disponible a partir de 19h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T19:00:00Z'
-                      effective_scheduled_for: '2026-03-27T22:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening offer
+                        message: Available from 7pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T19:00:00Z'
+                        effective_scheduled_for: '2026-03-27T22:00:00Z'
+                        sent_at: null
                   summary: Notifications shifted by quiet period
                 NotificationsOrderedByEffectiveScheduleDesc:
                   value:
-                  - - id: 43
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Offre tardive
-                      message: Disponible plus tard dans la nuit.
-                      status: scheduled
-                      created_at: '2026-03-27T10:05:00Z'
-                      scheduled_for: '2026-03-27T21:30:00Z'
-                      effective_scheduled_for: '2026-03-27T23:00:00Z'
-                      sent_at: null
-                    - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Offre du soir
-                      message: Disponible a partir de 19h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T19:00:00Z'
-                      effective_scheduled_for: '2026-03-27T22:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 43
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Late offer
+                        message: Available later tonight.
+                        status: scheduled
+                        created_at: '2026-03-27T10:05:00Z'
+                        scheduled_for: '2026-03-27T21:30:00Z'
+                        effective_scheduled_for: '2026-03-27T23:00:00Z'
+                        sent_at: null
+                      - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening offer
+                        message: Available from 7pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T19:00:00Z'
+                        effective_scheduled_for: '2026-03-27T22:00:00Z'
+                        sent_at: null
                   summary: Notifications ordered by effective schedule desc
-          description: Liste des notifications de l'application
+          description: Application notification list
         '400':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationFutureFilterValidationErrorResponse'
-          description: Filtres invalides
+          description: Invalid filters
         '401':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: App token invalide ou manquant
+          description: Invalid or missing app token
         '403':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Acces refuse
+          description: Access denied
   /api/v1/notifications/app/create/:
     post:
       operationId: api_v1_notifications_app_create_create
-      description: Cree une nouvelle notification pour l'application authentifiee
-        via le header `X-App-Token`. Si `scheduled_for` est fourni, la notification
-        est creee en statut `scheduled`. `scheduled_for` represente la date demandee.
-        `effective_scheduled_for` represente la date effective d'envoi calculee a
-        partir des periodes blanches actuellement configurees. Le header `Idempotency-Key`
-        est obligatoire.
-      summary: Creer une notification via app token
+      description: Creates a new notification for the application authenticated via
+        the `X-App-Token` header. If `scheduled_for` is provided, the notification
+        is created with `scheduled` status. `scheduled_for` represents the requested
+        date. `effective_scheduled_for` represents the effective send date computed
+        from currently configured quiet periods. The `Idempotency-Key` header is required.
+      summary: Create a notification via app token
       parameters:
       - in: header
         name: Idempotency-Key
         schema:
           type: string
-        description: Clé d'idempotence obligatoire pour dédupliquer les créations
-          côté application.
+        description: Required idempotency key to deduplicate creations on the application
+          side.
         required: true
       tags:
       - Notifications
@@ -1508,8 +1546,8 @@ paths:
             examples:
               ScheduledApp-tokenNotification:
                 value:
-                  title: Offre du soir
-                  message: Disponible à partir de 19h.
+                  title: Evening offer
+                  message: Available from 7pm.
                   scheduled_for: '2026-03-27T19:00:00+01:00'
                 summary: Scheduled app-token notification
           application/x-www-form-urlencoded:
@@ -1533,15 +1571,15 @@ paths:
                     id: 42
                     application_id: 12
                     application_name: Demo Push App
-                    title: Offre du soir
-                    message: Disponible a partir de 19h.
+                    title: Evening offer
+                    message: Available from 7pm.
                     status: scheduled
                     created_at: '2026-03-27T10:00:00Z'
                     scheduled_for: '2026-03-27T19:00:00Z'
                     effective_scheduled_for: '2026-03-27T22:00:00Z'
                     sent_at: null
                   summary: Existing scheduled notification deferred by quiet period
-          description: Notification existante retournee grace a l'idempotence
+          description: Existing notification returned via idempotency
         '201':
           content:
             application/json:
@@ -1553,15 +1591,15 @@ paths:
                     id: 42
                     application_id: 12
                     application_name: Demo Push App
-                    title: Offre du soir
-                    message: Disponible a partir de 19h.
+                    title: Evening offer
+                    message: Available from 7pm.
                     status: scheduled
                     created_at: '2026-03-27T10:00:00Z'
                     scheduled_for: '2026-03-27T19:00:00Z'
                     effective_scheduled_for: '2026-03-27T22:00:00Z'
                     sent_at: null
                   summary: Created scheduled notification deferred by quiet period
-          description: Notification creee
+          description: Notification created
         '400':
           content:
             application/json:
@@ -1574,21 +1612,21 @@ paths:
                     detail: Validation error.
                     errors:
                       scheduled_for:
-                      - La date planifiee doit etre dans le futur.
+                      - Scheduled date must be in the future.
                   summary: Validation error
-          description: Donnees invalides
+          description: Invalid data
         '401':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: App token invalide ou manquant
+          description: Invalid or missing app token
         '403':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Acces refuse
+          description: Access denied
         '409':
           content:
             application/json:
@@ -1598,38 +1636,38 @@ paths:
                 IdempotencyConflict:
                   value:
                     code: idempotency_conflict
-                    detail: Cette cle d'idempotence a deja ete utilisee avec un payload
-                      different.
+                    detail: This idempotency key has already been used with a different
+                      payload.
                   summary: Idempotency conflict
-          description: Cle d'idempotence deja utilisee avec un payload different
+          description: Idempotency key already used with a different payload
   /api/v1/notifications/future/:
     get:
       operationId: api_v1_notifications_future_list
-      description: Retourne uniquement les notifications en statut `scheduled` dont
-        `scheduled_for` est strictement dans le futur. Ces notifications peuvent encore
-        etre modifiees ou supprimees. `scheduled_for` represente la date demandee,
-        tandis que `effective_scheduled_for` represente la prochaine date de dispatch
-        estimee selon les periodes blanches actuellement configurees.
-      summary: Lister les notifications futures
+      description: Returns only notifications with `scheduled` status whose `scheduled_for`
+        is strictly in the future. These notifications can still be modified or deleted.
+        `scheduled_for` represents the requested date, while `effective_scheduled_for`
+        represents the next estimated dispatch date according to currently configured
+        quiet periods.
+      summary: List future notifications
       parameters:
       - in: query
         name: effective_scheduled_from
         schema:
           type: string
           format: date-time
-        description: Filtre inclusif sur la date effective minimale d'envoi.
+        description: Inclusive filter on minimum effective send date.
       - in: query
         name: effective_scheduled_to
         schema:
           type: string
           format: date-time
-        description: Filtre inclusif sur la date effective maximale d'envoi.
+        description: Inclusive filter on maximum effective send date.
       - in: query
         name: has_quiet_period_shift
         schema:
           type: boolean
-        description: Ne retourne que les notifications dont la date effective est
-          decalee par une periode blanche.
+        description: Only return notifications whose effective date is shifted by
+          a quiet period.
       - in: query
         name: ordering
         schema:
@@ -1637,7 +1675,13 @@ paths:
           enum:
           - -effective_scheduled_for
           - effective_scheduled_for
-        description: Tri optionnel par date effective d'envoi.
+        description: Optional ordering by effective send date.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
       tags:
       - Notifications
       security:
@@ -1647,47 +1691,53 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NotificationRead'
+                $ref: '#/components/schemas/PaginatedNotificationReadList'
               examples:
                 FutureNotificationsShiftedByQuietPeriod:
                   value:
-                  - - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Rappel ce soir
-                      message: Ouverture a 20h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Future notifications shifted by quiet period
                 FutureNotificationsOrderedByEffectiveScheduleDesc:
                   value:
-                  - - id: 43
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Annonce tardive
-                      message: Envoi a 23h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:05:00Z'
-                      scheduled_for: '2026-03-27T23:00:00Z'
-                      effective_scheduled_for: '2026-03-28T09:00:00Z'
-                      sent_at: null
-                    - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Rappel ce soir
-                      message: Ouverture a 20h.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 43
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Late announcement
+                        message: Sending at 11pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:05:00Z'
+                        scheduled_for: '2026-03-27T23:00:00Z'
+                        effective_scheduled_for: '2026-03-28T09:00:00Z'
+                        sent_at: null
+                      - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Future notifications ordered by effective schedule desc
-          description: Liste des notifications futures
+          description: List of future notifications
         '400':
           content:
             application/json:
@@ -1700,16 +1750,16 @@ paths:
                     detail: Validation error.
                     errors:
                       effective_scheduled_to:
-                      - La borne de fin doit etre apres ou egale a la borne de debut.
+                      - End bound must be after or equal to the start bound.
                   summary: Invalid effective range
-          description: Filtres invalides
+          description: Invalid filters
   /api/v1/notifications/future/{id}/:
     get:
       operationId: api_v1_notifications_future_retrieve
-      description: Retourne une notification planifiee encore modifiable. `scheduled_for`
-        represente la date demandee par l'utilisateur. `effective_scheduled_for` represente
-        la date effective d'envoi calculee a partir des periodes blanches courantes.
-      summary: Detail d'une notification future
+      description: Returns a scheduled notification that is still editable. `scheduled_for`
+        represents the date requested by the user. `effective_scheduled_for` represents
+        the effective send date computed from current quiet periods.
+      summary: Future notification detail
       parameters:
       - in: path
         name: id
@@ -1732,29 +1782,29 @@ paths:
                     id: 42
                     application_id: 12
                     application_name: Demo Push App
-                    title: Rappel ce soir
-                    message: Ouverture a 20h.
+                    title: Evening reminder
+                    message: Opens at 8pm.
                     status: scheduled
                     created_at: '2026-03-27T10:00:00Z'
                     scheduled_for: '2026-03-27T22:30:00Z'
                     effective_scheduled_for: '2026-03-28T08:00:00Z'
                     sent_at: null
                   summary: Future notification deferred by quiet period
-          description: Notification future
+          description: Future notification
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Notification future introuvable
+          description: Future notification not found
     patch:
       operationId: api_v1_notifications_future_partial_update
-      description: Modifie le contenu ou la date d'envoi d'une notification planifiee.
-        L'endpoint n'accepte que les notifications encore futures. Modifier une periode
-        blanche ne reecrit pas retroactivement `scheduled_for`, mais la valeur de
-        lecture `effective_scheduled_for` refletera la date effective tenant compte
-        des periodes blanches actuelles.
-      summary: Modifier une notification future
+      description: Updates the content or send date of a scheduled notification. The
+        endpoint only accepts notifications that are still in the future. Modifying
+        a quiet period does not retroactively rewrite `scheduled_for`, but the read
+        value `effective_scheduled_for` will reflect the effective date accounting
+        for current quiet periods.
+      summary: Update a future notification
       parameters:
       - in: path
         name: id
@@ -1771,7 +1821,7 @@ paths:
             examples:
               RescheduleFutureNotification:
                 value:
-                  title: Rappel repousse
+                  title: Postponed reminder
                   scheduled_for: '2026-03-27T21:30:00+01:00'
                 summary: Reschedule future notification
           application/x-www-form-urlencoded:
@@ -1801,19 +1851,19 @@ paths:
                     detail: Validation error.
                     errors:
                       scheduled_for:
-                      - La date planifiee doit etre dans le futur.
+                      - Scheduled date must be in the future.
                   summary: Validation error
-          description: Donnees invalides
+          description: Invalid data
         '404':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Notification future introuvable
+          description: Future notification not found
     delete:
       operationId: api_v1_notifications_future_destroy
-      description: Supprime une notification planifiee tant qu'elle n'a pas ete envoyee.
-      summary: Supprimer une notification future
+      description: Deletes a scheduled notification as long as it has not been sent.
+      summary: Delete a future notification
       parameters:
       - in: path
         name: id
@@ -1832,13 +1882,91 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Notification future introuvable
+          description: Future notification not found
+  /api/v1/notifications/inbound/email/:
+    post:
+      operationId: api_v1_notifications_inbound_email_create
+      description: Transforms an inbound email into a notification. The recipient
+        address prefix before `@` must match the stable `inbound_email_alias` of a
+        known application. The subject becomes the title and the plain text becomes
+        the message. An optional `[SEND_AT:2026-03-27T20:00:00+01:00]` marker in the
+        subject allows scheduling the send.
+      summary: Create a notification from an inbound email
+      parameters:
+      - in: header
+        name: X-Inbound-Email-Secret
+        schema:
+          type: string
+        description: Shared secret to authorize the inbound email webhook.
+        required: true
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationInboundEmail'
+            examples:
+              ImmediateInboundEmail:
+                value:
+                  sender: owner@pushit.com
+                  recipient: apt_fc4471fe12345678@pushit.com
+                  subject: Production alert
+                  text: The batch is done.
+                  message_id: mail-001@example.com
+                summary: Immediate inbound email
+              ScheduledInboundEmail:
+                value:
+                  sender: owner@pushit.com
+                  recipient: apt_fc4471fe12345678@pushit.com
+                  subject: Maintenance [SEND_AT:2026-03-27T20:00:00+01:00]
+                  text: Maintenance tonight.
+                  message_id: mail-002@example.com
+                summary: Scheduled inbound email
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationInboundEmail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationInboundEmail'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: Existing notification returned
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: Notification created
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationInboundEmailValidationErrorResponse'
+          description: Invalid data
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid or missing secret
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Message ID already used with different content
   /api/v1/notifications/stats/:
     get:
       operationId: api_v1_notifications_stats_list
-      description: Retourne le nombre de notifications par statut pour les applications
-        appartenant a l'utilisateur connecte.
-      summary: Lister les statistiques des notifications
+      description: Returns the notification count by status for applications owned
+        by the authenticated user.
+      summary: List notification statistics
       tags:
       - Notifications
       security:
@@ -1855,8 +1983,8 @@ paths:
   /health/live/:
     get:
       operationId: health_live_retrieve
-      description: Vérifie que le process HTTP est vivant. Endpoint public utilisé
-        par l'infra.
+      description: Checks that the HTTP process is alive. Public endpoint used by
+        infrastructure.
       summary: Liveness probe
       tags:
       - Health
@@ -1873,19 +2001,19 @@ paths:
                     service: pushit
                     check: live
                   summary: Liveness OK
-          description: Service vivant
+          description: Service alive
   /health/metrics/:
     get:
       operationId: health_metrics_retrieve
-      description: Expose les métriques Prometheus. Peut être protégé via le header
-        `X-Metrics-Token`.
+      description: Exposes Prometheus metrics. Can be protected via the `X-Metrics-Token`
+        header.
       summary: Prometheus metrics
       parameters:
       - in: header
         name: X-Metrics-Token
         schema:
           type: string
-        description: Token optionnel pour protéger l'accès à `/health/metrics/`.
+        description: Optional token to protect access to `/health/metrics/`.
       tags:
       - Health
       responses:
@@ -1901,7 +2029,7 @@ paths:
                     # TYPE pushit_process_uptime_seconds gauge
                     pushit_process_uptime_seconds 12.345
                   summary: Metrics sample
-          description: Payload Prometheus au format texte
+          description: Prometheus text payload
         '403':
           content:
             application/json:
@@ -1915,12 +2043,12 @@ paths:
                     check: metrics
                     detail: metrics_token_invalid
                   summary: Metrics forbidden
-          description: Token metrics invalide
+          description: Invalid metrics token
   /health/ready/:
     get:
       operationId: health_ready_retrieve
-      description: Vérifie que le service est prêt à servir du trafic, notamment l'accès
-        base de données.
+      description: Checks that the service is ready to serve traffic, including database
+        access.
       summary: Readiness probe
       tags:
       - Health
@@ -1937,7 +2065,7 @@ paths:
                     service: pushit
                     check: ready
                   summary: Readiness OK
-          description: Service prêt
+          description: Service ready
         '503':
           content:
             application/json:
@@ -1951,7 +2079,7 @@ paths:
                     check: ready
                     detail: 'database_unavailable: database is locked'
                   summary: Database unavailable
-          description: Dépendance indisponible
+          description: Dependency unavailable
 components:
   schemas:
     ApplicationActivationResponse:
@@ -1976,6 +2104,12 @@ components:
         description:
           type: string
         app_token_prefix:
+          type: string
+          readOnly: true
+        inbound_email_alias:
+          type: string
+          readOnly: true
+        inbound_email_address:
           type: string
           readOnly: true
         app_token:
@@ -2003,6 +2137,8 @@ components:
       - app_token_prefix
       - created_at
       - id
+      - inbound_email_address
+      - inbound_email_alias
       - is_active
       - last_used_at
       - name
@@ -2206,6 +2342,12 @@ components:
         app_token_prefix:
           type: string
           maxLength: 24
+        inbound_email_alias:
+          type: string
+          maxLength: 120
+        inbound_email_address:
+          type: string
+          readOnly: true
         is_active:
           type: boolean
         revoked_at:
@@ -2224,6 +2366,8 @@ components:
       - app_token_prefix
       - created_at
       - id
+      - inbound_email_address
+      - inbound_email_alias
       - name
     ApplicationRevokeTokenResponse:
       type: object
@@ -2714,7 +2858,7 @@ components:
         refresh:
           type: string
           writeOnly: true
-          description: Refresh token à invalider
+          description: Refresh token to invalidate
       required:
       - refresh
     LogoutValidationErrorResponse:
@@ -2962,6 +3106,68 @@ components:
           type: array
           items:
             type: string
+    NotificationInboundEmail:
+      type: object
+      properties:
+        sender:
+          type: string
+          format: email
+        recipient:
+          type: string
+          format: email
+        subject:
+          type: string
+          maxLength: 255
+        text:
+          type: string
+        message_id:
+          type: string
+          maxLength: 255
+      required:
+      - recipient
+      - sender
+      - subject
+      - text
+    NotificationInboundEmailValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationInboundEmailValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationInboundEmailValidationErrorResponseFields:
+      type: object
+      properties:
+        sender:
+          type: array
+          items:
+            type: string
+        recipient:
+          type: array
+          items:
+            type: string
+        subject:
+          type: array
+          items:
+            type: string
+        text:
+          type: array
+          items:
+            type: string
+        message_id:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     NotificationListFilterValidationErrorResponse:
       type: object
       properties:
@@ -3056,9 +3262,9 @@ components:
           format: date-time
           nullable: true
           readOnly: true
-          description: Date effective d'envoi calculee a partir de `scheduled_for`
-            et des periodes blanches actuellement configurees. Cette valeur peut changer
-            si les periodes blanches changent, meme sans modifier `scheduled_for`.
+          description: Effective send date computed from `scheduled_for` and currently
+            configured quiet periods. This value may change if quiet periods change,
+            even without modifying `scheduled_for`.
         sent_at:
           type: string
           format: date-time
@@ -3082,6 +3288,121 @@ components:
       required:
       - count
       - status
+    PaginatedApplicationQuietPeriodReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationQuietPeriodRead'
+    PaginatedApplicationReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationRead'
+    PaginatedDeviceQuietPeriodReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceQuietPeriodRead'
+    PaginatedDeviceReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceRead'
+    PaginatedNotificationReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationRead'
     PatchedApplicationQuietPeriodWrite:
       type: object
       properties:

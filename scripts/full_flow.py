@@ -11,7 +11,7 @@ BASE_URL = os.environ.get("PUSHIT_BASE_URL", "http://127.0.0.1:8000/api/v1")
 
 EMAIL = "demo@example.com"
 USERNAME = "demo_user"
-PASSWORD = "MotDePasseTresSolide123!"
+PASSWORD = "VeryStr0ngPassword123!"
 
 APP_NAME = "Demo Push App"
 
@@ -19,8 +19,8 @@ DEVICE_NAME = "Samsung S24"
 DEVICE_PLATFORM = "android"
 DEVICE_PUSH_TOKEN = "token_123456789012345678901234567890"
 
-NOTIFICATION_TITLE = "Bonjour"
-NOTIFICATION_MESSAGE = "Ceci est une notification de test."
+NOTIFICATION_TITLE = "Hello"
+NOTIFICATION_MESSAGE = "This is a test notification."
 
 
 def pretty(data: Any) -> str:
@@ -419,7 +419,7 @@ def main() -> None:
     print("Immediate notification queued")
     dump_response(send_notification_response)
 
-    print("\n=== TERMINE ===")
+    print("\n=== DONE ===")
     print(f"Account: {EMAIL}")
     print(f"Application: {app_id}")
     print(f"Quiet period: {quiet_period_id}")

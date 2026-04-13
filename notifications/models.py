@@ -20,7 +20,7 @@ class NotificationStatus(models.TextChoices):
 
 
 class InboundEmailSource(models.TextChoices):
-    IMAP = "imap", "IMAP"
+    POLLING = "polling", "Polling"
     WEBHOOK = "webhook", "Webhook"
 
 

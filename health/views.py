@@ -29,13 +29,13 @@ class HealthErrorSerializer(serializers.Serializer):
 @extend_schema_view(
     get=extend_schema(
         summary="Liveness probe",
-        description="Vérifie que le process HTTP est vivant. Endpoint public utilisé par l'infra.",
+        description="Checks that the HTTP process is alive. Public endpoint used by infrastructure.",
         tags=["Health"],
         auth=[],
         responses={
             200: OpenApiResponse(
                 response=HealthStatusSerializer,
-                description="Service vivant",
+                description="Service alive",
                 examples=[
                     OpenApiExample(
                         "Liveness OK",
@@ -58,13 +58,13 @@ class HealthLiveApiView(APIView):
 @extend_schema_view(
     get=extend_schema(
         summary="Readiness probe",
-        description="Vérifie que le service est prêt à servir du trafic, notamment l'accès base de données.",
+        description="Checks that the service is ready to serve traffic, including database access.",
         tags=["Health"],
         auth=[],
         responses={
             200: OpenApiResponse(
                 response=HealthStatusSerializer,
-                description="Service prêt",
+                description="Service ready",
                 examples=[
                     OpenApiExample(
                         "Readiness OK",
@@ -75,7 +75,7 @@ class HealthLiveApiView(APIView):
             ),
             503: OpenApiResponse(
                 response=HealthErrorSerializer,
-                description="Dépendance indisponible",
+                description="Dependency unavailable",
                 examples=[
                     OpenApiExample(
                         "Database unavailable",
@@ -118,7 +118,7 @@ class HealthReadyApiView(APIView):
 @extend_schema_view(
     get=extend_schema(
         summary="Prometheus metrics",
-        description="Expose les métriques Prometheus. Peut être protégé via le header `X-Metrics-Token`.",
+        description="Exposes Prometheus metrics. Can be protected via the `X-Metrics-Token` header.",
         tags=["Health"],
         auth=[],
         parameters=[
@@ -127,13 +127,13 @@ class HealthReadyApiView(APIView):
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.HEADER,
                 required=False,
-                description="Token optionnel pour protéger l'accès à `/health/metrics/`.",
+                description="Optional token to protect access to `/health/metrics/`.",
             )
         ],
         responses={
             (200, "text/plain"): OpenApiResponse(
                 response=OpenApiTypes.STR,
-                description="Payload Prometheus au format texte",
+                description="Prometheus text payload",
                 examples=[
                     OpenApiExample(
                         "Metrics sample",

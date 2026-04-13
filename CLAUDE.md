@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PushIT Server is a Django REST API for managing push notification delivery. It handles user/app registration, device management, notification creation & scheduling (with quiet periods), and delivery via FCM. It also supports inbound email as a notification source via IMAP polling.
+PushIT Server is a Django REST API for managing push notification delivery. It handles user/app registration, device management, notification creation & scheduling (with quiet periods), and delivery via FCM. It also supports inbound email as a notification source via Microsoft Graph API polling.
 
-**Stack:** Python 3.14, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/test), SimpleJWT, drf-spectacular, Prometheus metrics.
+**Stack:** Python 3.14, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/test), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API).
 
 ## Common Commands
 
@@ -40,18 +40,18 @@ docker compose -f docker-compose.observability.yml up -d
 
 Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py`. The `STATE` env var (`DEV`/`TEST`/`PROD`) selects the active settings module via `config/settings/__init__.py`.
 
-Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `REDIS_URL`, `FCM_API_KEY`, `INBOUND_EMAIL_DOMAIN`, `INBOUND_EMAIL_IMAP_*`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
+Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `REDIS_URL`, `FCM_API_KEY`, `INBOUND_EMAIL_DOMAIN`, `INBOUND_EMAIL_SECRET`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
 
-In DEV/TEST, Celery runs eagerly (synchronous, no broker needed) and passwords use MD5 for speed.
+In DEV/TEST, Celery runs eagerly (synchronous, no broker needed) and passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty.
 
 ## Architecture
 
 ### Django Apps
 
 - **accounts** — Custom User model (email as username), JWT auth (login/register/refresh/logout), profile management
-- **applications** — Application CRUD, app token generation (`apt_` prefix, SHA256 hashed), quiet period scheduling
+- **applications** — Application CRUD, app token generation (`apt_` prefix, SHA256 hashed), quiet period scheduling, Graph API email alias management (`graph_mail.py`)
 - **devices** — Device registration (push tokens), platform tracking (Android/iOS), linking devices to applications
-- **notifications** — Core business logic: notification creation (with idempotency keys), scheduling, quiet period shifting, delivery tracking, retry logic, inbound email ingestion
+- **notifications** — Core business logic: notification creation (with idempotency keys), scheduling, quiet period shifting, delivery tracking, retry logic, inbound email ingestion, auto-reply for unknown addresses
 - **health** — Liveness (`/health/live/`), readiness (`/health/ready/`), Prometheus metrics (`/health/metrics/`)
 - **config** — Settings, custom exception handler, middleware (RequestId, Metrics), Prometheus counters, JSON logging
 
@@ -66,19 +66,30 @@ In DEV/TEST, Celery runs eagerly (synchronous, no broker needed) and passwords u
 
 Quiet periods (one-time or recurring) can shift `scheduled_for` → `effective_scheduled_for`. Idempotency enforced via `idempotency_key` unique constraint.
 
+### Microsoft Graph API Integration
+
+`applications/graph_mail.py` manages email aliases and inbox polling via Graph API (MSAL client credentials flow):
+- `add_email_alias` / `remove_email_alias` — manage `proxyAddresses` on the shared mailbox
+- `fetch_unread_emails` / `mark_email_read` — poll inbox for inbound emails
+- `send_email` — send auto-reply when a known user emails an unknown address
+
+Called from `Application.save()` (add alias), `Application.delete()` (remove alias), and `notifications/inbound_mailbox.py` (polling).
+
 ### Celery Tasks (beat schedule, every minute each)
 
 - `dispatch_scheduled_notifications_task` — picks up SCHEDULED notifications ready to send
 - `retry_pending_deliveries_task` — retries failed deliveries (3 attempts, exponential backoff)
-- `poll_inbound_mailbox_task` — IMAP polling for inbound email notifications
+- `poll_inbound_mailbox_task` — Graph API polling for inbound email notifications
 
 ### Key Business Logic Locations
 
 - `notifications/services.py` — send_notification, delivery orchestration
 - `notifications/scheduling.py` — quiet period calculation
 - `notifications/creation.py` — notification creation with idempotency
-- `notifications/inbound_mailbox.py` — IMAP polling and email parsing
+- `notifications/inbound_mailbox.py` — Graph API inbox polling and email processing
+- `notifications/inbound_reply.py` — auto-reply builder for unknown recipient addresses
 - `notifications/push.py` — FCM provider interface (currently mocked)
+- `applications/graph_mail.py` — Microsoft Graph API client (aliases, inbox, send)
 - `config/exceptions.py` — standardized error response format: `{code, detail, [incident_id]}`
 
 ### API URL Structure
