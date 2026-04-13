@@ -9,17 +9,17 @@ class HasAppToken(BasePermission):
         auth_application = getattr(request, "auth_application", None)
 
         if auth is None and auth_application is None:
-            self.message = "App token manquant."
+            self.message = "Missing app token."
             self.code = "app_token_missing"
             return False
 
         if not isinstance(user, AppTokenPrincipal):
-            self.message = "Contexte d'authentification applicative invalide."
+            self.message = "Invalid app token authentication context."
             self.code = "app_token_context_invalid"
             return False
 
         if auth is None or auth_application is None or auth_application is not auth:
-            self.message = "Contexte d'authentification applicative incoherent."
+            self.message = "Inconsistent app token authentication context."
             self.code = "app_token_context_invalid"
             return False
 

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from applications.authentication import AppTokenAuthentication
 from applications.permissions import HasAppToken
+from applications.throttles import AppTokenRateThrottle
 from config.api_errors import error_response
 from .creation import create_notification_with_optional_idempotency
 from .models import Notification, NotificationStatus
@@ -146,6 +147,7 @@ from .utils import apply_effective_schedule_filters, compute_request_fingerprint
 class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
     authentication_classes = [AppTokenAuthentication]
     permission_classes = [HasAppToken]
+    throttle_classes = [AppTokenRateThrottle]
     serializer_class = NotificationCreateWithAppTokenSerializer
 
     def get_serializer_context(self):
@@ -314,6 +316,7 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
 class NotificationListWithAppTokenApiView(generics.ListAPIView):
     authentication_classes = [AppTokenAuthentication]
     permission_classes = [HasAppToken]
+    throttle_classes = [AppTokenRateThrottle]
     serializer_class = NotificationReadSerializer
 
     def get_queryset(self):

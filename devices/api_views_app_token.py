@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from applications.authentication import AppTokenAuthentication
 from applications.permissions import HasAppToken
+from applications.throttles import AppTokenRateThrottle
 from .models import Device, DeviceApplicationLink, DeviceTokenStatus
 from .serializers import (
     DetailResponseSerializer,
@@ -36,6 +37,7 @@ from .serializers import (
 class DeviceLinkWithAppTokenApiView(APIView):
     authentication_classes = [AppTokenAuthentication]
     permission_classes = [HasAppToken]
+    throttle_classes = [AppTokenRateThrottle]
 
     def post(self, request):
         serializer = DeviceLinkWithAppTokenSerializer(data=request.data)
