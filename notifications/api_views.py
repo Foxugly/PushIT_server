@@ -764,9 +764,18 @@ class NotificationSendApiView(APIView):
 @extend_schema_view(
     get=extend_schema(
         summary="List notification statistics",
-        description="Returns the notification count by status for applications owned by the authenticated user.",
+        description="Returns the notification count by status for applications owned by the authenticated user. Optionally filtered by application.",
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
+        parameters=[
+            OpenApiParameter(
+                name="application_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter statistics by application.",
+            ),
+        ],
         responses={200: NotificationStatsSerializer(many=True)},
     ),
 )
@@ -774,8 +783,12 @@ class NotificationStatsApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        queryset = Notification.objects.filter(application__owner=request.user)
+        application_id = request.query_params.get("application_id")
+        if application_id is not None:
+            queryset = queryset.filter(application_id=application_id)
         stats = (
-            Notification.objects.filter(application__owner=request.user)
+            queryset
             .values("status")
             .annotate(count=Count("id"))
             .order_by("status")
