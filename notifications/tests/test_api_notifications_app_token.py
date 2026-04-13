@@ -148,7 +148,7 @@ def test_create_notification_without_idempotency_key_returns_400():
 
     assert response.status_code == 400
     assert response.data["code"] == "idempotency_key_missing"
-    assert response.data["detail"] == "Header Idempotency-Key manquant."
+    assert response.data["detail"] == "Missing Idempotency-Key header."
 
 
 @pytest.mark.django_db(transaction=True)

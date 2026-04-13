@@ -1,30 +1,16 @@
 import hashlib
+import re
 import secrets
 
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 
 
 class QuietPeriodType(models.TextChoices):
     ONCE = "ONCE", "One-time"
     RECURRING = "RECURRING", "Recurring"
-
-
-def generate_raw_app_token():
-    return f"apt_{secrets.token_hex(24)}"
-
-
-def generate_inbound_email_alias():
-    return f"apt_{secrets.token_hex(8)}"
-
-
-def hash_app_token(raw_token: str) -> str:
-    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-
-
-def get_token_prefix(raw_token: str, visible_length: int = 12) -> str:
-    return raw_token[:visible_length]
 
 
 class Application(models.Model):
@@ -33,7 +19,7 @@ class Application(models.Model):
     description = models.TextField(blank=True)
     app_token_prefix = models.CharField(max_length=24, db_index=True)
     app_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
-    inbound_email_alias = models.CharField(max_length=24, unique=True, db_index=True)
+    inbound_email_alias = models.CharField(max_length=120, unique=True, db_index=True)
 
     is_active = models.BooleanField(default=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
@@ -47,8 +33,29 @@ class Application(models.Model):
     def inbound_email_address(self) -> str:
         return f"{self.inbound_email_alias}@{settings.INBOUND_EMAIL_DOMAIN.strip().lower()}"
 
+    @staticmethod
+    def hash_app_token(raw_token: str) -> str:
+        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def get_token_prefix(raw_token: str, visible_length: int = 12) -> str:
+        return raw_token[:visible_length]
+
+    @staticmethod
+    def generate_raw_app_token() -> str:
+        return f"apt_{secrets.token_hex(24)}"
+
+    @staticmethod
+    def generate_inbound_email_alias(name: str) -> str:
+        slug = slugify(name)
+        # Remove leading/trailing hyphens and collapse multiples
+        slug = re.sub(r'-+', '-', slug).strip('-')
+        if not slug:
+            slug = f"app-{secrets.token_hex(4)}"
+        return slug[:120]
+
     def check_app_token(self, raw_token: str) -> bool:
-        return self.app_token_hash == hash_app_token(raw_token)
+        return self.app_token_hash == self.hash_app_token(raw_token)
 
     def revoke_token(self, save: bool = True):
         self.revoked_at = timezone.now()
@@ -61,9 +68,9 @@ class Application(models.Model):
             self.save(update_fields=["last_used_at"])
 
     def set_new_app_token(self) -> str:
-        raw_token = generate_raw_app_token()
-        self.app_token_prefix = get_token_prefix(raw_token)
-        self.app_token_hash = hash_app_token(raw_token)
+        raw_token = self.generate_raw_app_token()
+        self.app_token_prefix = self.get_token_prefix(raw_token)
+        self.app_token_hash = self.hash_app_token(raw_token)
         self.revoked_at = None
         self.last_used_at = None
         return raw_token
@@ -72,11 +79,14 @@ class Application(models.Model):
         if not self.app_token_hash:
             self.set_new_app_token()
         if not self.inbound_email_alias:
-            while True:
-                candidate = generate_inbound_email_alias()
-                if not type(self).objects.filter(inbound_email_alias=candidate).exists():
-                    self.inbound_email_alias = candidate
-                    break
+            base = self.generate_inbound_email_alias(self.name)
+            candidate = base
+            counter = 1
+            while type(self).objects.filter(inbound_email_alias=candidate).exists():
+                suffix = f"-{counter}"
+                candidate = f"{base[:120 - len(suffix)]}{suffix}"
+                counter += 1
+            self.inbound_email_alias = candidate
         super().save(*args, **kwargs)
 
     def __str__(self):

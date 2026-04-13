@@ -71,7 +71,7 @@ class NotificationFutureFilterSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {
                     "effective_scheduled_to": [
-                        "La borne de fin doit etre apres ou egale a la borne de debut."
+                        "End bound must be after or equal to the start bound."
                     ]
                 }
             )
@@ -106,9 +106,9 @@ class NotificationReadSerializer(serializers.ModelSerializer):
     device_ids = serializers.SerializerMethodField()
     effective_scheduled_for = serializers.SerializerMethodField(
         help_text=(
-            "Date effective d'envoi calculee a partir de `scheduled_for` et des "
-            "periodes blanches actuellement configurees. Cette valeur peut changer "
-            "si les periodes blanches changent, meme sans modifier `scheduled_for`."
+            "Effective send date computed from `scheduled_for` and currently "
+            "configured quiet periods. This value may change if quiet periods "
+            "change, even without modifying `scheduled_for`."
         )
     )
 
@@ -152,21 +152,21 @@ class BaseNotificationWriteSerializer(serializers.ModelSerializer):
 
     def validate_title(self, value):
         if not value.strip():
-            raise serializers.ValidationError("Le titre ne peut pas être vide.")
+            raise serializers.ValidationError("Title cannot be empty.")
         return value
 
     def validate_message(self, value):
         if not value.strip():
-            raise serializers.ValidationError("Le message ne peut pas être vide.")
+            raise serializers.ValidationError("Message cannot be empty.")
         if len(value.strip()) > 5000:
-            raise serializers.ValidationError("Le message est trop long.")
+            raise serializers.ValidationError("Message is too long.")
         return value
 
     def validate_scheduled_for(self, value):
         if value is None:
             return value
         if value <= timezone.now():
-            raise serializers.ValidationError("La date planifiée doit être dans le futur.")
+            raise serializers.ValidationError("Scheduled date must be in the future.")
         return value
 
     @staticmethod
@@ -207,7 +207,7 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
         try:
             app = Application.objects.get(id=application_id, owner=request.user)
         except Application.DoesNotExist:
-            raise serializers.ValidationError({"application_id": ["Application introuvable."]})
+            raise serializers.ValidationError({"application_id": ["Application not found."]})
 
         normalized_device_ids = list(dict.fromkeys(device_ids))
         devices_by_id = {
@@ -225,7 +225,7 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
             raise serializers.ValidationError(
                 {
                     "device_ids": [
-                        "Tous les devices doivent etre actifs et lies a l'application selectionnee."
+                        "All devices must be active and linked to the selected application."
                     ]
                 }
             )
@@ -277,15 +277,8 @@ class NotificationCreateWithAppTokenSerializer(BaseNotificationWriteSerializer):
         read_only_fields = ["id", "status", "created_at", "sent_at"]
 
     def create(self, validated_data):
-        """
-        La création réelle est gérée dans :
-        notifications/api_views_app_token.py
-        -> NotificationCreateWithAppTokenApiView.post()
-
-        Ce serializer reste responsable de la validation.
-        """
         raise NotImplementedError(
-            "La création doit être effectuée dans NotificationCreateWithAppTokenApiView.post()."
+            "Creation must be performed in NotificationCreateWithAppTokenApiView.post()."
         )
 
 
@@ -312,11 +305,11 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         try:
             local_part, domain = recipient.split("@", 1)
         except ValueError:
-            raise serializers.ValidationError({"recipient": ["Adresse email invalide."]})
+            raise serializers.ValidationError({"recipient": ["Invalid email address."]})
 
         expected_domain = settings.INBOUND_EMAIL_DOMAIN.strip().lower()
         if domain != expected_domain:
-            errors["recipient"] = [f"Le domaine entrant doit etre {expected_domain}."]
+            errors["recipient"] = [f"Inbound domain must be {expected_domain}."]
 
         try:
             title, scheduled_for = extract_subject_schedule(subject)
@@ -326,15 +319,15 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
             scheduled_for = None
 
         if not title:
-            errors.setdefault("subject", []).append("Le sujet ne peut pas etre vide.")
+            errors.setdefault("subject", []).append("Subject cannot be empty.")
 
         if not text.strip():
-            errors["text"] = ["Le contenu du mail ne peut pas etre vide."]
+            errors["text"] = ["Email body cannot be empty."]
         elif len(text.strip()) > 5000:
-            errors["text"] = ["Le contenu du mail est trop long."]
+            errors["text"] = ["Email body is too long."]
 
         if scheduled_for is not None and scheduled_for <= timezone.now():
-            errors.setdefault("subject", []).append("La date planifiee doit etre dans le futur.")
+            errors.setdefault("subject", []).append("Scheduled date must be in the future.")
 
         application = (
             Application.objects.filter(
@@ -346,14 +339,14 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
             .first()
         )
         if application is None:
-            errors.setdefault("recipient", []).append("Aucune application ne correspond a cette adresse email.")
+            errors.setdefault("recipient", []).append("No application matches this email address.")
 
         user = User.objects.filter(email=sender).first()
         if user is None:
-            errors.setdefault("sender", []).append("Aucun utilisateur ne correspond a cette adresse email.")
+            errors.setdefault("sender", []).append("No user matches this email address.")
         elif application is not None and application.owner_id != user.id:
             errors.setdefault("sender", []).append(
-                "L'expediteur doit correspondre au proprietaire de l'application ciblee."
+                "Sender must match the owner of the target application."
             )
 
         if errors:

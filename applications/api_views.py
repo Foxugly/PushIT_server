@@ -23,15 +23,15 @@ from .serializers import (
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les applications",
-        description="Retourne la liste des applications appartenant a l'utilisateur connecte.",
+        summary="List applications",
+        description="Returns the list of applications owned by the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         responses={200: ApplicationReadSerializer(many=True)},
     ),
     post=extend_schema(
-        summary="Creer une application",
-        description="Cree une nouvelle application pour l'utilisateur connecte.",
+        summary="Create an application",
+        description="Creates a new application for the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=ApplicationCreateSerializer,
@@ -39,7 +39,7 @@ from .serializers import (
             201: ApplicationReadSerializer,
             400: OpenApiResponse(
                 response=ApplicationCreateValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
         },
     ),
@@ -71,18 +71,18 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Detail d'une application",
-        description="Retourne le detail d'une application appartenant a l'utilisateur connecte.",
+        summary="Application detail",
+        description="Returns the detail of an application owned by the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         responses={
             200: ApplicationReadSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     ),
     patch=extend_schema(
-        summary="Modifier une application",
-        description="Met a jour partiellement le nom ou la description d'une application.",
+        summary="Update an application",
+        description="Partially updates the name or description of an application.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=ApplicationUpdateSerializer,
@@ -90,19 +90,19 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
             200: ApplicationReadSerializer,
             400: OpenApiResponse(
                 response=ApplicationUpdateValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     ),
     delete=extend_schema(
-        summary="Supprimer une application",
-        description="Supprime une application appartenant a l'utilisateur connecte.",
+        summary="Delete an application",
+        description="Deletes an application owned by the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         responses={
             204: None,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     ),
 )
@@ -126,7 +126,7 @@ class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         if instance is None:
             return error_response(
                 code="application_not_found",
-                detail="Application introuvable.",
+                detail="Application not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         return Response(ApplicationReadSerializer(instance).data)
@@ -136,7 +136,7 @@ class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         if instance is None:
             return error_response(
                 code="application_not_found",
-                detail="Application introuvable.",
+                detail="Application not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         serializer = self.get_serializer(instance, data=request.data, partial=True)
@@ -149,7 +149,7 @@ class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         if instance is None:
             return error_response(
                 code="application_not_found",
-                detail="Application introuvable.",
+                detail="Application not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         instance.delete()
@@ -158,14 +158,14 @@ class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Regenerer le token d'application",
-        description="Genere un nouveau token serveur pour une application de l'utilisateur connecte.",
+        summary="Regenerate application token",
+        description="Generates a new server token for an application owned by the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=None,
         responses={
             200: ApplicationTokenRegenerateResponseSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     )
 )
@@ -176,7 +176,7 @@ class ApplicationRegenerateTokenApiView(APIView):
         try:
             app = Application.objects.get(id=app_id, owner=request.user)
         except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application introuvable", http_status=status.HTTP_404_NOT_FOUND)
+            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
 
         raw_token = app.set_new_app_token()
         app.save(update_fields=["app_token_prefix", "app_token_hash", "revoked_at", "last_used_at"])
@@ -188,14 +188,14 @@ class ApplicationRegenerateTokenApiView(APIView):
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Activer une application",
-        description="Active une application appartenant a l'utilisateur connecte.",
+        summary="Activate an application",
+        description="Activates an application owned by the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=None,
         responses={
-            200: OpenApiResponse(response=ApplicationActivationResponseSerializer, description="Application activee"),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            200: OpenApiResponse(response=ApplicationActivationResponseSerializer, description="Application activated"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     )
 )
@@ -206,7 +206,7 @@ class ApplicationActivateApiView(APIView):
         try:
             app = Application.objects.get(id=app_id, owner=request.user)
         except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application introuvable", http_status=status.HTTP_404_NOT_FOUND)
+            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
 
         if not app.is_active:
             app.is_active = True
@@ -216,14 +216,14 @@ class ApplicationActivateApiView(APIView):
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Desactiver une application",
-        description="Desactive une application appartenant a l'utilisateur connecte.",
+        summary="Deactivate an application",
+        description="Deactivates an application owned by the authenticated user.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=None,
         responses={
-            200: OpenApiResponse(response=ApplicationActivationResponseSerializer, description="Application desactivee"),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            200: OpenApiResponse(response=ApplicationActivationResponseSerializer, description="Application deactivated"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     )
 )
@@ -234,7 +234,7 @@ class ApplicationDeactivateApiView(APIView):
         try:
             app = Application.objects.get(id=app_id, owner=request.user)
         except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application introuvable", http_status=status.HTTP_404_NOT_FOUND)
+            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
 
         if app.is_active:
             app.is_active = False
@@ -244,14 +244,14 @@ class ApplicationDeactivateApiView(APIView):
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Revoquer le token d'application",
-        description="Revoque le token actuel de l'application.",
+        summary="Revoke application token",
+        description="Revokes the current application token.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=None,
         responses={
             200: ApplicationRevokeTokenResponseSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     )
 )
@@ -262,7 +262,7 @@ class ApplicationRevokeTokenApiView(APIView):
         try:
             app = Application.objects.get(id=app_id, owner=request.user)
         except Application.DoesNotExist:
-            return error_response(code="application_not_found", detail="Application introuvable", http_status=status.HTTP_404_NOT_FOUND)
+            return error_response(code="application_not_found", detail="Application not found.", http_status=status.HTTP_404_NOT_FOUND)
         app.revoke_token()
         return Response({"app_id": app.id, "revoked_at": app.revoked_at}, status=status.HTTP_200_OK)
 
@@ -277,28 +277,26 @@ class UserOwnedApplicationMixin:
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les periodes blanches",
+        summary="List quiet periods",
         description=(
-            "Retourne les periodes blanches configurees pour une application. Une "
-            "periode blanche peut etre ponctuelle (`period_type=ONCE`) avec "
-            "`start_at` / `end_at`, ou periodique (`period_type=RECURRING`) avec "
-            "`recurrence_days`, `start_time` et `end_time`. Les notifications "
-            "planifiees sont automatiquement reportees a la fin de la fenetre "
-            "active, sans reecriture retroactive de `scheduled_for`."
+            "Returns the quiet periods configured for an application. A quiet period "
+            "can be one-time (`period_type=ONCE`) with `start_at` / `end_at`, or "
+            "recurring (`period_type=RECURRING`) with `recurrence_days`, `start_time` "
+            "and `end_time`. Scheduled notifications are automatically deferred to the "
+            "end of the active window, without retroactively rewriting `scheduled_for`."
         ),
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         responses={200: ApplicationQuietPeriodReadSerializer(many=True)},
     ),
     post=extend_schema(
-        summary="Creer une periode blanche",
+        summary="Create a quiet period",
         description=(
-            "Ajoute une periode blanche ponctuelle ou periodique. Si une notification "
-            "doit partir pendant cette periode, l'envoi est replanifie a la fin de "
-            "la fenetre active. Cette operation ne reecrit pas retroactivement "
-            "`scheduled_for`, mais la valeur de lecture `effective_scheduled_for` "
-            "des notifications futures tiendra compte des periodes blanches "
-            "courantes."
+            "Adds a one-time or recurring quiet period. If a notification is scheduled "
+            "during this period, sending is deferred to the end of the active window. "
+            "This does not retroactively rewrite `scheduled_for`, but the read value "
+            "`effective_scheduled_for` of future notifications will reflect the current "
+            "quiet periods."
         ),
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
@@ -307,7 +305,7 @@ class UserOwnedApplicationMixin:
             OpenApiExample(
                 "One-time quiet period request",
                 value={
-                    "name": "Nuit marketing",
+                    "name": "Marketing blackout",
                     "period_type": "ONCE",
                     "start_at": "2026-03-27T22:00:00+01:00",
                     "end_at": "2026-03-28T08:00:00+01:00",
@@ -321,7 +319,7 @@ class UserOwnedApplicationMixin:
             OpenApiExample(
                 "Recurring quiet period request",
                 value={
-                    "name": "Nuit en semaine",
+                    "name": "Weeknight quiet",
                     "period_type": "RECURRING",
                     "start_at": None,
                     "end_at": None,
@@ -337,7 +335,7 @@ class UserOwnedApplicationMixin:
             201: ApplicationQuietPeriodReadSerializer,
             400: OpenApiResponse(
                 response=ApplicationQuietPeriodValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
                 examples=[
                     OpenApiExample(
                         "Validation error",
@@ -346,7 +344,7 @@ class UserOwnedApplicationMixin:
                             "detail": "Validation error.",
                             "errors": {
                                 "end_at": [
-                                    "La fin de la periode blanche doit etre apres le debut."
+                                    "Quiet period end must be after the start."
                                 ]
                             },
                         },
@@ -355,7 +353,7 @@ class UserOwnedApplicationMixin:
                     )
                 ],
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Application introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
         },
     ),
 )
@@ -382,7 +380,7 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
         if self.get_application() is None:
             return error_response(
                 code="application_not_found",
-                detail="Application introuvable",
+                detail="Application not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         return super().list(request, *args, **kwargs)
@@ -392,7 +390,7 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
         if application is None:
             return error_response(
                 code="application_not_found",
-                detail="Application introuvable",
+                detail="Application not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         serializer = self.get_serializer(data=request.data)
@@ -406,18 +404,18 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Detail d'une periode blanche",
-        description="Retourne le detail d'une periode blanche.",
+        summary="Quiet period detail",
+        description="Returns the detail of a quiet period.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         responses={
             200: ApplicationQuietPeriodReadSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Periode blanche introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Quiet period not found"),
         },
     ),
     patch=extend_schema(
-        summary="Modifier une periode blanche",
-        description="Modifie une periode blanche ponctuelle ou periodique existante.",
+        summary="Update a quiet period",
+        description="Updates an existing one-time or recurring quiet period.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=ApplicationQuietPeriodWriteSerializer,
@@ -425,7 +423,7 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
             200: ApplicationQuietPeriodReadSerializer,
             400: OpenApiResponse(
                 response=ApplicationQuietPeriodValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
                 examples=[
                     OpenApiExample(
                         "Validation error",
@@ -434,7 +432,7 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
                             "detail": "Validation error.",
                             "errors": {
                                 "end_at": [
-                                    "La fin de la periode blanche doit etre apres le debut."
+                                    "Quiet period end must be after the start."
                                 ]
                             },
                         },
@@ -443,17 +441,17 @@ class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generic
                     )
                 ],
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Periode blanche introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Quiet period not found"),
         },
     ),
     delete=extend_schema(
-        summary="Supprimer une periode blanche",
-        description="Supprime une periode blanche.",
+        summary="Delete a quiet period",
+        description="Deletes a quiet period.",
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         responses={
             204: None,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Periode blanche introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Quiet period not found"),
         },
     ),
 )
@@ -486,7 +484,7 @@ class ApplicationQuietPeriodDetailApiView(UserOwnedApplicationMixin, generics.Re
         if instance is None:
             return error_response(
                 code="quiet_period_not_found",
-                detail="Periode blanche introuvable.",
+                detail="Quiet period not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         return Response(ApplicationQuietPeriodReadSerializer(instance).data)
@@ -496,7 +494,7 @@ class ApplicationQuietPeriodDetailApiView(UserOwnedApplicationMixin, generics.Re
         if instance is None:
             return error_response(
                 code="quiet_period_not_found",
-                detail="Periode blanche introuvable.",
+                detail="Quiet period not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         serializer = self.get_serializer(instance, data=request.data, partial=True)
@@ -509,7 +507,7 @@ class ApplicationQuietPeriodDetailApiView(UserOwnedApplicationMixin, generics.Re
         if instance is None:
             return error_response(
                 code="quiet_period_not_found",
-                detail="Periode blanche introuvable.",
+                detail="Quiet period not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
         instance.delete()

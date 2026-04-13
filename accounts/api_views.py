@@ -27,8 +27,8 @@ from .throttles import LoginRateThrottle, RegisterRateThrottle
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Creer un compte",
-        description="Cree un nouveau compte utilisateur et retourne le profil cree.",
+        summary="Create an account",
+        description="Creates a new user account and returns the created profile.",
         tags=["Accounts"],
         auth=[],
         request=RegisterSerializer,
@@ -36,11 +36,11 @@ from .throttles import LoginRateThrottle, RegisterRateThrottle
             201: UserMeSerializer,
             400: OpenApiResponse(
                 response=RegisterValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
             429: OpenApiResponse(
                 response=DetailResponseSerializer,
-                description="Trop de tentatives d'inscription",
+                description="Too many registration attempts",
             ),
         },
     )
@@ -65,11 +65,11 @@ class RegisterApiView(APIView):
             200: LoginResponseSerializer,
             400: OpenApiResponse(
                 response=LoginValidationErrorResponseSerializer,
-                description="Identifiants invalides ou donnees invalides",
+                description="Invalid credentials or invalid data",
             ),
         },
-        summary="Connexion utilisateur",
-        description="Authentifie un utilisateur et retourne les tokens JWT.",
+        summary="User login",
+        description="Authenticates a user and returns JWT tokens.",
         tags=["Accounts"],
     )
 )
@@ -94,11 +94,11 @@ class LoginApiView(APIView):
             204: None,
             400: OpenApiResponse(
                 response=LogoutValidationErrorResponseSerializer,
-                description="Refresh token invalide ou donnees invalides",
+                description="Invalid refresh token or invalid data",
             ),
         },
-        summary="Deconnexion",
-        description="Blackliste le refresh token courant.",
+        summary="Logout",
+        description="Blacklists the current refresh token.",
         tags=["Accounts"],
     )
 )
@@ -113,7 +113,7 @@ class LogoutApiView(APIView):
         if not refresh_token:
             return error_response(
                 code="refresh_token_required",
-                detail="refresh token requis",
+                detail="Refresh token is required.",
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -123,7 +123,7 @@ class LogoutApiView(APIView):
         except Exception:
             return error_response(
                 code="refresh_token_invalid",
-                detail="refresh token invalide",
+                detail="Invalid refresh token.",
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -132,8 +132,8 @@ class LogoutApiView(APIView):
 @extend_schema_view(
     get=extend_schema(
         responses=UserMeSerializer,
-        summary="Profil courant",
-        description="Retourne l'utilisateur actuellement connecte.",
+        summary="Current profile",
+        description="Returns the currently authenticated user.",
         tags=["Accounts"],
         auth=[{"BearerAuth": []}],
     ),
@@ -143,11 +143,11 @@ class LogoutApiView(APIView):
             200: UserMeSerializer,
             400: OpenApiResponse(
                 response=LanguageUpdateValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
         },
-        summary="Modifier la langue du profil courant",
-        description="Met a jour la langue preferee de l'utilisateur connecte.",
+        summary="Update profile language",
+        description="Updates the preferred language of the authenticated user.",
         tags=["Accounts"],
         auth=[{"BearerAuth": []}],
     ),
@@ -168,15 +168,15 @@ class MeApiView(APIView):
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Rafraichir un token",
-        description="Genere un nouveau access token a partir d'un refresh token.",
+        summary="Refresh a token",
+        description="Generates a new access token from a refresh token.",
         tags=["Accounts"],
         auth=[],
         responses={
             200: TokenRefreshResponseSerializer,
             400: OpenApiResponse(
                 response=TokenRefreshValidationErrorResponseSerializer,
-                description="Refresh token invalide ou donnees invalides",
+                description="Invalid refresh token or invalid data",
             ),
         },
     )

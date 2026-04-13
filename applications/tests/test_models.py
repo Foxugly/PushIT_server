@@ -19,8 +19,8 @@ def test_application_has_generated_app_token():
     assert app.app_token_prefix.startswith("apt_")
     assert len(app.app_token_prefix) > 4
     assert len(app.app_token_hash) == 64
-    assert app.inbound_email_alias.startswith("apt_")
-    assert app.inbound_email_address == f"{app.inbound_email_alias}@pushit.com"
+    assert app.inbound_email_alias == "mon-app"
+    assert app.inbound_email_address == "mon-app@pushit.com"
 
 @pytest.mark.django_db
 def test_app_token_is_unique():

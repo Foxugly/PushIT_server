@@ -46,7 +46,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         value = value.strip().lower()
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Cet email est déjà utilisé.")
+            raise serializers.ValidationError("This email is already in use.")
         return value
 
     def validate_password(self, value):
@@ -76,7 +76,7 @@ class LoginSerializer(serializers.Serializer):
         )
 
         if not user or not user.is_active:
-            raise serializers.ValidationError("Identifiants invalides.")
+            raise serializers.ValidationError("Invalid credentials.")
 
         attrs["user"] = user
         return attrs
@@ -118,5 +118,5 @@ def build_token_response_for_user(user: User) -> dict:
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(
         write_only=True,
-        help_text="Refresh token à invalider"
+        help_text="Refresh token to invalidate"
     )

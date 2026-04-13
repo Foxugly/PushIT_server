@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework import authentication, exceptions
 
 from config.metrics import increment_counter
-from .models import Application, hash_app_token
+from .models import Application
 
 
 @dataclass(frozen=True)
@@ -58,39 +58,39 @@ class AppTokenAuthentication(authentication.BaseAuthentication):
         if not raw_token:
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "missing"})
             raise exceptions.NotAuthenticated(
-                "App token manquant.",
+                "Missing app token.",
                 code="app_token_missing",
             )
 
         if not raw_token.startswith("apt_"):
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid_format"})
             raise exceptions.AuthenticationFailed(
-                "Format de app_token invalide",
+                "Invalid app token format.",
                 code="app_token_invalid_format",
             )
 
-        token_hash = hash_app_token(raw_token)
+        token_hash = Application.hash_app_token(raw_token)
 
         try:
             application = Application.objects.select_related("owner").get(app_token_hash=token_hash)
         except Application.DoesNotExist:
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid"})
             raise exceptions.AuthenticationFailed(
-                "app_token invalide",
+                "Invalid app token.",
                 code="app_token_invalid",
             )
 
         if not application.is_active:
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
             raise exceptions.AuthenticationFailed(
-                "Application inactive",
+                "Inactive application.",
                 code="app_token_inactive",
             )
 
         if application.revoked_at is not None:
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "revoked"})
             raise exceptions.AuthenticationFailed(
-                "app_token revoque",
+                "App token has been revoked.",
                 code="app_token_revoked",
             )
 

@@ -19,7 +19,7 @@ def extract_subject_schedule(subject: str):
     scheduled_for = parse_datetime(scheduled_for_raw)
     if scheduled_for is None or timezone.is_naive(scheduled_for):
         raise ValueError(
-            "Le format du marqueur [SEND_AT:...] est invalide. Utilise une date ISO 8601 avec fuseau horaire."
+            "Invalid [SEND_AT:...] marker format. Use an ISO 8601 date with timezone."
         )
 
     title = SEND_AT_SUBJECT_PATTERN.sub("", subject, count=1)

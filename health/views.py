@@ -144,7 +144,7 @@ class HealthReadyApiView(APIView):
             ),
             403: OpenApiResponse(
                 response=HealthErrorSerializer,
-                description="Token metrics invalide",
+                description="Invalid metrics token",
                 examples=[
                     OpenApiExample(
                         "Metrics forbidden",

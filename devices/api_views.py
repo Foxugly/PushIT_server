@@ -18,8 +18,8 @@ from .serializers import (
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les devices",
-        description="Retourne la liste des devices appartenant a l'utilisateur connecte.",
+        summary="List devices",
+        description="Returns the list of devices owned by the authenticated user.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         responses={200: DeviceReadSerializer(many=True)},
@@ -42,47 +42,47 @@ class DeviceListApiView(generics.ListAPIView):
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Detail d'un device",
-        description="Retourne le detail d'un device appartenant a l'utilisateur connecte.",
+        summary="Device detail",
+        description="Returns the detail of a device owned by the authenticated user.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         responses={
             200: DeviceReadSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Device not found"),
         },
     ),
     put=extend_schema(
-        summary="Modifier completement un device",
-        description="Met a jour completement un device appartenant a l'utilisateur connecte.",
+        summary="Fully update a device",
+        description="Fully updates a device owned by the authenticated user.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         request=DeviceUpdateSerializer,
         responses={
             200: DeviceReadSerializer,
-            400: OpenApiResponse(response=DeviceUpdateValidationErrorResponseSerializer, description="Donnees invalides"),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),
+            400: OpenApiResponse(response=DeviceUpdateValidationErrorResponseSerializer, description="Invalid data"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Device not found"),
         },
     ),
     patch=extend_schema(
-        summary="Modifier partiellement un device",
-        description="Met a jour partiellement un device appartenant a l'utilisateur connecte.",
+        summary="Partially update a device",
+        description="Partially updates a device owned by the authenticated user.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         request=DeviceUpdateSerializer,
         responses={
             200: DeviceReadSerializer,
-            400: OpenApiResponse(response=DeviceUpdateValidationErrorResponseSerializer, description="Donnees invalides"),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),
+            400: OpenApiResponse(response=DeviceUpdateValidationErrorResponseSerializer, description="Invalid data"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Device not found"),
         },
     ),
     delete=extend_schema(
-        summary="Supprimer un device",
-        description="Supprime un device appartenant a l'utilisateur connecte.",
+        summary="Delete a device",
+        description="Deletes a device owned by the authenticated user.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         responses={
             204: None,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Device not found"),
         },
     ),
 )
@@ -108,7 +108,7 @@ class DeviceDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         try:
             return super().get_object()
         except Http404:
-            raise NotFound("Device introuvable.", code="device_not_found")
+            raise NotFound("Device not found.", code="device_not_found")
 
 
 class UserOwnedDeviceMixin:
@@ -126,19 +126,19 @@ class UserOwnedDeviceMixin:
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les periodes blanches d'un device",
+        summary="List device quiet periods",
         description=(
-            "Retourne les periodes blanches configurees pour un device. Elles peuvent "
-            "etre ponctuelles (`period_type=ONCE`) ou periodiques (`period_type=RECURRING`). "
-            "Elles s'appliquent aux deliveries de ce device sans bloquer les autres devices."
+            "Returns the quiet periods configured for a device. They can be "
+            "one-time (`period_type=ONCE`) or recurring (`period_type=RECURRING`). "
+            "They apply to deliveries for this device without blocking other devices."
         ),
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         responses={200: DeviceQuietPeriodReadSerializer(many=True)},
     ),
     post=extend_schema(
-        summary="Creer une periode blanche pour un device",
-        description="Ajoute une periode blanche ponctuelle ou periodique sur un device.",
+        summary="Create a device quiet period",
+        description="Adds a one-time or recurring quiet period on a device.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         request=DeviceQuietPeriodWriteSerializer,
@@ -146,7 +146,7 @@ class UserOwnedDeviceMixin:
             OpenApiExample(
                 "One-time device quiet period",
                 value={
-                    "name": "Indisponible ce soir",
+                    "name": "Unavailable tonight",
                     "period_type": "ONCE",
                     "start_at": "2026-03-27T22:00:00+01:00",
                     "end_at": "2026-03-28T08:00:00+01:00",
@@ -171,9 +171,9 @@ class UserOwnedDeviceMixin:
             201: DeviceQuietPeriodReadSerializer,
             400: OpenApiResponse(
                 response=DeviceQuietPeriodValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Device introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Device not found"),
         },
     ),
 )
@@ -198,13 +198,13 @@ class DeviceQuietPeriodListCreateApiView(UserOwnedDeviceMixin, generics.ListCrea
 
     def list(self, request, *args, **kwargs):
         if self.get_device() is None:
-            raise NotFound("Device introuvable.", code="device_not_found")
+            raise NotFound("Device not found.", code="device_not_found")
         return super().list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         device = self.get_device()
         if device is None:
-            raise NotFound("Device introuvable.", code="device_not_found")
+            raise NotFound("Device not found.", code="device_not_found")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
@@ -213,18 +213,18 @@ class DeviceQuietPeriodListCreateApiView(UserOwnedDeviceMixin, generics.ListCrea
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Detail d'une periode blanche device",
-        description="Retourne le detail d'une periode blanche d'un device.",
+        summary="Device quiet period detail",
+        description="Returns the detail of a device quiet period.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         responses={
             200: DeviceQuietPeriodReadSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Periode blanche introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Quiet period not found"),
         },
     ),
     patch=extend_schema(
-        summary="Modifier une periode blanche device",
-        description="Modifie une periode blanche ponctuelle ou periodique d'un device.",
+        summary="Update a device quiet period",
+        description="Updates a one-time or recurring device quiet period.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         request=DeviceQuietPeriodWriteSerializer,
@@ -232,19 +232,19 @@ class DeviceQuietPeriodListCreateApiView(UserOwnedDeviceMixin, generics.ListCrea
             200: DeviceQuietPeriodReadSerializer,
             400: OpenApiResponse(
                 response=DeviceQuietPeriodValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Periode blanche introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Quiet period not found"),
         },
     ),
     delete=extend_schema(
-        summary="Supprimer une periode blanche device",
-        description="Supprime une periode blanche d'un device.",
+        summary="Delete a device quiet period",
+        description="Deletes a device quiet period.",
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
         responses={
             204: None,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Periode blanche introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Quiet period not found"),
         },
     ),
 )
@@ -266,19 +266,19 @@ class DeviceQuietPeriodDetailApiView(UserOwnedDeviceMixin, generics.RetrieveUpda
     def get_object(self):
         device = self.get_device()
         if device is None:
-            raise NotFound("Device introuvable.", code="device_not_found")
+            raise NotFound("Device not found.", code="device_not_found")
         return device.quiet_periods.filter(id=self.kwargs["quiet_period_id"]).first()
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance is None:
-            raise NotFound("Periode blanche introuvable.", code="quiet_period_not_found")
+            raise NotFound("Quiet period not found.", code="quiet_period_not_found")
         return Response(DeviceQuietPeriodReadSerializer(instance).data)
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance is None:
-            raise NotFound("Periode blanche introuvable.", code="quiet_period_not_found")
+            raise NotFound("Quiet period not found.", code="quiet_period_not_found")
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -287,6 +287,6 @@ class DeviceQuietPeriodDetailApiView(UserOwnedDeviceMixin, generics.RetrieveUpda
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance is None:
-            raise NotFound("Periode blanche introuvable.", code="quiet_period_not_found")
+            raise NotFound("Quiet period not found.", code="quiet_period_not_found")
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

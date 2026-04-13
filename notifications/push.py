@@ -29,12 +29,10 @@ class TemporaryPushProviderError(PushProviderError):
 
 def send_push_to_device(push_token: str, title: str, message: str) -> str:
     """
-    Wrapper provider.
+    Push provider wrapper.
 
-    Pour l'instant :
-    - garde un comportement mock pour ne pas casser le projet
-    - permet déjà de distinguer les erreurs permanentes / temporaires
-      si un vrai provider FCM est branché plus tard
+    Currently uses a mock implementation. Distinguishes between permanent
+    and temporary errors for when a real FCM provider is plugged in later.
     """
 
     log_extra = {
@@ -54,8 +52,8 @@ def send_push_to_device(push_token: str, title: str, message: str) -> str:
     print(title)
     print(message)
     try:
-        # TODO: brancher le vrai provider FCM ici.
-        # Exemple futur :
+        # TODO: plug in the real FCM provider here.
+        # Future example:
         # provider_message_id = fcm_send(push_token=push_token, title=title, message=message)
         # return provider_message_id
         provider_message_id = f"mock-msg-{push_token[-6:]}"
@@ -68,7 +66,7 @@ def send_push_to_device(push_token: str, title: str, message: str) -> str:
         )
         return provider_message_id
 
-    # Exemple futur quand FCM sera branché :
+    # Future example when FCM is plugged in:
     # except SomeFirebaseInvalidTokenException as exc:
     #     raise InvalidPushTokenError(str(exc)) from exc
     #

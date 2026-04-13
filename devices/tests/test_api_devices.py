@@ -29,4 +29,4 @@ def test_device_detail_not_found_returns_device_not_found_code():
 
     assert response.status_code == 404
     assert response.data["code"] == "device_not_found"
-    assert response.data["detail"] == "Device introuvable."
+    assert response.data["detail"] == "Device not found."

@@ -211,4 +211,4 @@ def test_notification_detail_not_found_returns_notification_not_found_code():
 
     assert response.status_code == 404
     assert response.data["code"] == "notification_not_found"
-    assert response.data["detail"] == "Notification introuvable."
+    assert response.data["detail"] == "Notification not found."

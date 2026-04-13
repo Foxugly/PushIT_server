@@ -18,12 +18,6 @@ from rest_framework.views import APIView
 
 from config.api_errors import error_response
 from .models import Notification, NotificationStatus
-from .scheduling import (
-    compute_effective_scheduled_map,
-    filter_notifications_by_effective_range,
-    filter_notifications_by_shift_flag,
-    order_notifications_by_effective,
-)
 from .utils import apply_effective_schedule_filters
 from .serializers import (
     DetailResponseSerializer,
@@ -51,12 +45,11 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les notifications",
+        summary="List notifications",
         description=(
-            "Retourne la liste des notifications des applications appartenant a "
-            "l'utilisateur connecte. Le listing peut etre filtre par application, "
-            "statut, date effective et presence d'un decalage du a une periode "
-            "blanche."
+            "Returns the list of notifications for applications owned by the "
+            "authenticated user. The listing can be filtered by application, "
+            "status, effective date, and quiet period shift presence."
         ),
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
@@ -66,7 +59,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Filtre par application.",
+                description="Filter by application.",
             ),
             OpenApiParameter(
                 name="status",
@@ -74,28 +67,28 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 location=OpenApiParameter.QUERY,
                 required=False,
                 enum=[choice for choice, _ in NotificationStatus.choices],
-                description="Filtre par statut de notification.",
+                description="Filter by notification status.",
             ),
             OpenApiParameter(
                 name="effective_scheduled_from",
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Filtre inclusif sur la date effective minimale d'envoi.",
+                description="Inclusive filter on minimum effective send date.",
             ),
             OpenApiParameter(
                 name="effective_scheduled_to",
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Filtre inclusif sur la date effective maximale d'envoi.",
+                description="Inclusive filter on maximum effective send date.",
             ),
             OpenApiParameter(
                 name="has_quiet_period_shift",
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Ne retourne que les notifications dont la date effective est decalee par une periode blanche.",
+                description="Only return notifications whose effective date is shifted by a quiet period.",
             ),
             OpenApiParameter(
                 name="ordering",
@@ -103,13 +96,13 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 location=OpenApiParameter.QUERY,
                 required=False,
                 enum=["effective_scheduled_for", "-effective_scheduled_for"],
-                description="Tri optionnel par date effective d'envoi.",
+                description="Optional ordering by effective send date.",
             ),
         ],
         responses={
             200: OpenApiResponse(
                 response=NotificationReadSerializer(many=True),
-                description="Liste des notifications",
+                description="List of notifications",
                 examples=[
                     OpenApiExample(
                         "Shifted scheduled notifications for one application",
@@ -118,8 +111,8 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                                 "id": 42,
                                 "application_id": 12,
                                 "application_name": "Demo Push App",
-                                "title": "Rappel ce soir",
-                                "message": "Ouverture a 20h.",
+                                "title": "Evening reminder",
+                                "message": "Opens at 8pm.",
                                 "status": "scheduled",
                                 "created_at": "2026-03-27T10:00:00Z",
                                 "scheduled_for": "2026-03-27T22:30:00Z",
@@ -137,8 +130,8 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                                 "id": 43,
                                 "application_id": 12,
                                 "application_name": "Demo Push App",
-                                "title": "Annonce tardive",
-                                "message": "Envoi a 23h.",
+                                "title": "Late announcement",
+                                "message": "Sending at 11pm.",
                                 "status": "scheduled",
                                 "created_at": "2026-03-27T10:05:00Z",
                                 "scheduled_for": "2026-03-27T23:00:00Z",
@@ -149,8 +142,8 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                                 "id": 42,
                                 "application_id": 12,
                                 "application_name": "Demo Push App",
-                                "title": "Rappel ce soir",
-                                "message": "Ouverture a 20h.",
+                                "title": "Evening reminder",
+                                "message": "Opens at 8pm.",
                                 "status": "scheduled",
                                 "created_at": "2026-03-27T10:00:00Z",
                                 "scheduled_for": "2026-03-27T22:30:00Z",
@@ -165,20 +158,19 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
             ),
             400: OpenApiResponse(
                 response=NotificationListFilterValidationErrorResponseSerializer,
-                description="Filtres invalides",
+                description="Invalid filters",
             ),
         },
     ),
     post=extend_schema(
-        summary="Creer une notification",
+        summary="Create a notification",
         description=(
-            "Cree une nouvelle notification pour une application appartenant a "
-            "l'utilisateur connecte et une liste explicite de devices cibles. "
-            "Si `scheduled_for` est fourni, la notification est creee en statut "
-            "`scheduled` et sera dispatchee automatiquement plus tard. "
-            "`scheduled_for` represente la date demandee. "
-            "`effective_scheduled_for` represente la date effective d'envoi calculee "
-            "a partir des periodes blanches actuellement configurees."
+            "Creates a new notification for an application owned by the authenticated "
+            "user and an explicit list of target devices. If `scheduled_for` is "
+            "provided, the notification is created with `scheduled` status and will be "
+            "dispatched automatically later. `scheduled_for` represents the requested "
+            "date. `effective_scheduled_for` represents the effective send date "
+            "computed from currently configured quiet periods."
         ),
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
@@ -189,8 +181,8 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 value={
                     "application_id": 12,
                     "device_ids": [4, 5],
-                    "title": "Promo flash",
-                    "message": "Disponible maintenant.",
+                    "title": "Flash promo",
+                    "message": "Available now.",
                 },
                 request_only=True,
             ),
@@ -199,8 +191,8 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                 value={
                     "application_id": 12,
                     "device_ids": [4, 5],
-                    "title": "Rappel ce soir",
-                    "message": "Ouverture a 20h.",
+                    "title": "Evening reminder",
+                    "message": "Opens at 8pm.",
                     "scheduled_for": "2026-03-27T20:00:00+01:00",
                 },
                 request_only=True,
@@ -209,7 +201,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
         responses={
             201: OpenApiResponse(
                 response=NotificationReadSerializer,
-                description="Notification creee",
+                description="Notification created",
                 examples=[
                     OpenApiExample(
                         "Scheduled notification deferred by quiet period",
@@ -218,8 +210,8 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                             "application_id": 12,
                             "application_name": "Demo Push App",
                             "device_ids": [4, 5],
-                            "title": "Rappel ce soir",
-                            "message": "Ouverture a 20h.",
+                            "title": "Evening reminder",
+                            "message": "Opens at 8pm.",
                             "status": "scheduled",
                             "created_at": "2026-03-27T10:00:00Z",
                             "scheduled_for": "2026-03-27T22:30:00Z",
@@ -233,7 +225,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
             ),
             400: OpenApiResponse(
                 response=NotificationCreateValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
                 examples=[
                     OpenApiExample(
                         "Validation error",
@@ -242,7 +234,7 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
                             "detail": "Validation error.",
                             "errors": {
                                 "scheduled_for": [
-                                    "La date planifiee doit etre dans le futur."
+                                    "Scheduled date must be in the future."
                                 ]
                             },
                         },
@@ -284,41 +276,7 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
             queryset = queryset.filter(status=status_filter)
 
         queryset = list(queryset)
-        effective_scheduled_from = notification_filter.get("effective_scheduled_from")
-        effective_scheduled_to = notification_filter.get("effective_scheduled_to")
-        has_quiet_period_shift = (
-            notification_filter.get("has_quiet_period_shift")
-            if "has_quiet_period_shift" in request.query_params
-            else None
-        )
-        ordering = notification_filter.get("ordering")
-        effective_scheduled_map = None
-
-        if (
-            effective_scheduled_from is not None
-            or effective_scheduled_to is not None
-            or has_quiet_period_shift is not None
-            or ordering
-        ):
-            effective_scheduled_map = compute_effective_scheduled_map(queryset)
-
-        if effective_scheduled_from is not None or effective_scheduled_to is not None:
-            queryset = filter_notifications_by_effective_range(
-                queryset,
-                effective_scheduled_map,
-                effective_scheduled_from=effective_scheduled_from,
-                effective_scheduled_to=effective_scheduled_to,
-            )
-
-        if has_quiet_period_shift is not None:
-            queryset = filter_notifications_by_shift_flag(
-                queryset,
-                effective_scheduled_map,
-                has_quiet_period_shift,
-            )
-
-        if ordering:
-            queryset = order_notifications_by_effective(queryset, effective_scheduled_map, ordering)
+        queryset = apply_effective_schedule_filters(queryset, request, notification_filter)
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -340,13 +298,13 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Detail d'une notification",
-        description="Retourne le detail d'une notification appartenant a une application de l'utilisateur connecte.",
+        summary="Notification detail",
+        description="Returns the detail of a notification belonging to an application of the authenticated user.",
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         responses={
             200: NotificationReadSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification not found"),
         },
     ),
 )
@@ -365,19 +323,18 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
         try:
             return super().get_object()
         except Http404:
-            raise NotFound("Notification introuvable.", code="notification_not_found")
+            raise NotFound("Notification not found.", code="notification_not_found")
 
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les notifications futures",
+        summary="List future notifications",
         description=(
-            "Retourne uniquement les notifications en statut `scheduled` dont "
-            "`scheduled_for` est strictement dans le futur. Ces notifications peuvent "
-            "encore etre modifiees ou supprimees. `scheduled_for` represente la date "
-            "demandee, tandis que `effective_scheduled_for` represente la prochaine "
-            "date de dispatch estimee selon les periodes blanches actuellement "
-            "configurees."
+            "Returns only notifications with `scheduled` status whose "
+            "`scheduled_for` is strictly in the future. These notifications can "
+            "still be modified or deleted. `scheduled_for` represents the requested "
+            "date, while `effective_scheduled_for` represents the next estimated "
+            "dispatch date according to currently configured quiet periods."
         ),
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
@@ -387,21 +344,21 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Filtre inclusif sur la date effective minimale d'envoi.",
+                description="Inclusive filter on minimum effective send date.",
             ),
             OpenApiParameter(
                 name="effective_scheduled_to",
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Filtre inclusif sur la date effective maximale d'envoi.",
+                description="Inclusive filter on maximum effective send date.",
             ),
             OpenApiParameter(
                 name="has_quiet_period_shift",
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Ne retourne que les notifications dont la date effective est decalee par une periode blanche.",
+                description="Only return notifications whose effective date is shifted by a quiet period.",
             ),
             OpenApiParameter(
                 name="ordering",
@@ -409,13 +366,13 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 enum=["effective_scheduled_for", "-effective_scheduled_for"],
-                description="Tri optionnel par date effective d'envoi.",
+                description="Optional ordering by effective send date.",
             ),
         ],
         responses={
             200: OpenApiResponse(
                 response=NotificationReadSerializer(many=True),
-                description="Liste des notifications futures",
+                description="List of future notifications",
                 examples=[
                     OpenApiExample(
                         "Future notifications shifted by quiet period",
@@ -424,8 +381,8 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
                                 "id": 42,
                                 "application_id": 12,
                                 "application_name": "Demo Push App",
-                                "title": "Rappel ce soir",
-                                "message": "Ouverture a 20h.",
+                                "title": "Evening reminder",
+                                "message": "Opens at 8pm.",
                                 "status": "scheduled",
                                 "created_at": "2026-03-27T10:00:00Z",
                                 "scheduled_for": "2026-03-27T22:30:00Z",
@@ -443,8 +400,8 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
                                 "id": 43,
                                 "application_id": 12,
                                 "application_name": "Demo Push App",
-                                "title": "Annonce tardive",
-                                "message": "Envoi a 23h.",
+                                "title": "Late announcement",
+                                "message": "Sending at 11pm.",
                                 "status": "scheduled",
                                 "created_at": "2026-03-27T10:05:00Z",
                                 "scheduled_for": "2026-03-27T23:00:00Z",
@@ -455,8 +412,8 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
                                 "id": 42,
                                 "application_id": 12,
                                 "application_name": "Demo Push App",
-                                "title": "Rappel ce soir",
-                                "message": "Ouverture a 20h.",
+                                "title": "Evening reminder",
+                                "message": "Opens at 8pm.",
                                 "status": "scheduled",
                                 "created_at": "2026-03-27T10:00:00Z",
                                 "scheduled_for": "2026-03-27T22:30:00Z",
@@ -471,7 +428,7 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
             ),
             400: OpenApiResponse(
                 response=NotificationFutureFilterValidationErrorResponseSerializer,
-                description="Filtres invalides",
+                description="Invalid filters",
                 examples=[
                     OpenApiExample(
                         "Invalid effective range",
@@ -480,7 +437,7 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
                             "detail": "Validation error.",
                             "errors": {
                                 "effective_scheduled_to": [
-                                    "La borne de fin doit etre apres ou egale a la borne de debut."
+                                    "End bound must be after or equal to the start bound."
                                 ]
                             },
                         },
@@ -514,41 +471,7 @@ class NotificationFutureListApiView(generics.ListAPIView):
         future_filter = filter_serializer.validated_data
 
         queryset = list(self.get_queryset())
-        effective_scheduled_from = future_filter.get("effective_scheduled_from")
-        effective_scheduled_to = future_filter.get("effective_scheduled_to")
-        has_quiet_period_shift = (
-            future_filter.get("has_quiet_period_shift")
-            if "has_quiet_period_shift" in request.query_params
-            else None
-        )
-        ordering = future_filter.get("ordering")
-        effective_scheduled_map = None
-
-        if (
-            effective_scheduled_from is not None
-            or effective_scheduled_to is not None
-            or has_quiet_period_shift is not None
-            or ordering
-        ):
-            effective_scheduled_map = compute_effective_scheduled_map(queryset)
-
-        if effective_scheduled_from is not None or effective_scheduled_to is not None:
-            queryset = filter_notifications_by_effective_range(
-                queryset,
-                effective_scheduled_map,
-                effective_scheduled_from=effective_scheduled_from,
-                effective_scheduled_to=effective_scheduled_to,
-            )
-
-        if has_quiet_period_shift is not None:
-            queryset = filter_notifications_by_shift_flag(
-                queryset,
-                effective_scheduled_map,
-                has_quiet_period_shift,
-            )
-
-        if ordering:
-            queryset = order_notifications_by_effective(queryset, effective_scheduled_map, ordering)
+        queryset = apply_effective_schedule_filters(queryset, request, future_filter)
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -560,19 +483,19 @@ class NotificationFutureListApiView(generics.ListAPIView):
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Detail d'une notification future",
+        summary="Future notification detail",
         description=(
-            "Retourne une notification planifiee encore modifiable. "
-            "`scheduled_for` represente la date demandee par l'utilisateur. "
-            "`effective_scheduled_for` represente la date effective d'envoi calculee "
-            "a partir des periodes blanches courantes."
+            "Returns a scheduled notification that is still editable. "
+            "`scheduled_for` represents the date requested by the user. "
+            "`effective_scheduled_for` represents the effective send date "
+            "computed from current quiet periods."
         ),
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         responses={
             200: OpenApiResponse(
                 response=NotificationReadSerializer,
-                description="Notification future",
+                description="Future notification",
                 examples=[
                     OpenApiExample(
                         "Future notification deferred by quiet period",
@@ -580,8 +503,8 @@ class NotificationFutureListApiView(generics.ListAPIView):
                             "id": 42,
                             "application_id": 12,
                             "application_name": "Demo Push App",
-                            "title": "Rappel ce soir",
-                            "message": "Ouverture a 20h.",
+                            "title": "Evening reminder",
+                            "message": "Opens at 8pm.",
                             "status": "scheduled",
                             "created_at": "2026-03-27T10:00:00Z",
                             "scheduled_for": "2026-03-27T22:30:00Z",
@@ -593,17 +516,17 @@ class NotificationFutureListApiView(generics.ListAPIView):
                     )
                 ],
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification future introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Future notification not found"),
         },
     ),
     patch=extend_schema(
-        summary="Modifier une notification future",
+        summary="Update a future notification",
         description=(
-            "Modifie le contenu ou la date d'envoi d'une notification planifiee. "
-            "L'endpoint n'accepte que les notifications encore futures. Modifier une "
-            "periode blanche ne reecrit pas retroactivement `scheduled_for`, mais la "
-            "valeur de lecture `effective_scheduled_for` refletera la date effective "
-            "tenant compte des periodes blanches actuelles."
+            "Updates the content or send date of a scheduled notification. "
+            "The endpoint only accepts notifications that are still in the future. "
+            "Modifying a quiet period does not retroactively rewrite `scheduled_for`, "
+            "but the read value `effective_scheduled_for` will reflect the effective "
+            "date accounting for current quiet periods."
         ),
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
@@ -612,7 +535,7 @@ class NotificationFutureListApiView(generics.ListAPIView):
             OpenApiExample(
                 "Reschedule future notification",
                 value={
-                    "title": "Rappel repousse",
+                    "title": "Postponed reminder",
                     "scheduled_for": "2026-03-27T21:30:00+01:00",
                 },
                 request_only=True,
@@ -622,7 +545,7 @@ class NotificationFutureListApiView(generics.ListAPIView):
             200: NotificationReadSerializer,
             400: OpenApiResponse(
                 response=NotificationFutureUpdateValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
                 examples=[
                     OpenApiExample(
                         "Validation error",
@@ -631,7 +554,7 @@ class NotificationFutureListApiView(generics.ListAPIView):
                             "detail": "Validation error.",
                             "errors": {
                                 "scheduled_for": [
-                                    "La date planifiee doit etre dans le futur."
+                                    "Scheduled date must be in the future."
                                 ]
                             },
                         },
@@ -640,17 +563,17 @@ class NotificationFutureListApiView(generics.ListAPIView):
                     )
                 ],
             ),
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification future introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Future notification not found"),
         },
     ),
     delete=extend_schema(
-        summary="Supprimer une notification future",
-        description="Supprime une notification planifiee tant qu'elle n'a pas ete envoyee.",
+        summary="Delete a future notification",
+        description="Deletes a scheduled notification as long as it has not been sent.",
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         responses={
             204: None,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification future introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Future notification not found"),
         },
     ),
 )
@@ -678,30 +601,30 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         try:
             return super().get_object()
         except Http404:
-            raise NotFound("Notification future introuvable.", code="notification_future_not_found")
+            raise NotFound("Future notification not found.", code="notification_future_not_found")
 
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Mettre une notification en file d'envoi",
-        description="Planifie l'envoi asynchrone d'une notification via Celery. Les notifications futures (`scheduled`) ne sont pas envoyables manuellement tant que `scheduled_for` n'est pas atteint.",
+        summary="Queue a notification for sending",
+        description="Schedules asynchronous sending of a notification via Celery. Future notifications (`scheduled`) cannot be manually sent until `scheduled_for` is reached.",
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         request=None,
         responses={
             202: NotificationQueuedResponseSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification introuvable"),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification not found"),
             409: OpenApiResponse(
                 response=DetailResponseSerializer,
-                description="Notification deja envoyee, deja en file ou non envoyable",
+                description="Notification already sent, already queued, or not sendable",
                 examples=[
                     OpenApiExample(
                         "Scheduled notification not sendable yet",
                         value={
                             "code": "notification_not_sendable",
                             "detail": (
-                                "La notification 42 ne peut pas etre mise en file "
-                                "depuis le statut 'scheduled'."
+                                "Notification 42 cannot be queued "
+                                "from status 'scheduled'."
                             ),
                         },
                         response_only=True,
@@ -711,13 +634,13 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
             ),
             503: OpenApiResponse(
                 response=DetailResponseSerializer,
-                description="Broker Celery indisponible",
+                description="Celery broker unavailable",
                 examples=[
                     OpenApiExample(
                         "Queue unavailable",
                         value={
                             "code": "notification_queue_unavailable",
-                            "detail": "La file d'envoi est temporairement indisponible.",
+                            "detail": "Send queue is temporarily unavailable.",
                         },
                         response_only=True,
                         status_codes=["503"],
@@ -857,8 +780,8 @@ class NotificationSendApiView(APIView):
 
 @extend_schema_view(
     get=extend_schema(
-        summary="Lister les statistiques des notifications",
-        description="Retourne le nombre de notifications par statut pour les applications appartenant a l'utilisateur connecte.",
+        summary="List notification statistics",
+        description="Returns the notification count by status for applications owned by the authenticated user.",
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         responses={200: NotificationStatsSerializer(many=True)},

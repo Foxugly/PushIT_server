@@ -23,13 +23,13 @@ from .utils import compute_request_fingerprint
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Creer une notification a partir d'un email entrant",
+        summary="Create a notification from an inbound email",
         description=(
-            "Transforme un email entrant en notification. Le prefixe de l'adresse "
-            "destinataire avant `@` doit correspondre au `inbound_email_alias` stable d'une "
-            "application connue. Le sujet devient le titre et le texte brut devient "
-            "le message. Un marqueur optionnel `[SEND_AT:2026-03-27T20:00:00+01:00]` "
-            "dans le sujet permet de planifier l'envoi."
+            "Transforms an inbound email into a notification. The recipient address "
+            "prefix before `@` must match the stable `inbound_email_alias` of a known "
+            "application. The subject becomes the title and the plain text becomes "
+            "the message. An optional `[SEND_AT:2026-03-27T20:00:00+01:00]` marker "
+            "in the subject allows scheduling the send."
         ),
         tags=["Notifications"],
         auth=[],
@@ -39,7 +39,7 @@ from .utils import compute_request_fingerprint
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.HEADER,
                 required=True,
-                description="Secret partage pour autoriser le webhook email entrant.",
+                description="Shared secret to authorize the inbound email webhook.",
             )
         ],
         request=NotificationInboundEmailSerializer,
@@ -68,16 +68,16 @@ from .utils import compute_request_fingerprint
             ),
         ],
         responses={
-            200: OpenApiResponse(response=NotificationReadSerializer, description="Notification existante retournee"),
-            201: OpenApiResponse(response=NotificationReadSerializer, description="Notification creee"),
+            200: OpenApiResponse(response=NotificationReadSerializer, description="Existing notification returned"),
+            201: OpenApiResponse(response=NotificationReadSerializer, description="Notification created"),
             400: OpenApiResponse(
                 response=NotificationInboundEmailValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
-            403: OpenApiResponse(response=DetailResponseSerializer, description="Secret invalide ou manquant"),
+            403: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing secret"),
             409: OpenApiResponse(
                 response=DetailResponseSerializer,
-                description="Message id deja utilise avec un contenu different",
+                description="Message ID already used with different content",
             ),
         },
     )
@@ -91,7 +91,7 @@ class NotificationCreateFromInboundEmailApiView(APIView):
         if not provided_secret or not hmac.compare_digest(provided_secret, expected_secret):
             return error_response(
                 code="inbound_email_forbidden",
-                detail="Secret inbound email invalide ou manquant.",
+                detail="Invalid or missing inbound email secret.",
                 http_status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -142,12 +142,12 @@ class NotificationCreateFromInboundEmailApiView(APIView):
                 scheduled_for=scheduled_for,
                 application=application,
                 notification=outcome.notification,
-                error_message="Ce message_id a deja ete utilise avec un payload different.",
+                error_message="This message_id has already been used with a different payload.",
             )
             return Response(
                 {
                     "code": "idempotency_conflict",
-                    "detail": "Ce message_id a deja ete utilise avec un payload different.",
+                    "detail": "This message_id has already been used with a different payload.",
                 },
                 status=status.HTTP_409_CONFLICT,
             )
