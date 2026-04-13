@@ -83,6 +83,10 @@ def test_send_notification_endpoint_rejects_already_queued(mock_delay):
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.skipif(
+    not __import__("django.conf", fromlist=["settings"]).settings.DB_SUPPORTS_ROW_LOCKING,
+    reason="Concurrent locking requires PostgreSQL (SQLite has no row-level locks)",
+)
 def test_concurrent_send_notification_only_queues_once(live_server):
     user = User.objects.create_user(
         email="u1@example.com",
