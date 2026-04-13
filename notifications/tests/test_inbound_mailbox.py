@@ -1,72 +1,30 @@
-from email.message import EmailMessage
-from unittest.mock import patch
+from unittest.mock import patch, call
 
 import pytest
 from django.test import override_settings
 
 from accounts.models import User
+from applications.graph_mail import GraphEmail
 from applications.models import Application
 from notifications.inbound_mailbox import poll_inbound_mailbox
 from notifications.models import InboundEmailIngestionLog, Notification, NotificationStatus
 
 
-def _build_email_bytes(*, sender: str, recipient: str, subject: str, text: str, message_id: str) -> bytes:
-    message = EmailMessage()
-    message["From"] = sender
-    message["To"] = recipient
-    message["Subject"] = subject
-    message["Message-ID"] = message_id
-    message.set_content(text)
-    return message.as_bytes()
-
-
-class FakeImapClient:
-    def __init__(self, host, port):
-        self.host = host
-        self.port = port
-        self.seen_uids = []
-
-    def login(self, username, password):
-        self.username = username
-        self.password = password
-        return "OK", [b"logged"]
-
-    def select(self, folder):
-        self.folder = folder
-        return "OK", [b"1"]
-
-    def uid(self, action, *args):
-        if action == "search":
-            return "OK", [b"101 102"]
-        if action == "fetch":
-            uid = args[0]
-            if uid == "101":
-                return "OK", [(b"1 (RFC822 {123}", self.email_one)]
-            if uid == "102":
-                return "OK", [(b"2 (RFC822 {123}", self.email_two)]
-        if action == "store":
-            self.seen_uids.append(args[0])
-            return "OK", [b"stored"]
-        raise AssertionError(f"Unexpected IMAP action: {action}")
-
-    def close(self):
-        return "OK", [b"closed"]
-
-    def logout(self):
-        return "BYE", [b"logout"]
-
-
 @pytest.mark.django_db
 @override_settings(
     INBOUND_EMAIL_DOMAIN="pushit.com",
-    INBOUND_EMAIL_IMAP_ENABLED=True,
-    INBOUND_EMAIL_IMAP_HOST="imap.pushit.com",
-    INBOUND_EMAIL_IMAP_PORT=993,
-    INBOUND_EMAIL_IMAP_USERNAME="catchall@pushit.com",
-    INBOUND_EMAIL_IMAP_PASSWORD="secret",
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
-@patch("notifications.inbound_mailbox.imaplib.IMAP4_SSL")
-def test_poll_inbound_mailbox_creates_notification_for_matching_owner(mock_imap):
+@patch("applications.graph_mail.add_email_alias")
+@patch("notifications.inbound_mailbox.mark_email_read")
+@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_poll_inbound_mailbox_creates_notification_for_matching_owner(
+    mock_fetch, mock_send_email, mock_mark_read, _mock_add_alias,
+):
     owner = User.objects.create_user(
         email="owner@example.com",
         username="owner",
@@ -79,22 +37,24 @@ def test_poll_inbound_mailbox_creates_notification_for_matching_owner(mock_imap)
     )
     app = Application.objects.create(owner=owner, name="Inbound App")
 
-    fake_client = FakeImapClient("imap.pushit.com", 993)
-    fake_client.email_one = _build_email_bytes(
-        sender=owner.email,
-        recipient=f"{app.inbound_email_alias}@pushit.com",
-        subject="Alerte production",
-        text="Le batch est termine.",
-        message_id="<mail-001@example.com>",
-    )
-    fake_client.email_two = _build_email_bytes(
-        sender=other_user.email,
-        recipient=f"{app.inbound_email_alias}@pushit.com",
-        subject="Alerte rejetee",
-        text="Ce mail doit etre rejete.",
-        message_id="<mail-002@example.com>",
-    )
-    mock_imap.return_value = fake_client
+    mock_fetch.return_value = [
+        GraphEmail(
+            graph_id="graph-101",
+            sender=owner.email,
+            recipient=f"{app.inbound_email_alias}@pushit.com",
+            subject="Production alert",
+            text="The batch is done.",
+            message_id="mail-001@example.com",
+        ),
+        GraphEmail(
+            graph_id="graph-102",
+            sender=other_user.email,
+            recipient=f"{app.inbound_email_alias}@pushit.com",
+            subject="Rejected alert",
+            text="This mail should be rejected.",
+            message_id="mail-002@example.com",
+        ),
+    ]
 
     result = poll_inbound_mailbox()
 
@@ -105,8 +65,8 @@ def test_poll_inbound_mailbox_creates_notification_for_matching_owner(mock_imap)
     assert Notification.objects.count() == 1
     notification = Notification.objects.get()
     assert notification.application_id == app.id
-    assert notification.title == "Alerte production"
-    assert notification.message == "Le batch est termine."
+    assert notification.title == "Production alert"
+    assert notification.message == "The batch is done."
     assert notification.status == NotificationStatus.DRAFT
     assert InboundEmailIngestionLog.objects.count() == 2
     created_log = InboundEmailIngestionLog.objects.get(status="created")
@@ -114,17 +74,146 @@ def test_poll_inbound_mailbox_creates_notification_for_matching_owner(mock_imap)
     assert created_log.notification_id == notification.id
     rejected_log = InboundEmailIngestionLog.objects.get(status="rejected")
     assert rejected_log.application_id is None
-    assert rejected_log.mailbox_uid == "102"
-    assert fake_client.seen_uids == ["101", "102"]
+    assert rejected_log.mailbox_uid == "graph-102"
+    assert mock_mark_read.call_count == 2
+    mock_mark_read.assert_any_call("graph-101")
+    mock_mark_read.assert_any_call("graph-102")
 
 
 @pytest.mark.django_db
-@override_settings(INBOUND_EMAIL_IMAP_ENABLED=False)
-def test_poll_inbound_mailbox_returns_skipped_when_disabled():
+@override_settings(GRAPH_CLIENT_ID="")
+def test_poll_inbound_mailbox_returns_skipped_when_not_configured():
     result = poll_inbound_mailbox()
 
     assert result == {
         "status": "skipped",
-        "reason": "disabled",
+        "reason": "not configured",
         "processed_count": 0,
     }
+
+
+@pytest.mark.django_db
+@override_settings(
+    INBOUND_EMAIL_DOMAIN="pushit.com",
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
+)
+@patch("applications.graph_mail.add_email_alias")
+@patch("notifications.inbound_mailbox.mark_email_read")
+@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
+    mock_fetch, mock_send_email, mock_mark_read, _mock_add_alias,
+):
+    owner = User.objects.create_user(
+        email="owner@example.com",
+        username="owner",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=owner, name="My App")
+
+    mock_fetch.return_value = [
+        GraphEmail(
+            graph_id="graph-201",
+            sender=owner.email,
+            recipient="nonexistent@pushit.com",
+            subject="Test",
+            text="Some content.",
+            message_id="mail-201@example.com",
+        ),
+    ]
+
+    result = poll_inbound_mailbox()
+
+    assert result["status"] == "ok"
+    assert result["rejected_count"] == 1
+    assert Notification.objects.count() == 0
+
+    mock_send_email.assert_called_once()
+    call_args = mock_send_email.call_args
+    assert call_args[1]["to"] == "owner@example.com"
+    assert "unknown recipient" in call_args[1]["subject"].lower()
+    assert app.inbound_email_address in call_args[1]["body"]
+
+
+@pytest.mark.django_db
+@override_settings(
+    INBOUND_EMAIL_DOMAIN="pushit.com",
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
+)
+@patch("applications.graph_mail.add_email_alias")
+@patch("notifications.inbound_mailbox.mark_email_read")
+@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
+    mock_fetch, mock_send_email, mock_mark_read, _mock_add_alias,
+):
+    owner = User.objects.create_user(
+        email="owner@example.com",
+        username="owner",
+        password="MotDePasseTresSolide123!",
+    )
+    other = User.objects.create_user(
+        email="other@example.com",
+        username="other",
+        password="MotDePasseTresSolide123!",
+    )
+    other_app = Application.objects.create(owner=other, name="Other App")
+    owner_app = Application.objects.create(owner=owner, name="Owner App")
+
+    mock_fetch.return_value = [
+        GraphEmail(
+            graph_id="graph-301",
+            sender=owner.email,
+            recipient=f"{other_app.inbound_email_alias}@pushit.com",
+            subject="Wrong app",
+            text="Some content.",
+            message_id="mail-301@example.com",
+        ),
+    ]
+
+    result = poll_inbound_mailbox()
+
+    assert result["rejected_count"] == 1
+    mock_send_email.assert_called_once()
+    body = mock_send_email.call_args[1]["body"]
+    # The valid addresses section should list owner's app, not other's app
+    address_list_section = body.split("valid inbound email addresses:")[1]
+    assert owner_app.inbound_email_address in address_list_section
+    assert other_app.inbound_email_address not in address_list_section
+
+
+@pytest.mark.django_db
+@override_settings(
+    INBOUND_EMAIL_DOMAIN="pushit.com",
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
+)
+@patch("notifications.inbound_mailbox.mark_email_read")
+@patch("notifications.inbound_mailbox.send_email")
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_poll_does_not_send_reply_for_unknown_sender(
+    mock_fetch, mock_send_email, mock_mark_read,
+):
+    mock_fetch.return_value = [
+        GraphEmail(
+            graph_id="graph-401",
+            sender="stranger@example.com",
+            recipient="nonexistent@pushit.com",
+            subject="Test",
+            text="Some content.",
+            message_id="mail-401@example.com",
+        ),
+    ]
+
+    result = poll_inbound_mailbox()
+
+    assert result["rejected_count"] == 1
+    mock_send_email.assert_not_called()
