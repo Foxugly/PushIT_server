@@ -212,6 +212,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found
+  /api/v1/apps/{app_id}/qrcode/:
+    post:
+      operationId: api_v1_apps_qrcode_create
+      description: Returns a PNG image of a QR code encoding the provided app token
+        in plain text (e.g. `apt_xxxxxxxxxxxx`). The token must match the application's
+        current token. Mobile clients scan this QR code to link their device to the
+        application.
+      summary: Generate QR code for an app token
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+          description: QR code PNG image
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
   /api/v1/apps/{app_id}/quiet-periods/:
     get:
       operationId: api_v1_apps_quiet_periods_list
@@ -505,6 +537,205 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found
+  /api/v1/apps/{app_id}/templates/:
+    get:
+      operationId: api_v1_apps_templates_list
+      description: Returns the notification templates for an application owned by
+        the authenticated user.
+      summary: List notification templates
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - Notification Templates
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationTemplateReadList'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
+    post:
+      operationId: api_v1_apps_templates_create
+      description: Creates a notification template for an application. Use `{{variable_name}}`
+        placeholders in title_template and message_template. These will be replaced
+        by the variables dict when creating a notification from the template.
+      summary: Create a notification template
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notification Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTemplateWrite'
+            examples:
+              WelcomeTemplate:
+                value:
+                  name: welcome
+                  title_template: Welcome {{username}}
+                  message_template: Hello {{username}}, welcome to {{app_name}}!
+                summary: Welcome template
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationTemplateWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationTemplateWrite'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplateRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplateValidationErrorResponse'
+          description: Invalid data
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
+  /api/v1/apps/{app_id}/templates/{template_id}/:
+    get:
+      operationId: api_v1_apps_templates_retrieve
+      description: Returns the detail of a notification template.
+      summary: Notification template detail
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: template_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notification Templates
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplateRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Template not found
+    patch:
+      operationId: api_v1_apps_templates_partial_update
+      description: Updates an existing notification template.
+      summary: Update a notification template
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: template_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notification Templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationTemplateWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationTemplateWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationTemplateWrite'
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplateRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplateValidationErrorResponse'
+          description: Invalid data
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Template not found
+    delete:
+      operationId: api_v1_apps_templates_destroy
+      description: Deletes a notification template.
+      summary: Delete a notification template
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: template_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notification Templates
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Template not found
   /api/v1/auth/login/:
     post:
       operationId: api_v1_auth_login_create
@@ -1341,24 +1572,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                ScheduledNotificationNotSendableYet:
-                  value:
-                    code: notification_not_sendable
-                    detail: Notification 42 cannot be queued from status 'scheduled'.
-                  summary: Scheduled notification not sendable yet
           description: Notification already sent, already queued, or not sendable
         '503':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                QueueUnavailable:
-                  value:
-                    code: notification_queue_unavailable
-                    detail: Send queue is temporarily unavailable.
-                  summary: Queue unavailable
           description: Celery broker unavailable
   /api/v1/notifications/{id}/:
     get:
@@ -1519,6 +1738,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Access denied
+  /api/v1/notifications/app/bulk-send/:
+    post:
+      operationId: api_v1_notifications_app_bulk_send_create
+      description: Queues multiple notifications for async sending. Returns queued
+        IDs and per-notification errors.
+      summary: Bulk queue notifications via app token
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkSendAppTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkSendAppTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkSendAppTokenRequest'
+        required: true
+      security:
+      - AppTokenAuth: []
+      responses:
+        '200':
+          description: Bulk send result with queued and errors
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid or missing app token
   /api/v1/notifications/app/create/:
     post:
       operationId: api_v1_notifications_app_create_create
@@ -1556,7 +1806,6 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/NotificationCreateWithAppToken'
-        required: true
       security:
       - AppTokenAuth: []
       responses:
@@ -1640,6 +1889,31 @@ paths:
                       payload.
                   summary: Idempotency conflict
           description: Idempotency key already used with a different payload
+  /api/v1/notifications/bulk-send/:
+    post:
+      operationId: api_v1_notifications_bulk_send_create
+      description: Queues multiple notifications for async sending. Returns queued
+        IDs and per-notification errors.
+      summary: Bulk queue notifications for sending
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkSendRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BulkSendRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BulkSendRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Bulk send result with queued and errors
   /api/v1/notifications/future/:
     get:
       operationId: api_v1_notifications_future_list
@@ -1965,8 +2239,14 @@ paths:
     get:
       operationId: api_v1_notifications_stats_list
       description: Returns the notification count by status for applications owned
-        by the authenticated user.
+        by the authenticated user. Optionally filtered by application.
       summary: List notification statistics
+      parameters:
+      - in: query
+        name: application_id
+        schema:
+          type: integer
+        description: Filter statistics by application.
       tags:
       - Notifications
       security:
@@ -2103,6 +2383,10 @@ components:
           maxLength: 120
         description:
           type: string
+        webhook_url:
+          type: string
+          format: uri
+          maxLength: 500
         app_token_prefix:
           type: string
           readOnly: true
@@ -2283,6 +2567,8 @@ components:
             type: string
     ApplicationQuietPeriodWrite:
       type: object
+      description: Shared validation, normalization, and update logic for quiet period
+        serializers.
       properties:
         id:
           type: integer
@@ -2348,6 +2634,10 @@ components:
         inbound_email_address:
           type: string
           readOnly: true
+        webhook_url:
+          type: string
+          format: uri
+          maxLength: 500
         is_active:
           type: boolean
         revoked_at:
@@ -2422,6 +2712,24 @@ components:
           type: array
           items:
             type: string
+    BulkSendAppTokenRequest:
+      type: object
+      properties:
+        notification_ids:
+          type: array
+          items:
+            type: integer
+      required:
+      - notification_ids
+    BulkSendRequest:
+      type: object
+      properties:
+        notification_ids:
+          type: array
+          items:
+            type: integer
+      required:
+      - notification_ids
     DeviceLinkWithAppToken:
       type: object
       properties:
@@ -2609,6 +2917,8 @@ components:
             type: string
     DeviceQuietPeriodWrite:
       type: object
+      description: Shared validation, normalization, and update logic for quiet period
+        serializers.
       properties:
         id:
           type: integer
@@ -2905,6 +3215,14 @@ components:
           maxLength: 255
         message:
           type: string
+        template_id:
+          type: integer
+          writeOnly: true
+        variables:
+          type: object
+          additionalProperties:
+            type: string
+          writeOnly: true
         status:
           allOf:
           - $ref: '#/components/schemas/StatusEnum'
@@ -2927,10 +3245,8 @@ components:
       - created_at
       - device_ids
       - id
-      - message
       - sent_at
       - status
-      - title
     NotificationCreateValidationErrorResponse:
       type: object
       properties:
@@ -2982,6 +3298,14 @@ components:
           maxLength: 255
         message:
           type: string
+        template_id:
+          type: integer
+          writeOnly: true
+        variables:
+          type: object
+          additionalProperties:
+            type: string
+          writeOnly: true
         status:
           allOf:
           - $ref: '#/components/schemas/StatusEnum'
@@ -3002,10 +3326,8 @@ components:
       required:
       - created_at
       - id
-      - message
       - sent_at
       - status
-      - title
     NotificationCreateWithAppTokenValidationErrorResponse:
       type: object
       properties:
@@ -3288,6 +3610,101 @@ components:
       required:
       - count
       - status
+    NotificationTemplateRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        application:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        title_template:
+          type: string
+          readOnly: true
+        message_template:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - application
+      - created_at
+      - id
+      - message_template
+      - name
+      - title_template
+      - updated_at
+    NotificationTemplateValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/NotificationTemplateValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    NotificationTemplateValidationErrorResponseFields:
+      type: object
+      properties:
+        name:
+          type: array
+          items:
+            type: string
+        title_template:
+          type: array
+          items:
+            type: string
+        message_template:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
+    NotificationTemplateWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        title_template:
+          type: string
+          maxLength: 255
+        message_template:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - message_template
+      - name
+      - title_template
+      - updated_at
     PaginatedApplicationQuietPeriodReadList:
       type: object
       required:
@@ -3403,8 +3820,33 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotificationRead'
+    PaginatedNotificationTemplateReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationTemplateRead'
     PatchedApplicationQuietPeriodWrite:
       type: object
+      description: Shared validation, normalization, and update logic for quiet period
+        serializers.
       properties:
         id:
           type: integer
@@ -3454,8 +3896,14 @@ components:
           maxLength: 120
         description:
           type: string
+        webhook_url:
+          type: string
+          format: uri
+          maxLength: 500
     PatchedDeviceQuietPeriodWrite:
       type: object
+      description: Shared validation, normalization, and update logic for quiet period
+        serializers.
       properties:
         id:
           type: integer
@@ -3535,6 +3983,28 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+    PatchedNotificationTemplateWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        title_template:
+          type: string
+          maxLength: 255
+        message_template:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
     PatchedUserLanguageUpdate:
       type: object
       properties:
