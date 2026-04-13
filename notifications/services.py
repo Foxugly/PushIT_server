@@ -16,6 +16,7 @@ from .push import (
     PushProviderError,
 )
 from .scheduling import get_quiet_period_end_for_application, get_quiet_period_end_from_iterable
+from .webhooks import send_webhook_callback
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +287,11 @@ def send_notification(notification_id: int) -> dict:
             status=NotificationStatus.NO_TARGET,
             sent_at=None,
         )
+        send_webhook_callback(
+            application=notification.application,
+            notification_id=notification.id,
+            final_status=NotificationStatus.NO_TARGET,
+        )
         increment_counter(
             "pushit_notification_send_total",
             labels={"outcome": NotificationStatus.NO_TARGET},
@@ -462,9 +468,17 @@ def send_notification(notification_id: int) -> dict:
     else:
         final_status = NotificationStatus.PARTIAL
 
+    sent_at_value = timezone.now() if final_status == NotificationStatus.SENT else None
     Notification.objects.filter(id=notification.id).update(
         status=final_status,
-        sent_at=timezone.now() if final_status == NotificationStatus.SENT else None,
+        sent_at=sent_at_value,
+    )
+
+    send_webhook_callback(
+        application=notification.application,
+        notification_id=notification.id,
+        final_status=final_status,
+        sent_at=sent_at_value,
     )
 
     logger.info(

@@ -61,6 +61,7 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
             "app_token_prefix",
             "inbound_email_alias",
             "inbound_email_address",
+            "webhook_url",
             "is_active",
             "revoked_at",
             "last_used_at",
@@ -78,6 +79,7 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
+            "webhook_url",
             "app_token_prefix",
             "inbound_email_alias",
             "inbound_email_address",
@@ -119,7 +121,7 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
 class ApplicationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
-        fields = ["name", "description"]
+        fields = ["name", "description", "webhook_url"]
 
 
 class ApplicationQuietPeriodReadSerializer(serializers.ModelSerializer):

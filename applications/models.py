@@ -20,6 +20,7 @@ class Application(models.Model):
     app_token_prefix = models.CharField(max_length=24, db_index=True)
     app_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
     inbound_email_alias = models.CharField(max_length=120, unique=True, db_index=True)
+    webhook_url = models.URLField(max_length=500, blank=True)
 
     is_active = models.BooleanField(default=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
