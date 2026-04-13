@@ -379,5 +379,9 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
         if ordering:
             queryset = order_notifications_by_effective(queryset, effective_scheduled_map, ordering)
 
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)

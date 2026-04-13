@@ -78,7 +78,7 @@ def test_send_notification_endpoint_rejects_already_queued(mock_delay):
 
     assert response.status_code == 409
     assert response.data["code"] == "notification_not_sendable"
-    assert "ne peut pas être mise en file" in response.data["detail"]
+    assert "cannot be queued" in response.data["detail"]
     mock_delay.assert_not_called()
 
 
@@ -153,7 +153,7 @@ def test_send_notification_endpoint_rejects_already_sent(mock_delay):
 
     assert response.status_code == 409
     assert response.data["code"] == "notification_not_sendable"
-    assert "ne peut pas être mise en file" in response.data["detail"]
+    assert "cannot be queued" in response.data["detail"]
     mock_delay.assert_not_called()
 
 

@@ -1,3 +1,5 @@
+import hmac
+
 from django.conf import settings
 from django.db import connections
 from django.db.utils import Error as DatabaseError
@@ -167,7 +169,7 @@ class MetricsApiView(APIView):
         expected_token = settings.METRICS_AUTH_TOKEN
         if expected_token:
             provided_token = request.headers.get("X-Metrics-Token", "").strip()
-            if provided_token != expected_token:
+            if not hmac.compare_digest(provided_token, expected_token):
                 return JsonResponse(
                     {
                         "status": "error",

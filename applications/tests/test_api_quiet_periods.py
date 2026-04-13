@@ -41,7 +41,7 @@ def test_create_list_update_and_delete_quiet_period():
 
     list_response = client.get(f"/api/v1/apps/{app.id}/quiet-periods/")
     assert list_response.status_code == 200
-    assert len(list_response.data) == 1
+    assert list_response.data["count"] == 1
 
     patch_response = client.patch(
         f"/api/v1/apps/{app.id}/quiet-periods/{quiet_period_id}/",
@@ -56,7 +56,7 @@ def test_create_list_update_and_delete_quiet_period():
 
     list_response = client.get(f"/api/v1/apps/{app.id}/quiet-periods/")
     assert list_response.status_code == 200
-    assert list_response.data == []
+    assert list_response.data["count"] == 0
 
 
 @pytest.mark.django_db

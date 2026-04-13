@@ -83,12 +83,7 @@ class Application(models.Model):
         return f"{self.name} ({self.owner})"
 
 
-class ApplicationQuietPeriod(models.Model):
-    application = models.ForeignKey(
-        Application,
-        on_delete=models.CASCADE,
-        related_name="quiet_periods",
-    )
+class AbstractQuietPeriod(models.Model):
     name = models.CharField(max_length=120, blank=True)
     period_type = models.CharField(max_length=16, choices=QuietPeriodType.choices, default=QuietPeriodType.ONCE)
     start_at = models.DateTimeField(null=True, blank=True)
@@ -101,7 +96,16 @@ class ApplicationQuietPeriod(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        abstract = True
         ordering = ["id"]
+
+
+class ApplicationQuietPeriod(AbstractQuietPeriod):
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="quiet_periods",
+    )
 
     def __str__(self):
         if self.period_type == QuietPeriodType.ONCE and self.start_at is not None:

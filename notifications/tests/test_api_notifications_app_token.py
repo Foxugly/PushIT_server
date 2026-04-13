@@ -290,8 +290,9 @@ def test_list_notifications_with_app_token_can_filter_by_effective_scheduled_ran
     )
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.data] == [direct_notification.id, shifted_notification.id]
-    assert immediate_notification.id not in [item["id"] for item in response.data]
+    results = response.data["results"]
+    assert [item["id"] for item in results] == [direct_notification.id, shifted_notification.id]
+    assert immediate_notification.id not in [item["id"] for item in results]
 
 
 @pytest.mark.django_db
@@ -340,7 +341,7 @@ def test_list_notifications_with_app_token_can_filter_by_status_and_shift_flag()
     )
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.data] == [shifted_notification.id]
+    assert [item["id"] for item in response.data["results"]] == [shifted_notification.id]
 
 
 @pytest.mark.django_db

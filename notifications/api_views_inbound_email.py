@@ -1,3 +1,5 @@
+import hmac
+
 from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
@@ -86,7 +88,7 @@ class NotificationCreateFromInboundEmailApiView(APIView):
     def post(self, request):
         provided_secret = request.headers.get("X-Inbound-Email-Secret", "").strip()
         expected_secret = settings.INBOUND_EMAIL_SECRET.strip()
-        if not provided_secret or provided_secret != expected_secret:
+        if not provided_secret or not hmac.compare_digest(provided_secret, expected_secret):
             return error_response(
                 code="inbound_email_forbidden",
                 detail="Secret inbound email invalide ou manquant.",
