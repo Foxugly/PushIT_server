@@ -1,7 +1,9 @@
+from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
-from rest_framework import generics, status
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import generics, serializers, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from applications.authentication import AppTokenAuthentication
 from applications.permissions import HasAppToken
@@ -346,3 +348,62 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class NotificationBulkSendWithAppTokenApiView(APIView):
+    authentication_classes = [AppTokenAuthentication]
+    permission_classes = [HasAppToken]
+    throttle_classes = [AppTokenRateThrottle]
+
+    @extend_schema(
+        summary="Bulk queue notifications via app token",
+        description="Queues multiple notifications for async sending. Returns queued IDs and per-notification errors.",
+        tags=["Notifications"],
+        auth=[{"AppTokenAuth": []}],
+        request=inline_serializer(
+            name="BulkSendAppTokenRequest",
+            fields={"notification_ids": serializers.ListField(child=serializers.IntegerField())},
+        ),
+        responses={
+            200: OpenApiResponse(description="Bulk send result with queued and errors"),
+            401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
+        },
+    )
+    def post(self, request):
+        from .api_views import _try_queue_notification
+
+        notification_ids = request.data.get("notification_ids", [])
+        if not notification_ids:
+            return error_response(
+                code="validation_error",
+                detail="notification_ids is required and cannot be empty.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        application = request.auth_application
+        use_owner_in_queue = not settings.DB_SUPPORTS_ROW_LOCKING
+        owner_filter = {"application": application}
+
+        notifications = (
+            Notification.objects.select_related("application")
+            .filter(id__in=notification_ids, application=application)
+        )
+        found = {n.id: n for n in notifications}
+
+        queued = []
+        errors = []
+
+        for nid in notification_ids:
+            if nid not in found:
+                errors.append({"id": nid, "code": "notification_not_found", "detail": "Notification not found."})
+                continue
+            success, result = _try_queue_notification(
+                found[nid],
+                owner_filter=owner_filter if use_owner_in_queue else None,
+            )
+            if success:
+                queued.append(result["notification_id"])
+            else:
+                errors.append(result)
+
+        return Response({"queued": queued, "errors": errors}, status=status.HTTP_200_OK)

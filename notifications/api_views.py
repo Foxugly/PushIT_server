@@ -10,8 +10,9 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
     extend_schema_view,
+    inline_serializer,
 )
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -604,8 +605,95 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
             raise NotFound("Future notification not found.", code="notification_future_not_found")
 
 
-@extend_schema_view(
-    post=extend_schema(
+def _try_queue_notification(notification, owner_filter=None):
+    """Attempt to queue a single notification. Returns (success, result_dict)."""
+    if (
+        notification.status == NotificationStatus.SCHEDULED
+        and notification.scheduled_for is not None
+        and notification.scheduled_for > timezone.now()
+    ):
+        return False, {
+            "id": notification.id,
+            "code": "notification_not_sendable",
+            "detail": f"Notification {notification.id} cannot be queued from status '{notification.status}'.",
+        }
+
+    if notification.status not in ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE:
+        return False, {
+            "id": notification.id,
+            "code": "notification_not_sendable",
+            "detail": f"Notification {notification.id} cannot be queued from status '{notification.status}'.",
+        }
+
+    previous_status = notification.status
+    qs_filter = {"id": notification.id, "status": previous_status}
+    if owner_filter:
+        qs_filter.update(owner_filter)
+
+    try:
+        queued = Notification.objects.filter(**qs_filter).update(
+            status=NotificationStatus.QUEUED,
+        )
+    except OperationalError:
+        return False, {
+            "id": notification.id,
+            "code": "notification_not_sendable",
+            "detail": f"Notification {notification.id} cannot be queued from status '{notification.status}'.",
+        }
+
+    if queued == 0:
+        current_status = (
+            Notification.objects.filter(id=notification.id)
+            .values_list("status", flat=True)
+            .first()
+        )
+        if current_status is None:
+            return False, {"id": notification.id, "code": "notification_not_found", "detail": "Notification not found."}
+        return False, {
+            "id": notification.id,
+            "code": "notification_not_sendable",
+            "detail": f"Notification {notification.id} cannot be queued from status '{current_status}'.",
+        }
+
+    notification.status = NotificationStatus.QUEUED
+    try:
+        task = send_notification_task.delay(notification.id)
+    except Exception:
+        Notification.objects.filter(
+            id=notification.id,
+            status=NotificationStatus.QUEUED,
+        ).update(status=previous_status)
+        return False, {
+            "id": notification.id,
+            "code": "notification_queue_unavailable",
+            "detail": "Send queue is temporarily unavailable.",
+        }
+
+    return True, {
+        "notification_id": notification.id,
+        "status": NotificationStatus.QUEUED,
+        "task_id": task.id,
+    }
+
+
+def _fetch_notification(notification_id, owner_filter):
+    if settings.DB_SUPPORTS_ROW_LOCKING:
+        with transaction.atomic():
+            return (
+                Notification.objects.select_for_update()
+                .select_related("application")
+                .get(id=notification_id, **owner_filter)
+            )
+    return (
+        Notification.objects.select_related("application")
+        .get(id=notification_id, **owner_filter)
+    )
+
+
+class NotificationSendApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
         summary="Queue a notification for sending",
         description="Schedules asynchronous sending of a notification via Celery. Future notifications (`scheduled`) cannot be manually sent until `scheduled_for` is reached.",
         tags=["Notifications"],
@@ -617,137 +705,18 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
             409: OpenApiResponse(
                 response=DetailResponseSerializer,
                 description="Notification already sent, already queued, or not sendable",
-                examples=[
-                    OpenApiExample(
-                        "Scheduled notification not sendable yet",
-                        value={
-                            "code": "notification_not_sendable",
-                            "detail": (
-                                "Notification 42 cannot be queued "
-                                "from status 'scheduled'."
-                            ),
-                        },
-                        response_only=True,
-                        status_codes=["409"],
-                    )
-                ],
             ),
             503: OpenApiResponse(
                 response=DetailResponseSerializer,
                 description="Celery broker unavailable",
-                examples=[
-                    OpenApiExample(
-                        "Queue unavailable",
-                        value={
-                            "code": "notification_queue_unavailable",
-                            "detail": "Send queue is temporarily unavailable.",
-                        },
-                        response_only=True,
-                        status_codes=["503"],
-                    )
-                ],
             ),
         },
     )
-)
-class NotificationSendApiView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    @staticmethod
-    def _build_not_sendable_response(notification_id, notification_status):
-        return Response(
-            {
-                "code": "notification_not_sendable",
-                "detail": (
-                    f"Notification {notification_id} cannot be queued "
-                    f"from status '{notification_status}'."
-                ),
-            },
-            status=status.HTTP_409_CONFLICT,
-        )
-
-    @staticmethod
-    def _queue_notification_task(notification, previous_status):
-        try:
-            task = send_notification_task.delay(notification.id)
-        except Exception:
-            Notification.objects.filter(
-                id=notification.id,
-                status=NotificationStatus.QUEUED,
-            ).update(status=previous_status)
-            return error_response(
-                code="notification_queue_unavailable",
-                detail="Send queue is temporarily unavailable.",
-                http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        return Response(
-            {
-                "status": NotificationStatus.QUEUED,
-                "notification_id": notification.id,
-                "task_id": task.id,
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-    def _validate_and_queue(self, notification, owner_filter=None):
-        if (
-            notification.status == NotificationStatus.SCHEDULED
-            and notification.scheduled_for is not None
-            and notification.scheduled_for > timezone.now()
-        ):
-            return self._build_not_sendable_response(notification.id, notification.status)
-
-        if notification.status not in ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE:
-            return self._build_not_sendable_response(notification.id, notification.status)
-
-        previous_status = notification.status
-        qs_filter = {"id": notification.id, "status": previous_status}
-        if owner_filter:
-            qs_filter.update(owner_filter)
-
-        try:
-            queued = Notification.objects.filter(**qs_filter).update(
-                status=NotificationStatus.QUEUED,
-            )
-        except OperationalError:
-            return self._build_not_sendable_response(notification.id, notification.status)
-
-        if queued == 0:
-            current_status = (
-                Notification.objects.filter(id=notification.id)
-                .values_list("status", flat=True)
-                .first()
-            )
-            if current_status is None:
-                return error_response(
-                    code="notification_not_found",
-                    detail="Notification not found.",
-                    http_status=status.HTTP_404_NOT_FOUND,
-                )
-            return self._build_not_sendable_response(notification.id, current_status)
-
-        notification.status = NotificationStatus.QUEUED
-        return self._queue_notification_task(notification, previous_status)
-
-    def _fetch_notification(self, notification_id, owner_filter):
-        if settings.DB_SUPPORTS_ROW_LOCKING:
-            with transaction.atomic():
-                return (
-                    Notification.objects.select_for_update()
-                    .select_related("application")
-                    .get(id=notification_id, **owner_filter)
-                )
-        return (
-            Notification.objects.select_related("application")
-            .get(id=notification_id, **owner_filter)
-        )
-
     def post(self, request, notification_id):
         owner_filter = {"application__owner": request.user}
 
         try:
-            notification = self._fetch_notification(notification_id, owner_filter)
+            notification = _fetch_notification(notification_id, owner_filter)
         except Notification.DoesNotExist:
             return error_response(
                 code="notification_not_found",
@@ -755,10 +724,66 @@ class NotificationSendApiView(APIView):
                 http_status=status.HTTP_404_NOT_FOUND,
             )
 
-        return self._validate_and_queue(
+        success, result = _try_queue_notification(
             notification,
             owner_filter=owner_filter if not settings.DB_SUPPORTS_ROW_LOCKING else None,
         )
+        if success:
+            return Response(result, status=status.HTTP_202_ACCEPTED)
+        return Response(result, status=status.HTTP_409_CONFLICT if result["code"] != "notification_queue_unavailable" else status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class NotificationBulkSendApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Bulk queue notifications for sending",
+        description="Queues multiple notifications for async sending. Returns queued IDs and per-notification errors.",
+        tags=["Notifications"],
+        auth=[{"BearerAuth": []}],
+        request=inline_serializer(
+            name="BulkSendRequest",
+            fields={"notification_ids": serializers.ListField(child=serializers.IntegerField())},
+        ),
+        responses={
+            200: OpenApiResponse(description="Bulk send result with queued and errors"),
+        },
+    )
+    def post(self, request):
+        notification_ids = request.data.get("notification_ids", [])
+        if not notification_ids:
+            return error_response(
+                code="validation_error",
+                detail="notification_ids is required and cannot be empty.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        owner_filter = {"application__owner": request.user}
+        use_owner_in_queue = not settings.DB_SUPPORTS_ROW_LOCKING
+
+        notifications = (
+            Notification.objects.select_related("application")
+            .filter(id__in=notification_ids, **owner_filter)
+        )
+        found = {n.id: n for n in notifications}
+
+        queued = []
+        errors = []
+
+        for nid in notification_ids:
+            if nid not in found:
+                errors.append({"id": nid, "code": "notification_not_found", "detail": "Notification not found."})
+                continue
+            success, result = _try_queue_notification(
+                found[nid],
+                owner_filter=owner_filter if use_owner_in_queue else None,
+            )
+            if success:
+                queued.append(result["notification_id"])
+            else:
+                errors.append(result)
+
+        return Response({"queued": queued, "errors": errors}, status=status.HTTP_200_OK)
 
 
 @extend_schema_view(
