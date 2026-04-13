@@ -1,3 +1,7 @@
+import io
+
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound
@@ -241,6 +245,49 @@ class ApplicationRevokeTokenApiView(APIView):
         app = _get_app_or_404(app_id, request.user)
         app.revoke_token()
         return Response({"app_id": app.id, "revoked_at": app.revoked_at}, status=status.HTTP_200_OK)
+
+
+class ApplicationQrCodeApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Generate QR code for an app token",
+        description=(
+            "Returns a PNG image of a QR code encoding the provided app token "
+            "in plain text (e.g. `apt_xxxxxxxxxxxx`). The token must match the "
+            "application's current token. Mobile clients scan this QR code "
+            "to link their device to the application."
+        ),
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        request=None,
+        responses={
+            (200, "image/png"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="QR code PNG image",
+            ),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    )
+    def post(self, request, app_id):
+        import qrcode
+
+        app = _get_app_or_404(app_id, request.user)
+
+        raw_token = (request.data.get("app_token") or "").strip()
+        if not raw_token or not app.check_app_token(raw_token):
+            raise NotFound("Invalid app token.", code="app_token_invalid")
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(raw_token)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return HttpResponse(buffer.getvalue(), content_type="image/png")
 
 
 class UserOwnedApplicationMixin:

@@ -6,6 +6,7 @@ from notifications.api_views_templates import (
 from .api_views import (
     ApplicationDetailApiView, ApplicationListCreateApiView, ApplicationRegenerateTokenApiView,
     ApplicationRevokeTokenApiView, ApplicationActivateApiView, ApplicationDeactivateApiView,
+    ApplicationQrCodeApiView,
     ApplicationQuietPeriodListCreateApiView, ApplicationQuietPeriodDetailApiView,
 )
 
@@ -16,6 +17,7 @@ urlpatterns = [
     path("<int:app_id>/activate/", ApplicationActivateApiView.as_view(), name="app-activate"),
     path("<int:app_id>/deactivate/", ApplicationDeactivateApiView.as_view(), name="app-deactivate"),
     path("<int:app_id>/revoke-token/", ApplicationRevokeTokenApiView.as_view(), name="app-revoke-token"),
+    path("<int:app_id>/qrcode/", ApplicationQrCodeApiView.as_view(), name="app-qrcode"),
     path("<int:app_id>/quiet-periods/", ApplicationQuietPeriodListCreateApiView.as_view(), name="app-quiet-period-list-create"),
     path("<int:app_id>/quiet-periods/<int:quiet_period_id>/", ApplicationQuietPeriodDetailApiView.as_view(), name="app-quiet-period-detail"),
     path("<int:app_id>/templates/", NotificationTemplateListCreateApiView.as_view(), name="app-template-list-create"),
