@@ -57,6 +57,41 @@ class Notification(models.Model):
     def __str__(self):
         return self.title
 
+
+class NotificationTemplate(models.Model):
+    application = models.ForeignKey(
+        Application,
+        on_delete=models.CASCADE,
+        related_name="notification_templates",
+    )
+    name = models.CharField(max_length=120)
+    title_template = models.CharField(max_length=255)
+    message_template = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "name"],
+                name="uniq_template_app_name",
+            )
+        ]
+
+    def render(self, variables: dict | None = None) -> tuple[str, str]:
+        title = self.title_template
+        message = self.message_template
+        for key, value in (variables or {}).items():
+            placeholder = "{{" + key + "}}"
+            title = title.replace(placeholder, str(value))
+            message = message.replace(placeholder, str(value))
+        return title, message
+
+    def __str__(self):
+        return f"{self.name} ({self.application})"
+
+
 class NotificationDelivery(models.Model):
     notification = models.ForeignKey(Notification, on_delete=models.CASCADE, related_name="deliveries",)
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="deliveries",)

@@ -12,7 +12,7 @@ from config.api_errors import (
 )
 from devices.models import Device, DeviceTokenStatus
 from .inbound_email import extract_subject_schedule
-from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus
+from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus, NotificationTemplate
 from .scheduling import compute_effective_scheduled_for
 
 NotificationQueuedResponseSerializer = inline_serializer(
@@ -146,8 +146,15 @@ class NotificationReadSerializer(serializers.ModelSerializer):
 
 
 class BaseNotificationWriteSerializer(serializers.ModelSerializer):
-    title = serializers.CharField(max_length=255, trim_whitespace=True)
-    message = serializers.CharField(trim_whitespace=True)
+    title = serializers.CharField(max_length=255, trim_whitespace=True, required=False)
+    message = serializers.CharField(trim_whitespace=True, required=False)
+    template_id = serializers.IntegerField(required=False, write_only=True)
+    variables = serializers.DictField(
+        child=serializers.CharField(),
+        required=False,
+        write_only=True,
+        default=dict,
+    )
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True)
 
     def validate_title(self, value):
@@ -168,6 +175,37 @@ class BaseNotificationWriteSerializer(serializers.ModelSerializer):
         if value <= timezone.now():
             raise serializers.ValidationError("Scheduled date must be in the future.")
         return value
+
+    def _resolve_template(self, attrs):
+        template_id = attrs.pop("template_id", None)
+        variables = attrs.pop("variables", {})
+        has_title = bool(attrs.get("title"))
+        has_message = bool(attrs.get("message"))
+
+        if template_id is not None:
+            if has_title or has_message:
+                raise serializers.ValidationError({
+                    "template_id": ["Cannot use template_id together with title/message."],
+                })
+            application = self.context.get("application")
+            if application is None:
+                raise serializers.ValidationError({"template_id": ["Application context required."]})
+            template = NotificationTemplate.objects.filter(
+                id=template_id,
+                application=application,
+            ).first()
+            if template is None:
+                raise serializers.ValidationError({"template_id": ["Template not found."]})
+            title, message = template.render(variables)
+            attrs["title"] = title
+            attrs["message"] = message
+        else:
+            if not has_title:
+                raise serializers.ValidationError({"title": ["This field is required when template_id is not provided."]})
+            if not has_message:
+                raise serializers.ValidationError({"message": ["This field is required when template_id is not provided."]})
+
+        return attrs
 
     @staticmethod
     def build_status_from_scheduled_for(scheduled_for):
@@ -192,6 +230,8 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
             "device_ids",
             "title",
             "message",
+            "template_id",
+            "variables",
             "status",
             "created_at",
             "scheduled_for",
@@ -208,6 +248,9 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
             app = Application.objects.get(id=application_id, owner=request.user)
         except Application.DoesNotExist:
             raise serializers.ValidationError({"application_id": ["Application not found."]})
+
+        self.context["application"] = app
+        attrs = self._resolve_template(attrs)
 
         normalized_device_ids = list(dict.fromkeys(device_ids))
         devices_by_id = {
@@ -230,7 +273,6 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
                 }
             )
 
-        self.context["application"] = app
         self.context["target_devices"] = devices_by_id
         attrs["device_ids"] = normalized_device_ids
         return attrs
@@ -269,12 +311,17 @@ class NotificationCreateWithAppTokenSerializer(BaseNotificationWriteSerializer):
             "id",
             "title",
             "message",
+            "template_id",
+            "variables",
             "status",
             "created_at",
             "scheduled_for",
             "sent_at",
         ]
         read_only_fields = ["id", "status", "created_at", "sent_at"]
+
+    def validate(self, attrs):
+        return self._resolve_template(attrs)
 
     def create(self, validated_data):
         raise NotImplementedError(
@@ -392,3 +439,70 @@ class NotificationFutureUpdateSerializer(BaseNotificationWriteSerializer):
 class NotificationStatsSerializer(serializers.Serializer):
     status = serializers.CharField()
     count = serializers.IntegerField()
+
+
+NotificationTemplateValidationErrorResponseSerializer = build_validation_error_serializer(
+    "NotificationTemplateValidationErrorResponse",
+    ["name", "title_template", "message_template"],
+)
+
+
+class NotificationTemplateReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationTemplate
+        fields = [
+            "id",
+            "application",
+            "name",
+            "title_template",
+            "message_template",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class NotificationTemplateWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationTemplate
+        fields = [
+            "id",
+            "name",
+            "title_template",
+            "message_template",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Name cannot be empty.")
+        return value.strip()
+
+    def validate(self, attrs):
+        name = attrs.get("name")
+        application = self.context.get("application")
+        if name and application:
+            qs = NotificationTemplate.objects.filter(application=application, name=name)
+            if self.instance:
+                qs = qs.exclude(id=self.instance.id)
+            if qs.exists():
+                raise serializers.ValidationError({"name": ["A template with this name already exists for this application."]})
+        return attrs
+
+    def validate_title_template(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Title template cannot be empty.")
+        return value
+
+    def validate_message_template(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Message template cannot be empty.")
+        return value
+
+    def create(self, validated_data):
+        return NotificationTemplate.objects.create(
+            application=self.context["application"],
+            **validated_data,
+        )
