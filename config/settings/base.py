@@ -73,10 +73,16 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": SQLITE_NAME,
+        "ENGINE": env("DATABASE_ENGINE", default="django.db.backends.sqlite3"),
+        "NAME": env("DATABASE_NAME", default=str(SQLITE_NAME)),
+        "HOST": env("DATABASE_HOST", default=""),
+        "PORT": env("DATABASE_PORT", default=""),
+        "USER": env("DATABASE_USER", default=""),
+        "PASSWORD": env("DATABASE_PASSWORD", default=""),
     }
 }
+
+DB_SUPPORTS_ROW_LOCKING = "sqlite" not in DATABASES["default"]["ENGINE"]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

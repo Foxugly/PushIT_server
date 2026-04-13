@@ -1,4 +1,5 @@
-from django.db import OperationalError, connection, transaction
+from django.conf import settings
+from django.db import OperationalError, transaction
 from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
@@ -729,52 +730,35 @@ class NotificationSendApiView(APIView):
         notification.status = NotificationStatus.QUEUED
         return self._queue_notification_task(notification, previous_status)
 
-    def post(self, request, notification_id):
-        owner_filter = {"application__owner": request.user}
-
-        if connection.vendor == "sqlite":
-            notification = (
-                Notification.objects.select_related("application")
-                .filter(id=notification_id, **owner_filter)
-                .first()
-            )
-            if notification is None:
-                return error_response(
-                    code="notification_not_found",
-                    detail="Notification not found.",
-                    http_status=status.HTTP_404_NOT_FOUND,
-                )
-            return self._validate_and_queue(notification, owner_filter=owner_filter)
-
-        try:
+    def _fetch_notification(self, notification_id, owner_filter):
+        if settings.DB_SUPPORTS_ROW_LOCKING:
             with transaction.atomic():
-                notification = (
+                return (
                     Notification.objects.select_for_update()
                     .select_related("application")
                     .get(id=notification_id, **owner_filter)
                 )
-                return self._validate_and_queue(notification)
-        except OperationalError:
-            if connection.vendor != "sqlite":
-                raise
-            notification = (
-                Notification.objects.select_related("application")
-                .filter(id=notification_id, **owner_filter)
-                .first()
-            )
-            if notification is None:
-                return error_response(
-                    code="notification_not_found",
-                    detail="Notification not found.",
-                    http_status=status.HTTP_404_NOT_FOUND,
-                )
-            return self._validate_and_queue(notification, owner_filter=owner_filter)
+        return (
+            Notification.objects.select_related("application")
+            .get(id=notification_id, **owner_filter)
+        )
+
+    def post(self, request, notification_id):
+        owner_filter = {"application__owner": request.user}
+
+        try:
+            notification = self._fetch_notification(notification_id, owner_filter)
         except Notification.DoesNotExist:
             return error_response(
                 code="notification_not_found",
                 detail="Notification not found.",
                 http_status=status.HTTP_404_NOT_FOUND,
             )
+
+        return self._validate_and_queue(
+            notification,
+            owner_filter=owner_filter if not settings.DB_SUPPORTS_ROW_LOCKING else None,
+        )
 
 
 @extend_schema_view(
