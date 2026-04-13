@@ -142,29 +142,8 @@ class ApplicationQuietPeriodReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class ApplicationQuietPeriodWriteSerializer(serializers.ModelSerializer):
-    period_type = serializers.ChoiceField(choices=QuietPeriodType.choices, required=False)
-    recurrence_days = serializers.ListField(
-        child=serializers.IntegerField(min_value=0, max_value=6),
-        required=False,
-    )
-
-    class Meta:
-        model = ApplicationQuietPeriod
-        fields = [
-            "id",
-            "name",
-            "period_type",
-            "start_at",
-            "end_at",
-            "recurrence_days",
-            "start_time",
-            "end_time",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+class QuietPeriodWriteMixin:
+    """Shared validation, normalization, and update logic for quiet period serializers."""
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
@@ -230,13 +209,38 @@ class ApplicationQuietPeriodWriteSerializer(serializers.ModelSerializer):
             validated_data["end_at"] = None
         return validated_data
 
+    def update(self, instance, validated_data):
+        validated_data = self._normalize_payload(validated_data, instance=instance)
+        return super().update(instance, validated_data)
+
+
+class ApplicationQuietPeriodWriteSerializer(QuietPeriodWriteMixin, serializers.ModelSerializer):
+    period_type = serializers.ChoiceField(choices=QuietPeriodType.choices, required=False)
+    recurrence_days = serializers.ListField(
+        child=serializers.IntegerField(min_value=0, max_value=6),
+        required=False,
+    )
+
+    class Meta:
+        model = ApplicationQuietPeriod
+        fields = [
+            "id",
+            "name",
+            "period_type",
+            "start_at",
+            "end_at",
+            "recurrence_days",
+            "start_time",
+            "end_time",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
     def create(self, validated_data):
         validated_data = self._normalize_payload(validated_data)
         return ApplicationQuietPeriod.objects.create(
             application=self.context["application"],
             **validated_data,
         )
-
-    def update(self, instance, validated_data):
-        validated_data = self._normalize_payload(validated_data, instance=instance)
-        return super().update(instance, validated_data)
