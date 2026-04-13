@@ -78,7 +78,8 @@ class Application(models.Model):
     def save(self, *args, **kwargs):
         if not self.app_token_hash:
             self.set_new_app_token()
-        if not self.inbound_email_alias:
+        is_new_alias = not self.inbound_email_alias
+        if is_new_alias:
             base = self.generate_inbound_email_alias(self.name)
             candidate = base
             counter = 1
@@ -88,6 +89,17 @@ class Application(models.Model):
                 counter += 1
             self.inbound_email_alias = candidate
         super().save(*args, **kwargs)
+        if is_new_alias:
+            from .graph_mail import add_email_alias
+            add_email_alias(self.inbound_email_alias)
+
+    def delete(self, *args, **kwargs):
+        alias = self.inbound_email_alias
+        result = super().delete(*args, **kwargs)
+        if alias:
+            from .graph_mail import remove_email_alias
+            remove_email_alias(alias)
+        return result
 
     def __str__(self):
         return f"{self.name} ({self.owner})"

@@ -17,8 +17,8 @@ from .serializers import (
 
 @extend_schema_view(
     post=extend_schema(
-        summary="Associer un device a une application via app token",
-        description="Cree ou met a jour un device a partir du header `X-App-Token` puis l'associe a l'application.",
+        summary="Link a device to an application via app token",
+        description="Creates or updates a device from the `X-App-Token` header and links it to the application.",
         tags=["Devices"],
         auth=[{"AppTokenAuth": []}],
         request=DeviceLinkWithAppTokenSerializer,
@@ -26,10 +26,10 @@ from .serializers import (
             200: DeviceLinkWithAppTokenResponseSerializer,
             400: OpenApiResponse(
                 response=DeviceLinkWithAppTokenValidationErrorResponseSerializer,
-                description="Donnees invalides",
+                description="Invalid data",
             ),
-            401: OpenApiResponse(response=DetailResponseSerializer, description="App token invalide ou manquant"),
-            403: OpenApiResponse(response=DetailResponseSerializer, description="Acces refuse"),
+            401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
+            403: OpenApiResponse(response=DetailResponseSerializer, description="Access denied"),
         },
     )
 )

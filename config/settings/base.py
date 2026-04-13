@@ -190,9 +190,14 @@ INBOUND_EMAIL_IMAP_PASSWORD = env("INBOUND_EMAIL_IMAP_PASSWORD", default="")
 INBOUND_EMAIL_IMAP_FOLDER = env("INBOUND_EMAIL_IMAP_FOLDER", default="INBOX")
 INBOUND_EMAIL_IMAP_USE_SSL = env.bool("INBOUND_EMAIL_IMAP_USE_SSL", default=True)
 
+GRAPH_TENANT_ID = env("GRAPH_TENANT_ID", default="")
+GRAPH_CLIENT_ID = env("GRAPH_CLIENT_ID", default="")
+GRAPH_CLIENT_SECRET = env("GRAPH_CLIENT_SECRET", default="")
+GRAPH_MAILBOX_USER_ID = env("GRAPH_MAILBOX_USER_ID", default="")
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "PushIT API",
-    "DESCRIPTION": "API backend pour Firebase Cloud Messaging",
+    "DESCRIPTION": "Push notification API backend for Firebase Cloud Messaging",
     "VERSION": "1.0.0",
     "SECURITY": [],
     "ENUM_NAME_OVERRIDES": {
