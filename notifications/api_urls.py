@@ -13,11 +13,9 @@ from .api_views_app_token import (
     NotificationCreateWithAppTokenApiView,
     NotificationListWithAppTokenApiView,
 )
-from .api_views_inbound_email import NotificationCreateFromInboundEmailApiView
 
 urlpatterns = [
     path("", NotificationListCreateApiView.as_view(), name="notification-list-create"),
-    path("inbound/email/", NotificationCreateFromInboundEmailApiView.as_view(), name="notification-inbound-email"),
     path("future/", NotificationFutureListApiView.as_view(), name="notification-future-list"),
     path("future/<int:pk>/", NotificationFutureDetailApiView.as_view(), name="notification-future-detail"),
     path("<int:pk>/", NotificationDetailApiView.as_view(), name="notification-detail"),

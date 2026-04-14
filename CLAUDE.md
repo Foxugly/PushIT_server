@@ -44,7 +44,7 @@ docker compose -f docker-compose.observability.yml up -d
 
 Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py`. The `STATE` env var (`DEV`/`TEST`/`PROD`) selects the active settings module via `config/settings/__init__.py`.
 
-Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `INBOUND_EMAIL_SECRET`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
+Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
 
 In DEV/TEST, Celery runs eagerly (synchronous, no broker needed) and passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty. FCM uses a mock when `FCM_SERVICE_ACCOUNT_PATH` is empty.
 

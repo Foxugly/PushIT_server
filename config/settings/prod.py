@@ -25,6 +25,3 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 SECURE_REFERRER_POLICY = "same-origin"
 
-INBOUND_EMAIL_SECRET = env("INBOUND_EMAIL_SECRET", default="").strip()
-if not INBOUND_EMAIL_SECRET or INBOUND_EMAIL_SECRET == "dev-inbound-email-secret":
-    raise ImproperlyConfigured("INBOUND_EMAIL_SECRET must be explicitly set in PROD.")

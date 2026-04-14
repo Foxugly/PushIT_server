@@ -34,11 +34,6 @@ NotificationCreateWithAppTokenValidationErrorResponseSerializer = build_validati
     ["title", "message", "scheduled_for"],
 )
 
-NotificationInboundEmailValidationErrorResponseSerializer = build_validation_error_serializer(
-    "NotificationInboundEmailValidationErrorResponse",
-    ["sender", "recipient", "subject", "text", "message_id"],
-)
-
 NotificationFutureUpdateValidationErrorResponseSerializer = build_validation_error_serializer(
     "NotificationFutureUpdateValidationErrorResponse",
     ["title", "message", "scheduled_for"],

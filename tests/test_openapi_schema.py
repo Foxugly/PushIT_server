@@ -119,14 +119,6 @@ def test_notification_validation_and_error_responses_are_documented_per_endpoint
     assert set(["202", "404", "409", "503"]).issubset(notification_send_operation["responses"].keys())
     assert {"BearerAuth": []} in notification_send_operation["security"]
 
-    notification_inbound_operation = schema["paths"]["/api/v1/notifications/inbound/email/"]["post"]
-    _assert_json_response_ref(
-        notification_inbound_operation,
-        "400",
-        "NotificationInboundEmailValidationErrorResponse",
-    )
-    assert set(["200", "201", "400", "403", "409"]).issubset(notification_inbound_operation["responses"].keys())
-
     notification_future_patch_operation = schema["paths"]["/api/v1/notifications/future/{id}/"]["patch"]
     _assert_json_response_ref(
         notification_future_patch_operation,
