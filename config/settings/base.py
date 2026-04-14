@@ -188,7 +188,6 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-FCM_API_KEY = env("FCM_API_KEY", default=None)
 FCM_SERVICE_ACCOUNT_PATH = env("FCM_SERVICE_ACCOUNT_PATH", default="")
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
 INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="pushit.com")
