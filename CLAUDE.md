@@ -42,11 +42,18 @@ docker compose -f docker-compose.observability.yml up -d
 
 ## Settings & Environment
 
-Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py`. The `STATE` env var (`DEV`/`TEST`/`PROD`) selects the active settings module via `config/settings/__init__.py`.
+Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py`. The dispatch logic in `config/settings/__init__.py` uses two env vars:
+
+- `DJANGO_ENV` (lowercase: `prod`, `test`) — takes priority for prod/test selection
+- `STATE` (uppercase: `DEV`, `TEST`, `PROD`) — `STATE=PROD` also activates prod settings
+
+**Caveat:** `STATE=TEST` alone does **not** activate test settings — you need `DJANGO_ENV=test` for that. The `else` branch falls through to dev.
 
 Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
 
-In DEV/TEST, Celery runs eagerly (synchronous, no broker needed) and passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty. FCM uses a mock when `FCM_SERVICE_ACCOUNT_PATH` is empty.
+**DEV/TEST behavior:** Celery runs eagerly (synchronous, no broker needed), passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty. FCM uses a mock when `FCM_SERVICE_ACCOUNT_PATH` is empty.
+
+**PROD enforcement:** `DJANGO_SECRET_KEY` and `ALLOWED_HOSTS` are mandatory — startup fails if missing. Full HSTS, SSL redirect, secure cookies are enabled.
 
 `DB_SUPPORTS_ROW_LOCKING` is derived from the database engine — `True` for PostgreSQL, `False` for SQLite. This controls whether `select_for_update()` is used in the notification send flow.
 
@@ -99,13 +106,35 @@ Called from `Application.save()` (add alias), `Application.delete()` (remove ali
 
 - `notifications/services.py` — send_notification, delivery orchestration, webhook callbacks
 - `notifications/scheduling.py` — quiet period calculation
-- `notifications/creation.py` — notification creation with idempotency
+- `notifications/creation.py` — notification creation with idempotency (separate SQLite/PostgreSQL paths)
 - `notifications/inbound_mailbox.py` — Graph API inbox polling and email processing
 - `notifications/inbound_reply.py` — auto-reply builder for unknown recipient addresses
 - `notifications/webhooks.py` — webhook callback delivery with HMAC signing
 - `notifications/push.py` — FCM provider (Firebase Admin SDK or mock)
 - `applications/graph_mail.py` — Microsoft Graph API client (aliases, inbox, send)
-- `config/exceptions.py` — standardized error response format: `{code, detail, [incident_id]}`
+- `config/exceptions.py` — standardized error response format
+
+### Error Contract
+
+All API errors follow a standardized format via `config/exceptions.py`:
+
+```json
+{"code": "not_found", "detail": "Not found."}
+```
+
+Validation errors add an `errors` dict:
+
+```json
+{"code": "validation_error", "detail": "Validation error.", "errors": {"field": ["..."]}}
+```
+
+Unhandled exceptions return `500` with an `incident_id`:
+
+```json
+{"code": "internal_error", "detail": "Internal server error.", "incident_id": "inc_xxxxxxxxxxxx"}
+```
+
+When raising DRF exceptions in views, pass a `code` kwarg to control the `code` field: `raise NotFound("App not found.", code="app_not_found")`.
 
 ### API URL Structure
 
@@ -119,3 +148,4 @@ Pytest with `pytest-django`. Config in `pytest.ini`. Tests live in each app's `t
 
 - SQLite in dev/test — production should use PostgreSQL (configured via `DATABASE_ENGINE`)
 - Celery eager mode in DEV/TEST — no actual async task processing
+- `drf-spectacular` emits a deprecation warning under Python 3.14
