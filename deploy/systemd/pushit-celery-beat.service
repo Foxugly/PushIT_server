@@ -1,0 +1,17 @@
+[Unit]
+Description=PushIT Celery Beat Scheduler
+After=network.target redis-server.service
+
+[Service]
+User=pushit
+Group=pushit
+WorkingDirectory=/opt/pushit
+ExecStart=/opt/pushit/.venv/bin/celery -A config beat --loglevel=info --schedule=/opt/pushit/celerybeat-schedule
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

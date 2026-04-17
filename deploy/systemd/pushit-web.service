@@ -1,0 +1,19 @@
+[Unit]
+Description=PushIT Gunicorn Web Server
+After=network.target
+
+[Service]
+User=pushit
+Group=pushit
+WorkingDirectory=/opt/pushit
+RuntimeDirectory=pushit
+ExecStart=/opt/pushit/.venv/bin/gunicorn config.wsgi:application -c /opt/pushit/deploy/gunicorn.conf.py
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

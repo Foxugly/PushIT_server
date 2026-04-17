@@ -106,7 +106,7 @@ AUTH_USER_MODEL = "accounts.User"
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / env("MEDIA_ROOT_DIR")
+MEDIA_ROOT = BASE_DIR / env("MEDIA_ROOT_DIR", default="media")
 
 LOGGING = {
     "version": 1,
