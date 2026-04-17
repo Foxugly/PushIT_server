@@ -10,7 +10,7 @@
 #   or after clone: bash /opt/pushit/deploy/setup-server.sh
 #
 # Prerequisites:
-#   - DNS A record: pushit.foxugly.com → EC2 public IP
+#   - DNS A record: pushit-api.foxugly.com → EC2 public IP
 #   - Security group: inbound 22, 80, 443 (likely already open)
 # =============================================================================
 set -euo pipefail
@@ -18,7 +18,7 @@ set -euo pipefail
 APP_DIR="/opt/pushit"
 APP_USER="django"
 APP_GROUP="www-data"
-DOMAIN="pushit.foxugly.com"
+DOMAIN="pushit-api.foxugly.com"
 REPO="https://github.com/Foxugly/PushIT_server.git"
 EMAIL="rvilain@foxugly.com"
 
