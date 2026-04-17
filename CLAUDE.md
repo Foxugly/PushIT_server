@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PushIT Server is a Django REST API for managing push notification delivery. It handles user/app registration, device management, notification creation & scheduling (with quiet periods and templates), delivery via FCM, and inbound email as a notification source via Microsoft Graph API polling.
 
-**Stack:** Python 3.14, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev) / PostgreSQL (prod), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API), Firebase Admin SDK.
+**Stack:** Python 3.12, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/prod), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API), Firebase Admin SDK.
 
 ## Common Commands
 
@@ -144,8 +144,54 @@ All endpoints under `/api/v1/`. URL modules per app (`*/api_urls.py`), wired thr
 
 Pytest with `pytest-django`. Config in `pytest.ini`. Tests live in each app's `tests/` directory plus top-level `tests/` for integration/cross-cutting tests. Use `@pytest.mark.integration` for tests needing a fresh database. Concurrent send test is skipped on SQLite (`DB_SUPPORTS_ROW_LOCKING=False`).
 
+## Deployment
+
+### Production (EC2)
+
+Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
+
+- **URL:** `https://pushit-api.foxugly.com` (API), `https://pushit.foxugly.com` (frontend)
+- **Path:** `/var/www/django_websites/PushIT_server/`
+- **User:** `django:www-data`
+- **Services:** Gunicorn (unix socket) + Apache2 reverse proxy + Celery worker + Celery beat
+- **Redis:** DB `/2` (broker), DB `/3` (result backend), queue `pushit` (isolated from QuizOnline on `/0`-`/1`)
+
+### CI/CD (GitHub Actions)
+
+Push to `main` triggers: tests (Python 3.12) → SSH deploy to EC2.
+
+- SSH as `ubuntu` → `sudo -u django` for deploy operations
+- `.env` injected from GitHub Secret `DOTENV_PROD` on each deploy
+- Integration tests (`@pytest.mark.integration`) are excluded from CI (`-m "not integration"`)
+
+### Deploy files
+
+- `deploy/apache/pushit.conf` — Apache2 VirtualHost (reverse proxy + static/media)
+- `deploy/gunicorn.conf.py` — Gunicorn config (unix socket, auto-scaled workers)
+- `deploy/systemd/pushit-web.service` — Gunicorn service
+- `deploy/systemd/pushit-celery-worker.service` — Celery worker (queue `pushit`, concurrency 2)
+- `deploy/systemd/pushit-celery-beat.service` — Celery beat scheduler
+- `deploy/setup-server.sh` — One-time server provisioning
+- `deploy/deploy.sh` — Deploy script (pull, deps, migrate, collectstatic, restart)
+- `.github/workflows/deploy.yml` — CI/CD pipeline
+
+### Server commands
+
+```bash
+# Check service status
+sudo systemctl status pushit-web pushit-celery-worker pushit-celery-beat
+
+# View logs
+journalctl -u pushit-web -f
+journalctl -u pushit-celery-worker -f
+tail -f /var/log/pushit/gunicorn-access.log
+tail -f /var/log/apache2/pushit-error.log
+
+# Manual deploy
+sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh
+```
+
 ## Current Limitations
 
-- SQLite in dev/test — production should use PostgreSQL (configured via `DATABASE_ENGINE`)
+- SQLite in dev and prod — may migrate to PostgreSQL later
 - Celery eager mode in DEV/TEST — no actual async task processing
-- `drf-spectacular` emits a deprecation warning under Python 3.14
