@@ -36,10 +36,16 @@ jobs:
     environment: production
 
     steps:
-      - name: Deploy to EC2
+      - name: Write .env and deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: django
           key: ${{ secrets.EC2_SSH_KEY }}
-          script: /opt/pushit/deploy/deploy.sh
+          envs: DOTENV_PROD
+          script: |
+            echo "$DOTENV_PROD" > /opt/pushit/.env
+            chmod 600 /opt/pushit/.env
+            /opt/pushit/deploy/deploy.sh
+        env:
+          DOTENV_PROD: ${{ secrets.DOTENV_PROD }}

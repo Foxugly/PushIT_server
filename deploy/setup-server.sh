@@ -87,14 +87,27 @@ echo "=== 5/7 Environment file ==="
 # ---------------------------------------------------------------------------
 
 if [ ! -f "$APP_DIR/.env" ]; then
-    sudo -u "$APP_USER" cp "$APP_DIR/.env_template" "$APP_DIR/.env"
     echo ""
-    echo "┌──────────────────────────────────────────────────────────────┐"
-    echo "│  IMPORTANT: Edit $APP_DIR/.env with production values  │"
-    echo "│  Required: DJANGO_SECRET_KEY, STATE=PROD                    │"
-    echo "│            ALLOWED_HOSTS=$DOMAIN                       │"
-    echo "└──────────────────────────────────────────────────────────────┘"
+    echo "┌──────────────────────────────────────────────────────────────────┐"
+    echo "│  No .env found. It will be written by GitHub Actions on first   │"
+    echo "│  deploy via the DOTENV_PROD secret.                             │"
+    echo "│                                                                 │"
+    echo "│  For initial setup, create it manually:                         │"
+    echo "│    sudo -u $APP_USER nano $APP_DIR/.env               │"
+    echo "│                                                                 │"
+    echo "│  See .env_template for required variables.                      │"
+    echo "└──────────────────────────────────────────────────────────────────┘"
     echo ""
+    # Create a minimal .env so migrate/collectstatic can run
+    sudo -u "$APP_USER" bash -c "cat > $APP_DIR/.env << 'ENVEOF'
+DJANGO_SECRET_KEY=initial-setup-change-me
+STATE=PROD
+DEBUG=False
+ALLOWED_HOSTS=$DOMAIN
+MEDIA_ROOT_DIR=media
+REDIS_URL=redis://127.0.0.1:6379/0
+ENVEOF"
+    sudo chmod 600 "$APP_DIR/.env"
 else
     echo ".env already exists, skipping."
 fi
