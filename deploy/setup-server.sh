@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # =============================================================================
-# PushIT — One-time server setup for Ubuntu 24.04 EC2
+# PushIT — Server setup for Ubuntu 24.04 EC2
 #
-# Run as the default 'ubuntu' user (needs sudo):
-#   bash deploy/setup-server.sh
+# Cohabits with QuizOnline already deployed at /opt/quizonline/.
+# Assumes apache2, redis-server, python3.14, django:www-data already exist.
+#
+# Run as 'ubuntu' user (needs sudo):
+#   bash /tmp/setup-pushit.sh
+#   or after clone: bash /opt/pushit/deploy/setup-server.sh
 #
 # Prerequisites:
 #   - DNS A record: pushit.foxugly.com → EC2 public IP
-#   - Security group: inbound 22, 80, 443
-#   - .env file ready (copy from .env_template and fill production values)
+#   - Security group: inbound 22, 80, 443 (likely already open)
 # =============================================================================
 set -euo pipefail
 
@@ -19,89 +22,139 @@ DOMAIN="pushit.foxugly.com"
 REPO="https://github.com/Foxugly/PushIT_server.git"
 EMAIL="rvilain@foxugly.com"
 
-echo "=== 1/8 System packages ==="
-sudo apt update
-sudo apt install -y \
-    python3 python3-venv python3-pip \
-    apache2 libapache2-mod-proxy-uwsgi \
-    redis-server \
-    certbot python3-certbot-apache \
-    git
+# ---------------------------------------------------------------------------
+echo "=== 1/7 Verify existing infrastructure ==="
+# ---------------------------------------------------------------------------
 
-echo "=== 2/8 Create app user ==="
+# Check django:www-data user exists
 if ! id "$APP_USER" &>/dev/null; then
+    echo "Creating user $APP_USER with group $APP_GROUP..."
     sudo useradd --system --create-home --shell /bin/bash --gid "$APP_GROUP" "$APP_USER"
+else
+    echo "User $APP_USER already exists: $(id $APP_USER)"
 fi
 
-echo "=== 3/8 Create directories ==="
+# Check required packages (skip install if already present)
+MISSING_PKGS=()
+for pkg in apache2 redis-server certbot python3-certbot-apache git; do
+    if ! dpkg -l "$pkg" &>/dev/null; then
+        MISSING_PKGS+=("$pkg")
+    fi
+done
+
+if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
+    echo "Installing missing packages: ${MISSING_PKGS[*]}"
+    sudo apt update
+    sudo apt install -y "${MISSING_PKGS[@]}"
+else
+    echo "All required packages already installed."
+fi
+
+# Ensure required Apache modules are enabled
+sudo a2enmod proxy proxy_http proxy_uwsgi headers ssl rewrite 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+echo "=== 2/7 Create app directory ==="
+# ---------------------------------------------------------------------------
+
 sudo mkdir -p "$APP_DIR" /var/log/pushit
 sudo chown "$APP_USER":"$APP_GROUP" "$APP_DIR" /var/log/pushit
 
-echo "=== 4/8 Clone repository ==="
+# ---------------------------------------------------------------------------
+echo "=== 3/7 Clone repository ==="
+# ---------------------------------------------------------------------------
+
 if [ ! -d "$APP_DIR/.git" ]; then
     sudo -u "$APP_USER" git clone "$REPO" "$APP_DIR"
 else
     echo "Repo already cloned, pulling latest..."
-    sudo -u "$APP_USER" git -C "$APP_DIR" pull origin main
+    sudo -u "$APP_USER" git -C "$APP_DIR" fetch origin main
+    sudo -u "$APP_USER" git -C "$APP_DIR" reset --hard origin/main
 fi
 
-echo "=== 5/8 Python venv + dependencies ==="
-sudo -u "$APP_USER" python3 -m venv "$APP_DIR/.venv"
+# ---------------------------------------------------------------------------
+echo "=== 4/7 Python venv + dependencies ==="
+# ---------------------------------------------------------------------------
+
+if [ ! -d "$APP_DIR/.venv" ]; then
+    sudo -u "$APP_USER" python3 -m venv "$APP_DIR/.venv"
+fi
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 
-echo "=== 6/8 Environment file ==="
+# ---------------------------------------------------------------------------
+echo "=== 5/7 Environment file ==="
+# ---------------------------------------------------------------------------
+
 if [ ! -f "$APP_DIR/.env" ]; then
     sudo -u "$APP_USER" cp "$APP_DIR/.env_template" "$APP_DIR/.env"
     echo ""
-    echo ">>> IMPORTANT: Edit $APP_DIR/.env with production values before starting services <<<"
-    echo "    Required: DJANGO_SECRET_KEY, STATE=PROD, ALLOWED_HOSTS=$DOMAIN"
+    echo "┌──────────────────────────────────────────────────────────────┐"
+    echo "│  IMPORTANT: Edit $APP_DIR/.env with production values  │"
+    echo "│  Required: DJANGO_SECRET_KEY, STATE=PROD                    │"
+    echo "│            ALLOWED_HOSTS=$DOMAIN                       │"
+    echo "└──────────────────────────────────────────────────────────────┘"
     echo ""
+else
+    echo ".env already exists, skipping."
 fi
 
-echo "=== 7/8 Initial deploy (migrate + collectstatic) ==="
+# ---------------------------------------------------------------------------
+echo "=== 6/7 Initial migrate + collectstatic ==="
+# ---------------------------------------------------------------------------
+
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" migrate --noinput
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput
 
-echo "=== 8/8 Install services ==="
+# ---------------------------------------------------------------------------
+echo "=== 7/7 Install services + Apache vhost ==="
+# ---------------------------------------------------------------------------
 
-# Systemd
+# Systemd services
 sudo cp "$APP_DIR/deploy/systemd/"*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# Allow django user to restart its own services (used by deploy.sh)
+# Sudoers for deploy.sh (append to existing file if present)
 SUDOERS_FILE="/etc/sudoers.d/pushit-deploy"
 if [ ! -f "$SUDOERS_FILE" ]; then
-    echo "$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-web, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload apache2" | sudo tee "$SUDOERS_FILE" > /dev/null
+    echo "$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-web, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload apache2" \
+        | sudo tee "$SUDOERS_FILE" > /dev/null
     sudo chmod 440 "$SUDOERS_FILE"
+    echo "Sudoers rules added for $APP_USER."
+else
+    echo "Sudoers file already exists, skipping."
 fi
 
-# Apache
-sudo a2enmod proxy proxy_http proxy_uwsgi headers ssl rewrite
+# Apache vhost (alongside existing QuizOnline vhost)
 sudo cp "$APP_DIR/deploy/apache/pushit.conf" /etc/apache2/sites-available/pushit.conf
 sudo a2ensite pushit
-sudo a2dissite 000-default
 sudo apache2ctl configtest
 sudo systemctl reload apache2
 
-# SSL certificate
+# SSL certificate for pushit subdomain
 echo ""
 echo ">>> Getting SSL certificate for $DOMAIN..."
 sudo certbot --apache -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
 
-# Enable and start everything
-sudo systemctl enable --now redis-server
+# Enable and start PushIT services (redis already running for QuizOnline)
 sudo systemctl enable --now pushit-web
 sudo systemctl enable --now pushit-celery-worker
 sudo systemctl enable --now pushit-celery-beat
 
 echo ""
 echo "=== Setup complete ==="
-echo "  App:      https://$DOMAIN"
-echo "  API docs: https://$DOMAIN/api/docs/"
-echo "  Health:   https://$DOMAIN/health/live/"
 echo ""
-echo "  Logs:     journalctl -u pushit-web -f"
-echo "            journalctl -u pushit-celery-worker -f"
-echo "            tail -f /var/log/pushit/gunicorn-access.log"
-echo "            tail -f /var/log/apache2/pushit-error.log"
+echo "  PushIT:        https://$DOMAIN"
+echo "  API docs:      https://$DOMAIN/api/docs/"
+echo "  Health:        https://$DOMAIN/health/live/"
+echo ""
+echo "  QuizOnline:    (unchanged, still running)"
+echo ""
+echo "  Logs:          journalctl -u pushit-web -f"
+echo "                 journalctl -u pushit-celery-worker -f"
+echo "                 tail -f /var/log/pushit/gunicorn-access.log"
+echo "                 tail -f /var/log/apache2/pushit-error.log"
+echo ""
+echo "  SSH deploy:    Add django's SSH key for GitHub Actions:"
+echo "                 sudo -u django mkdir -p /home/django/.ssh"
+echo "                 echo '<public key>' | sudo -u django tee -a /home/django/.ssh/authorized_keys"
