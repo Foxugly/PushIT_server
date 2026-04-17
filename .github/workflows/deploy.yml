@@ -44,9 +44,9 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DOTENV_PROD
           script: |
-            sudo -u django bash -c 'echo "$0" > /opt/pushit/.env' "$DOTENV_PROD"
-            sudo chmod 600 /opt/pushit/.env
-            sudo chown django:www-data /opt/pushit/.env
-            sudo -u django /opt/pushit/deploy/deploy.sh
+            sudo -u django bash -c 'echo "$0" > /var/www/django_websites/PushIT_server/.env' "$DOTENV_PROD"
+            sudo chmod 600 /var/www/django_websites/PushIT_server/.env
+            sudo chown django:www-data /var/www/django_websites/PushIT_server/.env
+            sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh
         env:
           DOTENV_PROD: ${{ secrets.DOTENV_PROD }}

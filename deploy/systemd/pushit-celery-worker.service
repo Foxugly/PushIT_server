@@ -5,8 +5,8 @@ After=network.target redis-server.service
 [Service]
 User=django
 Group=www-data
-WorkingDirectory=/opt/pushit
-ExecStart=/opt/pushit/.venv/bin/celery -A config worker --loglevel=info --concurrency=2 -Q pushit
+WorkingDirectory=/var/www/django_websites/PushIT_server
+ExecStart=/var/www/django_websites/PushIT_server/.venv/bin/celery -A config worker --loglevel=info --concurrency=2 -Q pushit
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=10

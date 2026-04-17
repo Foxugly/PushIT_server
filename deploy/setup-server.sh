@@ -7,7 +7,7 @@
 #
 # Run as 'ubuntu' user (needs sudo):
 #   bash /tmp/setup-pushit.sh
-#   or after clone: bash /opt/pushit/deploy/setup-server.sh
+#   or after clone: bash /var/www/django_websites/PushIT_server/deploy/setup-server.sh
 #
 # Prerequisites:
 #   - DNS A record: pushit-api.foxugly.com → EC2 public IP
@@ -15,7 +15,7 @@
 # =============================================================================
 set -euo pipefail
 
-APP_DIR="/opt/pushit"
+APP_DIR="/var/www/django_websites/PushIT_server"
 APP_USER="django"
 APP_GROUP="www-data"
 DOMAIN="pushit-api.foxugly.com"

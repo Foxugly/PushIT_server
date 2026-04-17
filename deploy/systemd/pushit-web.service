@@ -5,9 +5,9 @@ After=network.target
 [Service]
 User=django
 Group=www-data
-WorkingDirectory=/opt/pushit
+WorkingDirectory=/var/www/django_websites/PushIT_server
 RuntimeDirectory=pushit
-ExecStart=/opt/pushit/.venv/bin/gunicorn config.wsgi:application -c /opt/pushit/deploy/gunicorn.conf.py
+ExecStart=/var/www/django_websites/PushIT_server/.venv/bin/gunicorn config.wsgi:application -c /var/www/django_websites/PushIT_server/deploy/gunicorn.conf.py
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=5

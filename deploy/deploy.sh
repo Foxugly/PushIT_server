@@ -3,11 +3,11 @@
 # PushIT — Deployment script
 #
 # Called by GitHub Actions (via SSH as 'django' user) or manually:
-#   /opt/pushit/deploy/deploy.sh
+#   /var/www/django_websites/PushIT_server/deploy/deploy.sh
 # =============================================================================
 set -euo pipefail
 
-APP_DIR="/opt/pushit"
+APP_DIR="/var/www/django_websites/PushIT_server"
 VENV="$APP_DIR/.venv"
 
 cd "$APP_DIR"
