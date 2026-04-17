@@ -40,12 +40,13 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: django
+          username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DOTENV_PROD
           script: |
-            echo "$DOTENV_PROD" > /opt/pushit/.env
-            chmod 600 /opt/pushit/.env
-            /opt/pushit/deploy/deploy.sh
+            sudo -u django bash -c 'echo "$0" > /opt/pushit/.env' "$DOTENV_PROD"
+            sudo chmod 600 /opt/pushit/.env
+            sudo chown django:www-data /opt/pushit/.env
+            sudo -u django /opt/pushit/deploy/deploy.sh
         env:
           DOTENV_PROD: ${{ secrets.DOTENV_PROD }}
