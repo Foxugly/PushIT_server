@@ -3,8 +3,8 @@ Description=PushIT Celery Beat Scheduler
 After=network.target redis-server.service
 
 [Service]
-User=pushit
-Group=pushit
+User=django
+Group=www-data
 WorkingDirectory=/opt/pushit
 ExecStart=/opt/pushit/.venv/bin/celery -A config beat --loglevel=info --schedule=/opt/pushit/celerybeat-schedule
 Restart=on-failure

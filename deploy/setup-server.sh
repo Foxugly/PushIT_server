@@ -13,7 +13,8 @@
 set -euo pipefail
 
 APP_DIR="/opt/pushit"
-APP_USER="pushit"
+APP_USER="django"
+APP_GROUP="www-data"
 DOMAIN="pushit.foxugly.com"
 REPO="https://github.com/Foxugly/PushIT_server.git"
 EMAIL="rvilain@foxugly.com"
@@ -22,18 +23,19 @@ echo "=== 1/8 System packages ==="
 sudo apt update
 sudo apt install -y \
     python3 python3-venv python3-pip \
-    nginx redis-server \
-    certbot python3-certbot-nginx \
+    apache2 libapache2-mod-proxy-uwsgi \
+    redis-server \
+    certbot python3-certbot-apache \
     git
 
 echo "=== 2/8 Create app user ==="
 if ! id "$APP_USER" &>/dev/null; then
-    sudo useradd --system --create-home --shell /bin/bash "$APP_USER"
+    sudo useradd --system --create-home --shell /bin/bash --gid "$APP_GROUP" "$APP_USER"
 fi
 
 echo "=== 3/8 Create directories ==="
 sudo mkdir -p "$APP_DIR" /var/log/pushit
-sudo chown "$APP_USER":"$APP_USER" "$APP_DIR" /var/log/pushit
+sudo chown "$APP_USER":"$APP_GROUP" "$APP_DIR" /var/log/pushit
 
 echo "=== 4/8 Clone repository ==="
 if [ ! -d "$APP_DIR/.git" ]; then
@@ -67,24 +69,25 @@ echo "=== 8/8 Install services ==="
 sudo cp "$APP_DIR/deploy/systemd/"*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# Allow pushit user to restart its own services (used by deploy.sh)
+# Allow django user to restart its own services (used by deploy.sh)
 SUDOERS_FILE="/etc/sudoers.d/pushit-deploy"
 if [ ! -f "$SUDOERS_FILE" ]; then
-    echo "$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-web, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload nginx" | sudo tee "$SUDOERS_FILE" > /dev/null
+    echo "$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-web, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload apache2" | sudo tee "$SUDOERS_FILE" > /dev/null
     sudo chmod 440 "$SUDOERS_FILE"
 fi
 
-# Nginx
-sudo cp "$APP_DIR/deploy/nginx/pushit.conf" /etc/nginx/sites-available/pushit
-sudo ln -sf /etc/nginx/sites-available/pushit /etc/nginx/sites-enabled/pushit
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl reload nginx
+# Apache
+sudo a2enmod proxy proxy_http proxy_uwsgi headers ssl rewrite
+sudo cp "$APP_DIR/deploy/apache/pushit.conf" /etc/apache2/sites-available/pushit.conf
+sudo a2ensite pushit
+sudo a2dissite 000-default
+sudo apache2ctl configtest
+sudo systemctl reload apache2
 
 # SSL certificate
 echo ""
 echo ">>> Getting SSL certificate for $DOMAIN..."
-sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
+sudo certbot --apache -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
 
 # Enable and start everything
 sudo systemctl enable --now redis-server
@@ -101,3 +104,4 @@ echo ""
 echo "  Logs:     journalctl -u pushit-web -f"
 echo "            journalctl -u pushit-celery-worker -f"
 echo "            tail -f /var/log/pushit/gunicorn-access.log"
+echo "            tail -f /var/log/apache2/pushit-error.log"

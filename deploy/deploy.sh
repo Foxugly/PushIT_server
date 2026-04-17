@@ -2,7 +2,7 @@
 # =============================================================================
 # PushIT — Deployment script
 #
-# Called by GitHub Actions (via SSH as 'pushit' user) or manually:
+# Called by GitHub Actions (via SSH as 'django' user) or manually:
 #   /opt/pushit/deploy/deploy.sh
 # =============================================================================
 set -euo pipefail

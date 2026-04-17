@@ -3,8 +3,8 @@ Description=PushIT Celery Worker
 After=network.target redis-server.service
 
 [Service]
-User=pushit
-Group=pushit
+User=django
+Group=www-data
 WorkingDirectory=/opt/pushit
 ExecStart=/opt/pushit/.venv/bin/celery -A config worker --loglevel=info --concurrency=2
 ExecReload=/bin/kill -s HUP $MAINPID

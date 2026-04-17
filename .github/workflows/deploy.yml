@@ -40,6 +40,6 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: pushit
+          username: django
           key: ${{ secrets.EC2_SSH_KEY }}
           script: /opt/pushit/deploy/deploy.sh
