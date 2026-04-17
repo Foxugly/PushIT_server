@@ -58,7 +58,7 @@ def request(
         json=payload,
         params=params,
         headers=build_headers(bearer_token=bearer_token, app_token=app_token),
-        timeout=20,
+        timeout=60,
     )
 
 
@@ -203,6 +203,8 @@ def main() -> None:
         app_token=app_token,
     )
     ensure_status(link_device_response, (200,), "link device")
+    link_data = link_device_response.json()
+    device_id = link_data["device_id"]
     print("Device linked")
     dump_response(link_device_response)
 
@@ -250,6 +252,7 @@ def main() -> None:
         f"{BASE_URL}/notifications/",
         {
             "application_id": app_id,
+            "device_ids": [device_id],
             "title": "Reminder tonight",
             "message": "This notification is scheduled in advance.",
             "scheduled_for": scheduled_for.isoformat(),
@@ -398,6 +401,7 @@ def main() -> None:
         f"{BASE_URL}/notifications/",
         {
             "application_id": app_id,
+            "device_ids": [device_id],
             "title": NOTIFICATION_TITLE,
             "message": NOTIFICATION_MESSAGE,
         },

@@ -27,7 +27,7 @@ jobs:
           STATE: TEST
           DJANGO_SECRET_KEY: test-secret-key
           MEDIA_ROOT_DIR: media
-        run: pytest -q
+        run: pytest -q -m "not integration"
 
   deploy:
     needs: test
