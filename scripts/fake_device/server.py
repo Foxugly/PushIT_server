@@ -67,7 +67,10 @@ def create_app(config_path: Path, api_base: str) -> Flask:
     def service_worker() -> Response:
         if not sw_path.exists():
             abort(404)
-        response = send_from_directory(sw_path.parent, sw_path.name)
+        sw_body = sw_path.read_text(encoding="utf-8")
+        sw_config = {k: v for k, v in firebase_config.items() if k != "vapidKey"}
+        injected = f"const FIREBASE_CONFIG = {json.dumps(sw_config)};\n{sw_body}"
+        response = Response(injected, mimetype="application/javascript")
         response.headers["Service-Worker-Allowed"] = "/"
         return response
 

@@ -88,6 +88,15 @@ def test_service_worker_served_from_root(client):
     response = client.get("/firebase-messaging-sw.js")
     assert response.status_code == 200
     assert response.content_type.startswith(("application/javascript", "text/javascript"))
+    assert response.headers.get("Service-Worker-Allowed") == "/"
+
+
+def test_service_worker_has_injected_firebase_config(client):
+    response = client.get("/firebase-messaging-sw.js")
+    body = response.get_data(as_text=True)
+    assert body.startswith("const FIREBASE_CONFIG = ")
+    assert '"projectId": "pushit-dcf8a"' in body
+    assert "vapidKey" not in body
 
 
 def test_post_received_stores_notification(client):
