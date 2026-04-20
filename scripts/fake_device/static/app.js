@@ -90,14 +90,14 @@ async function postReceived(item) {
 async function main() {
   prefillAppToken();
 
-  let configResp;
+  let config;
   try {
-    configResp = await fetch("/firebase-config.json");
+    const configResp = await fetch("/firebase-config.json");
+    config = await configResp.json();
   } catch (e) {
     setStatus(els.tokenStatus, `Failed to load Firebase config: ${e.message}`, "err");
     return;
   }
-  const config = await configResp.json();
   state.apiBase = config._apiBase;
 
   let swRegistration;
@@ -163,7 +163,9 @@ async function main() {
 
 els.copyTokenBtn.addEventListener("click", () => {
   if (state.fcmToken) {
-    navigator.clipboard.writeText(state.fcmToken);
+    navigator.clipboard.writeText(state.fcmToken).catch((e) => {
+      console.warn("clipboard write failed", e);
+    });
   }
 });
 
