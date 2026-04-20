@@ -1,1 +1,60 @@
-<!DOCTYPE html><html><head><title>placeholder</title></head><body></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PushIT Fake Device</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2em auto; padding: 0 1em; color: #222; }
+  h1 { margin-bottom: 0.2em; }
+  .sub { color: #666; margin-top: 0; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 1em; margin: 1em 0; background: #fafafa; }
+  .row { display: flex; gap: 0.5em; align-items: center; }
+  input[type=text] { flex: 1; padding: 0.5em; font-family: monospace; font-size: 13px; }
+  button { padding: 0.5em 1em; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  code { background: #eef; padding: 2px 4px; border-radius: 3px; word-break: break-all; }
+  .status.ok { color: #060; }
+  .status.err { color: #b00; }
+  .status.warn { color: #a60; }
+  ul.received { list-style: none; padding: 0; }
+  ul.received li { border-left: 3px solid #88f; padding: 0.5em 0.75em; margin: 0.5em 0; background: #fff; }
+  ul.received li.background { border-left-color: #f80; }
+  .ts { color: #888; font-size: 12px; }
+  .mode { font-size: 11px; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: #eef; margin-left: 0.5em; }
+  .mode.background { background: #fe8; }
+</style>
+</head>
+<body>
+<h1>PushIT Fake Device</h1>
+<p class="sub">Browser-based FCM receiver for end-to-end testing without a smartphone.</p>
+
+<div class="card">
+  <h3>1. App token</h3>
+  <div class="row">
+    <input id="app-token" type="text" placeholder="apt_..." />
+    <button id="register-btn">Register device</button>
+  </div>
+  <p id="register-status" class="status"></p>
+</div>
+
+<div class="card">
+  <h3>2. FCM token</h3>
+  <p id="token-status" class="status">Waiting for notification permission...</p>
+  <div class="row">
+    <code id="fcm-token">-</code>
+    <button id="copy-token-btn" disabled>Copy</button>
+  </div>
+</div>
+
+<div class="card">
+  <h3>3. Received notifications</h3>
+  <div class="row">
+    <button id="clear-btn">Clear</button>
+    <span id="received-count" class="status">0 received</span>
+  </div>
+  <ul id="received-list" class="received"></ul>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>
