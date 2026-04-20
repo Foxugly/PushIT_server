@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.fake_device.server import create_app, load_config
+pytest.importorskip(
+    "flask",
+    reason="fake_device tests require flask (install via requirements-dev.txt)",
+)
+
+from scripts.fake_device.server import create_app, load_config  # noqa: E402
 
 
 VALID_CONFIG = {
@@ -48,6 +53,14 @@ def test_load_config_malformed_json_exits(tmp_path: Path):
     bad.write_text("{ not json")
     with pytest.raises(SystemExit) as exc_info:
         load_config(bad)
+    assert exc_info.value.code == 1
+
+
+def test_load_config_missing_required_keys_exits(tmp_path: Path):
+    incomplete = tmp_path / "incomplete.json"
+    incomplete.write_text(json.dumps({"apiKey": "only-one-key"}))
+    with pytest.raises(SystemExit) as exc_info:
+        load_config(incomplete)
     assert exc_info.value.code == 1
 
 
