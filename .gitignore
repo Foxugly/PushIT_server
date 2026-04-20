@@ -206,3 +206,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 /pushit-dcf8a-firebase-adminsdk-fbsvc-870957109b.json
+
+# Local-only Firebase Web config for scripts/fake_device/
+scripts/fake_device/config.json
