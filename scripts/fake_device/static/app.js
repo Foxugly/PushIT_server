@@ -38,16 +38,22 @@ function prefillAppToken() {
 
 function buildReceivedItem(item) {
   const li = document.createElement("li");
-  li.className = item.mode === "background" ? "background" : "";
+  const isBackground = item.mode === "background";
+  li.className = `list-group-item notif-item ${isBackground ? "background" : "foreground"}`;
+
+  const header = document.createElement("div");
+  header.className = "d-flex justify-content-between align-items-center";
 
   const title = document.createElement("strong");
   title.textContent = item.title || "(no title)";
-  li.appendChild(title);
+  header.appendChild(title);
 
   const modeTag = document.createElement("span");
-  modeTag.className = `mode ${item.mode || ""}`;
+  modeTag.className = `badge ${isBackground ? "text-bg-warning" : "text-bg-primary"}`;
   modeTag.textContent = item.mode || "?";
-  li.appendChild(modeTag);
+  header.appendChild(modeTag);
+
+  li.appendChild(header);
 
   const body = document.createElement("div");
   body.textContent = item.body || "";
