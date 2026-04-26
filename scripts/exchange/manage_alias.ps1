@@ -23,11 +23,18 @@
 .NOTES
     Required environment variables:
       EXCHANGE_APP_ID            : Azure AD application (client) ID
-      EXCHANGE_TENANT            : Tenant domain (e.g. contoso.onmicrosoft.com)
-      EXCHANGE_CERT_THUMBPRINT   : Thumbprint of cert installed in cert store
+      EXCHANGE_TENANT            : Tenant primary domain (e.g. contoso.onmicrosoft.com).
+                                   Must be the domain, NOT the Directory ID GUID.
+      EXCHANGE_CERT_THUMBPRINT   : Thumbprint of cert installed in the user's
+                                   cert store. WINDOWS ONLY — Connect-ExchangeOnline
+                                   on Linux pwsh does not expose
+                                   -CertificateThumbprint. Leave empty on Linux.
                                    OR
-      EXCHANGE_CERT_FILE_PATH    : Path to a PFX/PEM file
+      EXCHANGE_CERT_FILE_PATH    : Path to a PFX/PEM file. Required on Linux.
       EXCHANGE_CERT_PASSWORD     : Password for the PFX (optional)
+
+    If both EXCHANGE_CERT_THUMBPRINT and EXCHANGE_CERT_FILE_PATH are set,
+    the thumbprint takes precedence (legacy Windows behavior).
 
 .OUTPUTS
     JSON object on stdout:
