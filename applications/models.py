@@ -91,16 +91,23 @@ class Application(models.Model):
             self.inbound_email_alias = candidate
         super().save(*args, **kwargs)
         if is_new_alias:
-            from .graph_mail import add_email_alias
-            add_email_alias(self.inbound_email_alias)
+            self._provision_exchange_alias()
 
     def delete(self, *args, **kwargs):
         alias = self.inbound_email_alias
         result = super().delete(*args, **kwargs)
         if alias:
-            from .graph_mail import remove_email_alias
-            remove_email_alias(alias)
+            self._deprovision_exchange_alias(alias)
         return result
+
+    def _provision_exchange_alias(self) -> None:
+        from exchange.integration import provision_alias_for_application
+        provision_alias_for_application(self.inbound_email_address)
+
+    def _deprovision_exchange_alias(self, alias_local_part: str) -> None:
+        from exchange.integration import deprovision_alias_for_application
+        from django.conf import settings
+        deprovision_alias_for_application(f"{alias_local_part}@{settings.INBOUND_EMAIL_DOMAIN}")
 
     def __str__(self):
         return f"{self.name} ({self.owner})"

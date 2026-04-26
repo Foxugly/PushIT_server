@@ -19,7 +19,7 @@ from notifications.models import InboundEmailIngestionLog, Notification, Notific
     GRAPH_CLIENT_SECRET="fake-secret",
     GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
-@patch("applications.graph_mail.add_email_alias")
+@patch("applications.models.Application._provision_exchange_alias")
 @patch("notifications.inbound_mailbox.mark_email_read")
 @patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
@@ -101,7 +101,7 @@ def test_poll_inbound_mailbox_returns_skipped_when_not_configured():
     GRAPH_CLIENT_SECRET="fake-secret",
     GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
-@patch("applications.graph_mail.add_email_alias")
+@patch("applications.models.Application._provision_exchange_alias")
 @patch("notifications.inbound_mailbox.mark_email_read")
 @patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
@@ -142,7 +142,7 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
     GRAPH_CLIENT_SECRET="fake-secret",
     GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
-@patch("applications.graph_mail.add_email_alias")
+@patch("applications.models.Application._provision_exchange_alias")
 @patch("notifications.inbound_mailbox.mark_email_read")
 @patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
