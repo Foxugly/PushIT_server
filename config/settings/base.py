@@ -3,6 +3,7 @@ from pathlib import Path
 
 import environ
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -19,6 +20,7 @@ CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=["http://localhost:4200", "http://127.0.0.1:4200"],
 )
+CORS_ALLOW_HEADERS = (*default_headers, "x-app-token")
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 INSTALLED_APPS = [
@@ -29,6 +31,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
+    "django_extensions",
     "rest_framework",
     "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
@@ -198,6 +201,27 @@ GRAPH_TENANT_ID = env("GRAPH_TENANT_ID", default="")
 GRAPH_CLIENT_ID = env("GRAPH_CLIENT_ID", default="")
 GRAPH_CLIENT_SECRET = env("GRAPH_CLIENT_SECRET", default="")
 GRAPH_MAILBOX_USER_ID = env("GRAPH_MAILBOX_USER_ID", default="")
+
+# --- Exchange Online alias management (PowerShell + ExchangeOnlineManagement) ---
+# Path to scripts/exchange/manage_alias.ps1 (absolute on prod).
+EXCHANGE_PS_SCRIPT_PATH = env(
+    "EXCHANGE_PS_SCRIPT_PATH",
+    default=str(BASE_DIR / "scripts" / "exchange" / "manage_alias.ps1"),
+)
+# Azure AD app registration (service principal) used by Connect-ExchangeOnline.
+EXCHANGE_APP_ID = env("EXCHANGE_APP_ID", default="")
+# Tenant domain, e.g. "contoso.onmicrosoft.com".
+EXCHANGE_TENANT = env("EXCHANGE_TENANT", default="")
+# Either a thumbprint of a cert installed in PowerShell's cert store...
+EXCHANGE_CERT_THUMBPRINT = env("EXCHANGE_CERT_THUMBPRINT", default="")
+# ...or a path to a PFX file plus its password (alternative to thumbprint).
+EXCHANGE_CERT_FILE_PATH = env("EXCHANGE_CERT_FILE_PATH", default="")
+EXCHANGE_CERT_PASSWORD = env("EXCHANGE_CERT_PASSWORD", default="")
+# Primary SMTP address of the shared mailbox that holds the inbound aliases.
+EXCHANGE_SHARED_MAILBOX = env("EXCHANGE_SHARED_MAILBOX", default="")
+# Subprocess timeout for each pwsh invocation (seconds). Connect-ExchangeOnline
+# typically takes ~10s, so 60s is a comfortable upper bound.
+EXCHANGE_PS_TIMEOUT = env.int("EXCHANGE_PS_TIMEOUT", default=60)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "PushIT API",

@@ -1,0 +1,8 @@
+{
+  "apiKey": "REPLACE_WITH_FIREBASE_WEB_API_KEY",
+  "authDomain": "pushit-dcf8a.firebaseapp.com",
+  "projectId": "pushit-dcf8a",
+  "messagingSenderId": "REPLACE_WITH_SENDER_ID",
+  "appId": "REPLACE_WITH_APP_ID",
+  "vapidKey": "REPLACE_WITH_VAPID_KEY"
+}
