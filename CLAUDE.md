@@ -164,6 +164,39 @@ Push to `main` triggers: tests (Python 3.12) → SSH deploy to EC2.
 - `.env` injected from GitHub Secret `DOTENV_PROD` on each deploy
 - Integration tests (`@pytest.mark.integration`) are excluded from CI (`-m "not integration"`)
 
+### Adding a new environment variable — IMPORTANT
+
+The deploy step **overwrites `/var/www/django_websites/PushIT_server/.env` with
+the contents of the `DOTENV_PROD` GitHub Secret on every push to `main`**.
+Editing `.env` directly on the server is fine for ad-hoc testing, but the
+next deploy will silently revert your changes. To add a new env var
+durably, do all three:
+
+1. Add the variable to `.env_template` (with a comment, no real value).
+2. Add a `settings.X = env("X", default=...)` line to `config/settings/base.py`.
+3. Update the `DOTENV_PROD` GitHub Secret with the production value at
+   <https://github.com/Foxugly/PushIT_server/settings/secrets/actions>.
+
+If you forget step 3, the variable will be empty in production after the
+next deploy and any code path that depends on it will break (with
+potentially confusing symptoms — e.g. PowerShell scripts failing on
+mandatory parameters because the env var was empty).
+
+### Git permissions on the server
+
+`deploy.sh` runs as `django` and does `git fetch origin main` /
+`git reset --hard origin/main` inside `/var/www/django_websites/PushIT_server`.
+If a previous git operation was performed by another user (root or ubuntu),
+the new objects in `.git/objects` may be unwritable by `django` and the
+fetch fails with *"insufficient permission for adding an object to repository
+database .git/objects"*. Recover with:
+
+```bash
+sudo chown -R django:www-data /var/www/django_websites/PushIT_server/.git
+sudo chmod -R g+w /var/www/django_websites/PushIT_server/.git
+sudo -u django git -C /var/www/django_websites/PushIT_server config core.sharedRepository group
+```
+
 ### Deploy files
 
 - `deploy/apache/pushit.conf` — Apache2 VirtualHost (reverse proxy + static/media)

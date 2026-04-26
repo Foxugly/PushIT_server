@@ -91,6 +91,12 @@ The Application model wires this in automatically via
 `exchange.integration.provision_alias_for_application` / `deprovision_alias_for_application`.
 Failures are logged at ERROR level but do not block save/delete.
 
+> ⚠️ The `EXCHANGE_*` env vars must be present in the `DOTENV_PROD` GitHub
+> Secret, not only in the local `.env` on the server. The CI/CD deploy
+> overwrites `.env` from that secret on every push to `main`, so editing
+> the server-side `.env` directly is only valid until the next deploy.
+> See **Adding a new environment variable** in `CLAUDE.md`.
+
 ## Deployment — server side
 
 ### 1. Install PowerShell Core (Debian/Ubuntu)
