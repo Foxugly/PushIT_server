@@ -6,6 +6,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging.js";
 
 const els = {
+  email: document.getElementById("email"),
+  password: document.getElementById("password"),
+  loginBtn: document.getElementById("login-btn"),
+  loginStatus: document.getElementById("login-status"),
   appToken: document.getElementById("app-token"),
   registerBtn: document.getElementById("register-btn"),
   registerStatus: document.getElementById("register-status"),
@@ -20,6 +24,7 @@ const els = {
 const state = {
   fcmToken: null,
   apiBase: null,
+  accessToken: null,
   received: [],
 };
 
@@ -33,6 +38,11 @@ function prefillAppToken() {
   const token = qs.get("app_token");
   if (token) {
     els.appToken.value = token;
+  }
+  const accessToken = qs.get("access_token");
+  if (accessToken) {
+    state.accessToken = accessToken;
+    setStatus(els.loginStatus, "JWT loaded from query string.", "ok");
   }
 }
 
@@ -185,8 +195,46 @@ els.clearBtn.addEventListener("click", async () => {
   }
 });
 
+els.loginBtn.addEventListener("click", async () => {
+  const email = els.email.value.trim();
+  const password = els.password.value;
+  if (!email || !password) {
+    setStatus(els.loginStatus, "Enter email and password.", "err");
+    return;
+  }
+
+  setStatus(els.loginStatus, "Logging in...", "warn");
+  let resp;
+  try {
+    resp = await fetch(`${state.apiBase}/auth/login/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (e) {
+    setStatus(els.loginStatus, `Network error: ${e.message}`, "err");
+    return;
+  }
+
+  const body = await resp.json().catch(() => ({}));
+  if (resp.ok && body.access) {
+    state.accessToken = body.access;
+    setStatus(els.loginStatus, "Logged in.", "ok");
+  } else {
+    setStatus(
+      els.loginStatus,
+      `Login failed (${resp.status}): ${JSON.stringify(body)}`,
+      "err",
+    );
+  }
+});
+
 els.registerBtn.addEventListener("click", async () => {
   const appToken = els.appToken.value.trim();
+  if (!state.accessToken) {
+    setStatus(els.registerStatus, "Log in first.", "err");
+    return;
+  }
   if (!appToken) {
     setStatus(els.registerStatus, "Enter an app token first.", "err");
     return;
@@ -202,9 +250,10 @@ els.registerBtn.addEventListener("click", async () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-App-Token": appToken,
+        "Authorization": `Bearer ${state.accessToken}`,
       },
       body: JSON.stringify({
+        app_token: appToken,
         device_name: "Fake Web Device",
         platform: "android",
         push_token: state.fcmToken,

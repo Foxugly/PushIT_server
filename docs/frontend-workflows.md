@@ -14,7 +14,7 @@ This document complements Swagger. It focuses on the sequence of calls a fronten
 
 1. `POST /api/v1/apps/` or `POST /api/v1/apps/{app_id}/regenerate-token/`
 2. Store the raw token server-side only.
-3. Send `X-App-Token: <token>` on application endpoints.
+3. Send `X-App-Token: <token>` on application-to-server notification endpoints.
 
 ## Application setup
 
@@ -40,15 +40,34 @@ Business rules:
 
 ## Devices
 
-### Link a device
+### Identify a device
 
-- `POST /api/v1/devices/link/`
-- Auth: `X-App-Token`
+- `POST /api/v1/devices/identify/`
+- Auth: Bearer JWT
+- Creates or updates the authenticated user's device from its FCM token.
+- Returns active applications already linked to that device.
 
 Expected payload:
 
 ```json
 {
+  "device_name": "Samsung S24",
+  "platform": "android",
+  "push_token": "token_123456789012345678901234567890"
+}
+```
+
+### Link a device
+
+- `POST /api/v1/devices/link/`
+- Auth: Bearer JWT
+- The app token is sent in the JSON body to identify the application to link.
+
+Expected payload:
+
+```json
+{
+  "app_token": "apt_xxxxxxxxxxxx",
   "device_name": "Samsung S24",
   "platform": "android",
   "push_token": "token_123456789012345678901234567890"

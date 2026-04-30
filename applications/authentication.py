@@ -54,50 +54,7 @@ class AppTokenAuthentication(authentication.BaseAuthentication):
 
     def authenticate(self, request):
         raw_token = request.META.get(self.header_name)
-
-        if not raw_token:
-            increment_counter("pushit_app_token_auth_total", labels={"outcome": "missing"})
-            raise exceptions.NotAuthenticated(
-                "Missing app token.",
-                code="app_token_missing",
-            )
-
-        if not raw_token.startswith("apt_"):
-            increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid_format"})
-            raise exceptions.AuthenticationFailed(
-                "Invalid app token format.",
-                code="app_token_invalid_format",
-            )
-
-        token_hash = Application.hash_app_token(raw_token)
-
-        try:
-            application = Application.objects.select_related("owner").get(app_token_hash=token_hash)
-        except Application.DoesNotExist:
-            increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid"})
-            raise exceptions.AuthenticationFailed(
-                "Invalid app token.",
-                code="app_token_invalid",
-            )
-
-        if not application.is_active:
-            increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
-            raise exceptions.AuthenticationFailed(
-                "Inactive application.",
-                code="app_token_inactive",
-            )
-
-        if application.revoked_at is not None:
-            increment_counter("pushit_app_token_auth_total", labels={"outcome": "revoked"})
-            raise exceptions.AuthenticationFailed(
-                "App token has been revoked.",
-                code="app_token_revoked",
-            )
-
-        now = timezone.now()
-        if not application.last_used_at or application.last_used_at < now - timedelta(minutes=5):
-            application.last_used_at = now
-            application.save(update_fields=["last_used_at"])
+        application = get_application_for_raw_app_token(raw_token)
 
         request.auth_application = application
         principal = AppTokenPrincipal(
@@ -110,3 +67,53 @@ class AppTokenAuthentication(authentication.BaseAuthentication):
 
     def authenticate_header(self, request):
         return "X-App-Token"
+
+
+def get_application_for_raw_app_token(raw_token: str | None) -> Application:
+    """Validate a raw app token and return its application without changing request.user."""
+
+    if not raw_token:
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "missing"})
+        raise exceptions.NotAuthenticated(
+            "Missing app token.",
+            code="app_token_missing",
+        )
+
+    if not raw_token.startswith("apt_"):
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid_format"})
+        raise exceptions.AuthenticationFailed(
+            "Invalid app token format.",
+            code="app_token_invalid_format",
+        )
+
+    token_hash = Application.hash_app_token(raw_token)
+
+    try:
+        application = Application.objects.select_related("owner").get(app_token_hash=token_hash)
+    except Application.DoesNotExist:
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid"})
+        raise exceptions.AuthenticationFailed(
+            "Invalid app token.",
+            code="app_token_invalid",
+        )
+
+    if not application.is_active:
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
+        raise exceptions.AuthenticationFailed(
+            "Inactive application.",
+            code="app_token_inactive",
+        )
+
+    if application.revoked_at is not None:
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "revoked"})
+        raise exceptions.AuthenticationFailed(
+            "App token has been revoked.",
+            code="app_token_revoked",
+        )
+
+    now = timezone.now()
+    if not application.last_used_at or application.last_used_at < now - timedelta(minutes=5):
+        application.last_used_at = now
+        application.save(update_fields=["last_used_at"])
+
+    return application

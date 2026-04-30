@@ -58,9 +58,10 @@ uses the mock push provider and no real FCM delivery happens.
 python scripts/fake_device/server.py --port 8765
 ```
 
-### 2. Get an app token
+### 2. Get user credentials and an app token
 
-Log into PushIT, create an application, and copy its `app_token` (starts with `apt_`).
+Create or reuse a PushIT user account. Then create an application and copy its
+`app_token` (starts with `apt_`).
 
 ### 3. Open the page
 
@@ -70,6 +71,7 @@ http://localhost:8765/?app_token=apt_xxx
 
 - Accept the notification permission prompt.
 - Wait for the FCM token to appear.
+- Log in with the PushIT user credentials.
 - Click **Register device**. Watch for "Registered as device ...".
 
 ### 4. Send a test notification
@@ -79,11 +81,11 @@ Use any API client; for example:
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/notifications/ \
   -H "Content-Type: application/json" \
-  -H "X-App-Token: apt_xxx" \
+  -H "Authorization: Bearer <access_token>" \
   -d '{"title": "Hello", "message": "From PushIT", "device_ids": [<device_id>]}'
 
 curl -X POST http://127.0.0.1:8000/api/v1/notifications/<id>/send/ \
-  -H "X-App-Token: apt_xxx"
+  -H "Authorization: Bearer <access_token>"
 ```
 
 The notification should appear within a few seconds in the page (foreground) or as an OS notification (background).
@@ -94,6 +96,7 @@ Run this once after setup to confirm everything is wired correctly:
 
 - [ ] `python scripts/fake_device/server.py` -- server starts, prints "serving on http://127.0.0.1:8765"
 - [ ] Open `http://localhost:8765/?app_token=apt_xxx` -- FCM token is displayed on the page
+- [ ] Log in with a PushIT user
 - [ ] Click **Register device** -- status becomes "Registered as device ..."
 - [ ] `GET http://127.0.0.1:8000/api/v1/devices/` lists the new "Fake Web Device"
 - [ ] Send a notification targeting that device -- it appears in the page (foreground mode)
@@ -103,7 +106,7 @@ Run this once after setup to confirm everything is wired correctly:
 
 - **"Service Worker registration failed"**: make sure you are on `localhost` or HTTPS. `file://` does not work.
 - **"getToken() failed"**: check the VAPID key in `config.json`, and that FCM is enabled on the Firebase project.
-- **"Registration failed (401)"**: the app token is invalid. Regenerate via `POST /api/v1/apps/<id>/regenerate-token/`.
+- **"Registration failed (401)"**: log in first, then verify the app token is valid. Regenerate via `POST /api/v1/apps/<id>/regenerate-token/` if needed.
 - **"Registration failed (CORS)"**: add `http://localhost:8765` to `CORS_ALLOWED_ORIGINS` in your Django `.env` and restart.
 - **No notifications arrive**: verify `FCM_SERVICE_ACCOUNT_PATH` is set in Django's `.env` (otherwise mock provider is used).
 - **FCM token changed**: happens after browser data clear or permission reset. Re-click **Register device** to re-link.

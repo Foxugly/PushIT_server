@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIRequestFactory
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 from accounts.models import User
@@ -9,6 +10,12 @@ from applications.models import Application
 from applications.permissions import HasAppToken
 
 VALID_PUSH_TOKEN = "token_12345678901234567890"
+
+
+def _authenticate(client: APIClient, user: User) -> None:
+    access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
 
 @pytest.mark.django_db
 def test_app_auth_updates_last_used_at():
@@ -23,18 +30,19 @@ def test_app_auth_updates_last_used_at():
     app = Application(owner=user, name="App")
     raw_token = app.set_new_app_token()
     app.save()
+    _authenticate(client, user)
 
     assert app.last_used_at is None
 
     response = client.post(
         "/api/v1/devices/link/",
         {
+            "app_token": raw_token,
             "device_name": "Samsung",
             "platform": "android",
             "push_token": VALID_PUSH_TOKEN,
         },
         format="json",
-        HTTP_X_APP_TOKEN=raw_token,
     )
 
     assert response.status_code == 200
@@ -56,16 +64,17 @@ def test_inactive_app_token_is_rejected():
     app = Application(owner=user, name="App", is_active=False)
     raw_token = app.set_new_app_token()
     app.save()
+    _authenticate(client, user)
 
     response = client.post(
         "/api/v1/devices/link/",
         {
+            "app_token": raw_token,
             "device_name": "Samsung",
             "platform": "android",
             "push_token": VALID_PUSH_TOKEN,
         },
         format="json",
-        HTTP_X_APP_TOKEN=raw_token,
     )
 
     assert response.status_code == 401
@@ -86,16 +95,17 @@ def test_revoked_app_token_is_rejected():
     raw_token = app.set_new_app_token()
     app.save()
     app.revoke_token()
+    _authenticate(client, user)
 
     response = client.post(
         "/api/v1/devices/link/",
         {
+            "app_token": raw_token,
             "device_name": "Samsung",
             "platform": "android",
             "push_token": VALID_PUSH_TOKEN,
         },
         format="json",
-        HTTP_X_APP_TOKEN=raw_token,
     )
 
     assert response.status_code == 401
@@ -105,6 +115,12 @@ def test_revoked_app_token_is_rejected():
 @pytest.mark.django_db
 def test_missing_app_token_returns_explicit_business_code():
     client = APIClient()
+    user = User.objects.create_user(
+        email="u1@example.com",
+        username="u1",
+        password="1234Test!!",
+    )
+    _authenticate(client, user)
 
     response = client.post(
         "/api/v1/devices/link/",

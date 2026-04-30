@@ -75,13 +75,21 @@ def test_application_and_device_validation_responses_are_documented_per_endpoint
         "DeviceQuietPeriodValidationErrorResponse",
     )
 
+    device_identify_operation = schema["paths"]["/api/v1/devices/identify/"]["post"]
+    _assert_json_response_ref(
+        device_identify_operation,
+        "400",
+        "DeviceIdentifyValidationErrorResponse",
+    )
+    assert {"BearerAuth": []} in device_identify_operation["security"]
+
     device_link_operation = schema["paths"]["/api/v1/devices/link/"]["post"]
     _assert_json_response_ref(
         device_link_operation,
         "400",
         "DeviceLinkWithAppTokenValidationErrorResponse",
     )
-    assert {"AppTokenAuth": []} in device_link_operation["security"]
+    assert {"BearerAuth": []} in device_link_operation["security"]
 
 
 @pytest.mark.django_db

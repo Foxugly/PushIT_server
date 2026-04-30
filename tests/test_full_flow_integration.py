@@ -45,6 +45,7 @@ def test_fresh_db_migrate_and_full_flow(tmp_path):
     env["SQLITE_NAME"] = str(db_path)
     env["STATE"] = "DEV"
     env["ALLOWED_HOSTS"] = f"localhost,127.0.0.1,[::1],testserver"
+    env["PUSHIT_FORCE_MOCK_PUSH"] = "true"
 
     migrate = subprocess.run(
         [sys.executable, "manage.py", "migrate", "--noinput"],

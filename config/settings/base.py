@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 SQLITE_NAME = Path(env("SQLITE_NAME", default=str(BASE_DIR / "db.sqlite3")))
+DATABASE_NAME = env("DATABASE_NAME", default="").strip() or str(SQLITE_NAME)
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="dev-secret-key")
 STATE = env("STATE", default="DEV")
@@ -78,7 +79,7 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": env("DATABASE_ENGINE", default="django.db.backends.sqlite3"),
-        "NAME": env("DATABASE_NAME", default=str(SQLITE_NAME)),
+        "NAME": DATABASE_NAME,
         "HOST": env("DATABASE_HOST", default=""),
         "PORT": env("DATABASE_PORT", default=""),
         "USER": env("DATABASE_USER", default=""),
@@ -194,6 +195,7 @@ SIMPLE_JWT = {
 }
 
 FCM_SERVICE_ACCOUNT_PATH = env("FCM_SERVICE_ACCOUNT_PATH", default="")
+PUSHIT_FORCE_MOCK_PUSH = env.bool("PUSHIT_FORCE_MOCK_PUSH", default=False)
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
 INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="pushit.com")
 

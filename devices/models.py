@@ -14,7 +14,13 @@ class DevicePlatform(models.TextChoices):
 
 
 class Device(models.Model):
-    #user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="devices",)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="devices",
+        blank=True,
+        null=True,
+    )
     device_name = models.CharField(max_length=120, blank=True)
     platform = models.CharField(max_length=20, choices=DevicePlatform.choices, default=DevicePlatform.ANDROID)
     push_token = models.CharField(max_length=512, unique=True)

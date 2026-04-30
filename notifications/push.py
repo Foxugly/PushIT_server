@@ -32,7 +32,10 @@ class TemporaryPushProviderError(PushProviderError):
 
 
 def _is_fcm_configured() -> bool:
-    return bool(getattr(settings, "FCM_SERVICE_ACCOUNT_PATH", ""))
+    if getattr(settings, "PUSHIT_FORCE_MOCK_PUSH", False):
+        return False
+    path = str(getattr(settings, "FCM_SERVICE_ACCOUNT_PATH", "") or "").strip()
+    return bool(path) and path.lower() not in {"mock", "none"}
 
 
 def _ensure_fcm_initialized():

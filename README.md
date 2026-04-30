@@ -119,11 +119,11 @@ Les settings sont séparés dans [config/settings](C:/Users/rvilain/PycharmProje
 ### Utilisateur
 
 - login JWT via `/api/v1/auth/login/`
-- accès Bearer sur les endpoints utilisateur
+- accès Bearer sur les endpoints utilisateur, y compris la liaison d'un device
 
 ### Application
 
-- auth applicative via header `X-App-Token`
+- auth applicative via header `X-App-Token` pour les endpoints applicatifs serveur à serveur
 - l'auth app n'utilise pas `request.user = owner`
 - l'application authentifiée est disponible via `request.auth_application`
 
@@ -142,8 +142,11 @@ Les settings sont séparés dans [config/settings](C:/Users/rvilain/PycharmProje
 ### Flow applicatif
 
 1. créer ou régénérer un `app_token`
-2. lier un device via `/api/v1/devices/link/`
-3. créer une notification immédiate ou planifiée via `/api/v1/notifications/app/create/`
+2. connecter l'utilisateur sur le device via `/api/v1/auth/login/`
+3. identifier le device via `/api/v1/devices/identify/` avec Bearer JWT + `push_token`
+4. lire les applications déjà liées au device dans `linked_applications`
+5. si nécessaire, lier le device via `/api/v1/devices/link/` avec Bearer JWT + `app_token` dans le payload
+6. créer une notification immédiate ou planifiée via `/api/v1/notifications/app/create/`
 
 ### Flow email entrant
 
@@ -262,6 +265,8 @@ $env:PUSHIT_BASE_URL="http://127.0.0.1:8000/api/v1"
 ## Workflow frontend
 
 Le Swagger expose désormais les endpoints, l'auth et des exemples de payloads métier. Pour le séquencement concret côté frontend, voir aussi [docs/frontend-workflows.md](C:/Users/rvilain/PycharmProjects/PushIT_server/docs/frontend-workflows.md).
+
+Pour le workflow spécifique d'une app/device qui doit se connecter, se lier à une application et recevoir les notifications Firebase, voir [docs/device-app-connection.md](C:/Users/rvilain/PycharmProjects/PushIT_server/docs/device-app-connection.md).
 
 ## Tests
 

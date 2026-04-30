@@ -192,15 +192,31 @@ def main() -> None:
         print("App token regenerated")
         dump_response(regenerate_response)
 
-    print("\n=== 4. Link device with X-App-Token ===")
-    link_device_response = post(
-        f"{BASE_URL}/devices/link/",
+    print("\n=== 4. Identify authenticated device ===")
+    identify_device_response = post(
+        f"{BASE_URL}/devices/identify/",
         {
             "device_name": DEVICE_NAME,
             "platform": DEVICE_PLATFORM,
             "push_token": DEVICE_PUSH_TOKEN,
         },
-        app_token=app_token,
+        bearer_token=access_token,
+    )
+    ensure_status(identify_device_response, (200,), "identify device")
+    device_id = identify_device_response.json()["device_id"]
+    print("Device identified")
+    dump_response(identify_device_response)
+
+    print("\n=== 4b. Link authenticated device to application ===")
+    link_device_response = post(
+        f"{BASE_URL}/devices/link/",
+        {
+            "app_token": app_token,
+            "device_name": DEVICE_NAME,
+            "platform": DEVICE_PLATFORM,
+            "push_token": DEVICE_PUSH_TOKEN,
+        },
+        bearer_token=access_token,
     )
     ensure_status(link_device_response, (200,), "link device")
     link_data = link_device_response.json()

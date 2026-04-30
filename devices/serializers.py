@@ -8,6 +8,20 @@ from applications.models import QuietPeriodType
 from applications.serializers import QuietPeriodWriteMixin
 from .models import Device, DevicePlatform, DeviceQuietPeriod
 
+class DeviceLinkedApplicationSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    description = serializers.CharField()
+    is_active = serializers.BooleanField()
+    linked_at = serializers.DateTimeField()
+
+
+class DeviceIdentifyResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    device_id = serializers.IntegerField()
+    device_created = serializers.BooleanField()
+    linked_applications = DeviceLinkedApplicationSerializer(many=True)
+
 DeviceLinkWithAppTokenResponseSerializer = inline_serializer(
     name="DeviceLinkWithAppTokenResponse",
     fields={
@@ -26,6 +40,11 @@ DeviceUpdateValidationErrorResponseSerializer = build_validation_error_serialize
 
 DeviceLinkWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
     "DeviceLinkWithAppTokenValidationErrorResponse",
+    ["app_token", "device_name", "platform", "push_token"],
+)
+
+DeviceIdentifyValidationErrorResponseSerializer = build_validation_error_serializer(
+    "DeviceIdentifyValidationErrorResponse",
     ["device_name", "platform", "push_token"],
 )
 
@@ -67,7 +86,14 @@ class DeviceUpdateSerializer(serializers.ModelSerializer):
         ]
 
 class DeviceLinkWithAppTokenSerializer(serializers.Serializer):
+    app_token = serializers.CharField(write_only=True, required=False, allow_blank=True, trim_whitespace=True)
     device_name = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True,)
+    platform = serializers.ChoiceField(choices=DevicePlatform.choices, default=DevicePlatform.ANDROID)
+    push_token = serializers.CharField(min_length=20, max_length=512, trim_whitespace=True)
+
+
+class DeviceIdentifySerializer(serializers.Serializer):
+    device_name = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True)
     platform = serializers.ChoiceField(choices=DevicePlatform.choices, default=DevicePlatform.ANDROID)
     push_token = serializers.CharField(min_length=20, max_length=512, trim_whitespace=True)
 

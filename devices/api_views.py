@@ -1,4 +1,5 @@
 from django.http import Http404
+from django.db.models import Q
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound
@@ -32,8 +33,11 @@ class DeviceListApiView(generics.ListAPIView):
     def get_queryset(self):
         return (
             Device.objects.filter(
-                application_links__application__owner=self.request.user,
-                application_links__is_active=True,
+                Q(user=self.request.user)
+                | Q(
+                    application_links__application__owner=self.request.user,
+                    application_links__is_active=True,
+                )
             )
             .distinct()
             .order_by("-id")
@@ -92,8 +96,11 @@ class DeviceDetailApiView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return (
             Device.objects.filter(
-                application_links__application__owner=self.request.user,
-                application_links__is_active=True,
+                Q(user=self.request.user)
+                | Q(
+                    application_links__application__owner=self.request.user,
+                    application_links__is_active=True,
+                )
             )
             .distinct()
             .order_by("-id")
@@ -115,8 +122,11 @@ class UserOwnedDeviceMixin:
     def get_device(self):
         return (
             Device.objects.filter(
-                application_links__application__owner=self.request.user,
-                application_links__is_active=True,
+                Q(user=self.request.user)
+                | Q(
+                    application_links__application__owner=self.request.user,
+                    application_links__is_active=True,
+                ),
                 id=self.kwargs["device_id"],
             )
             .distinct()

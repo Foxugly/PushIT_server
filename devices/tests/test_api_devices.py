@@ -1,5 +1,6 @@
 import pytest
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
 from applications.models import Application
@@ -15,15 +16,8 @@ def test_device_detail_not_found_returns_device_not_found_code():
     )
     Application.objects.create(owner=user, name="Mon App")
 
-    login_response = client.post(
-        "/api/v1/auth/login/",
-        {
-            "email": "owner@example.com",
-            "password": "MotDePasseTresSolide123!",
-        },
-        format="json",
-    )
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {login_response.data['access']}")
+    access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
     response = client.get("/api/v1/devices/999999/")
 
