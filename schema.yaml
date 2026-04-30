@@ -1285,12 +1285,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Device not found
+  /api/v1/devices/identify/:
+    post:
+      operationId: api_v1_devices_identify_create
+      description: Creates or updates a device for the authenticated user from its
+        push token and returns the active applications already linked to that device.
+      summary: Identify an authenticated device
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceIdentify'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceIdentify'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceIdentify'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceIdentifyResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceIdentifyValidationErrorResponse'
+          description: Invalid data
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Missing or invalid user token
   /api/v1/devices/link/:
     post:
       operationId: api_v1_devices_link_create
-      description: Creates or updates a device from the `X-App-Token` header and links
-        it to the application.
-      summary: Link a device to an application via app token
+      description: Creates or updates a device for the authenticated user and links
+        it to the application identified by the submitted app token.
+      summary: Link an authenticated device to an application
       tags:
       - Devices
       requestBody:
@@ -1306,7 +1347,7 @@ paths:
               $ref: '#/components/schemas/DeviceLinkWithAppToken'
         required: true
       security:
-      - AppTokenAuth: []
+      - BearerAuth: []
       responses:
         '200':
           content:
@@ -2652,9 +2693,78 @@ components:
             type: integer
       required:
       - notification_ids
+    DeviceIdentify:
+      type: object
+      properties:
+        device_name:
+          type: string
+          maxLength: 120
+        platform:
+          allOf:
+          - $ref: '#/components/schemas/DevicePlatformEnum'
+          default: android
+        push_token:
+          type: string
+          maxLength: 512
+          minLength: 20
+      required:
+      - push_token
+    DeviceIdentifyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        device_id:
+          type: integer
+        device_created:
+          type: boolean
+        linked_applications:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceLinkedApplication'
+      required:
+      - device_created
+      - device_id
+      - linked_applications
+      - status
+    DeviceIdentifyValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/DeviceIdentifyValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    DeviceIdentifyValidationErrorResponseFields:
+      type: object
+      properties:
+        device_name:
+          type: array
+          items:
+            type: string
+        platform:
+          type: array
+          items:
+            type: string
+        push_token:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     DeviceLinkWithAppToken:
       type: object
       properties:
+        app_token:
+          type: string
+          writeOnly: true
         device_name:
           type: string
           maxLength: 120
@@ -2703,6 +2813,10 @@ components:
     DeviceLinkWithAppTokenValidationErrorResponseFields:
       type: object
       properties:
+        app_token:
+          type: array
+          items:
+            type: string
         device_name:
           type: array
           items:
@@ -2719,6 +2833,26 @@ components:
           type: array
           items:
             type: string
+    DeviceLinkedApplication:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+        linked_at:
+          type: string
+          format: date-time
+      required:
+      - description
+      - id
+      - is_active
+      - linked_at
+      - name
     DevicePlatformEnum:
       enum:
       - android

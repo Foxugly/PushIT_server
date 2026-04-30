@@ -29,12 +29,19 @@ Base URL: `http://127.0.0.1:8000/api/v1/`
 
 All authenticated endpoints use `Authorization: Bearer <access_token>`.
 
-### Device Registration (App Token auth)
+### Device Identification and App Linking
 
-- `POST /devices/link/` — links a device to an application
-  - Header: `X-App-Token: apt_...` (server-to-server token, but also used by the mobile app to self-register)
+- `POST /devices/identify/` — creates or updates the authenticated user's device and returns apps already linked to it
+  - Auth: `Authorization: Bearer <access_token>`
   - Body: `{"push_token": "<FCM registration token>", "platform": "android"|"ios", "device_name": "Samsung S24"}`
+  - Response: `{"status": "ok", "device_id": 1, "device_created": true, "linked_applications": []}`
+
+- `POST /devices/link/` — links an authenticated device to an application
+  - Auth: `Authorization: Bearer <access_token>`
+  - Body: `{"app_token": "apt_...", "push_token": "<FCM registration token>", "platform": "android"|"ios", "device_name": "Samsung S24"}`
   - Response: `{"status": "ok", "device_id": 1, "device_created": true, "link_created": true, "application_id": 1}`
+
+`X-App-Token` is not used to authenticate mobile device registration. It remains for server-to-server application endpoints only.
 
 ### Notifications (read-only for the mobile app)
 
@@ -69,7 +76,7 @@ All authenticated endpoints use `Authorization: Bearer <access_token>`.
 
 - **Android**: Add `google-services.json` from Firebase Console, implement `FirebaseMessagingService` to capture `onNewToken()` and `onMessageReceived()`
 - **iOS**: Add `GoogleService-Info.plist`, register for remote notifications, implement `UNUserNotificationCenterDelegate`
-- On token refresh, call `POST /devices/link/` with the new token
+- On token refresh, call `POST /devices/identify/` with the new token
 
 ### Screens (minimal MVP)
 
@@ -89,11 +96,12 @@ Login/Register
   → POST /auth/login/ or /auth/register/
   → Store access + refresh tokens
   → Request FCM token from Firebase SDK
-  → POST /devices/link/ with X-App-Token header
+  → POST /devices/identify/ with Bearer token
+  → If linked_applications is empty or user wants another app, POST /devices/link/ with Bearer token + app_token in JSON
   → Navigate to Notification List
 
 FCM Token Refresh (onNewToken)
-  → POST /devices/link/ with new push_token
+  → POST /devices/identify/ with new push_token
 
 Push Notification Received
   → Display system notification
