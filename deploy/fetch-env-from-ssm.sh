@@ -56,9 +56,11 @@ if not params:
 lines = []
 for p in params:
     key = p["Name"][len(prefix):].lstrip("/")
-    value = p["Value"]
+    # Tolerate a trailing CR/LF (artifact of a Windows/CRLF-edited seed file)
+    # but still reject any *internal* newline, which would corrupt the file.
+    value = p["Value"].strip("\r\n")
     if "\n" in value or "\r" in value:
-        sys.stderr.write(f"ERROR: value for {key} contains a newline; refusing.\n")
+        sys.stderr.write(f"ERROR: value for {key} contains an internal newline; refusing.\n")
         sys.exit(1)
     lines.append(f"{key}={value}")
 
