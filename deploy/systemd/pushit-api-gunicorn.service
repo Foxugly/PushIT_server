@@ -1,15 +1,17 @@
 [Unit]
-Description=PushIT Gunicorn Web Server
-After=network.target
+Description=PushIT API — Gunicorn (config.wsgi)
+After=network.target pushit-env-fetch.service
+# Hard dependency: without the SSM-fetched env, refuse to start.
+Requires=pushit-env-fetch.service
 
 [Service]
 User=django
 Group=www-data
 WorkingDirectory=/var/www/django_websites/PushIT_server
-RuntimeDirectory=pushit
+EnvironmentFile=/run/pushit/.env
 ExecStart=/var/www/django_websites/PushIT_server/.venv/bin/gunicorn config.wsgi:application -c /var/www/django_websites/PushIT_server/deploy/gunicorn.conf.py
 ExecReload=/bin/kill -s HUP $MAINPID
-Restart=on-failure
+Restart=always
 RestartSec=5
 KillMode=mixed
 StandardOutput=journal
