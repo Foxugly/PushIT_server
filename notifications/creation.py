@@ -47,22 +47,32 @@ def create_notification_with_optional_idempotency(
         )
 
     if connection.vendor == "sqlite":
-        notification, created = Notification.objects.get_or_create(
-            application=application,
-            idempotency_key=idempotency_key,
-            defaults={
-                "title": title,
-                "message": message,
-                "status": build_notification_status(scheduled_for),
-                "scheduled_for": scheduled_for,
-                "request_fingerprint": request_fingerprint,
-            },
-        )
-        return NotificationCreationOutcome(
-            notification=notification,
-            created=created,
-            conflict=not created and notification.request_fingerprint != request_fingerprint,
-        )
+        defaults = {
+            "title": title,
+            "message": message,
+            "status": build_notification_status(scheduled_for),
+            "scheduled_for": scheduled_for,
+            "request_fingerprint": request_fingerprint,
+        }
+        # SQLite serialises writers; with the busy timeout (see settings) a
+        # concurrent writer waits, then resolves to the existing row via the
+        # unique idempotency_key. Retry a few times if it still reports the db
+        # as locked, so concurrent same-key creates degrade to a 409 — never 500.
+        for attempt in range(3):
+            try:
+                notification, created = Notification.objects.get_or_create(
+                    application=application,
+                    idempotency_key=idempotency_key,
+                    defaults=defaults,
+                )
+                return NotificationCreationOutcome(
+                    notification=notification,
+                    created=created,
+                    conflict=not created and notification.request_fingerprint != request_fingerprint,
+                )
+            except OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 2:
+                    raise
 
     created = False
     savepoint_failed = False

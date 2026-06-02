@@ -89,6 +89,14 @@ DATABASES = {
 
 DB_SUPPORTS_ROW_LOCKING = "sqlite" not in DATABASES["default"]["ENGINE"]
 
+# SQLite serialises writers: make a concurrent writer wait for the lock (up to
+# this timeout, in seconds) instead of erroring out with "database is locked".
+# Without it, two concurrent same-idempotency-key creates can surface as a 500
+# instead of resolving to a 409 / idempotent reuse. No-op once we move to
+# PostgreSQL (which uses the select_for_update path instead).
+if not DB_SUPPORTS_ROW_LOCKING:
+    DATABASES["default"].setdefault("OPTIONS", {})["timeout"] = env.int("SQLITE_TIMEOUT", default=5)
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
