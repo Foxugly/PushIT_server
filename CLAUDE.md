@@ -73,6 +73,10 @@ Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, 
 1. **JWT (user auth)** — `Authorization: Bearer <token>` via SimpleJWT. Used for user-facing endpoints (app/device management, notification CRUD).
 2. **App Token (machine auth)** — `X-App-Token: apt_...` header. Authenticated via `AppTokenAuthentication` in `applications/authentication.py`. Sets `request.auth_application` (not `request.user`). Rate-limited to 300/min per application. Used for server-to-server notification creation, device linking, and bulk send.
 
+### CORS (frontend cross-origin)
+
+The frontend (`https://pushit.foxugly.com`) calls the API on a different origin, so it must be allowed via `CORS_ALLOWED_ORIGINS` (comma-separated, exact scheme+host). Auth is JWT Bearer (no cookies), so there is **no CSRF/cookie concern**: `CORS_ALLOW_CREDENTIALS` stays `False`, and the `Authorization` header is already whitelisted (django-cors-headers' `default_headers`, plus `x-app-token` added in `base.py:24`). To authorize a new frontend origin in prod, set `/pushit/prod/CORS_ALLOWED_ORIGINS` in SSM and re-fetch (`systemctl restart pushit-env-fetch pushit-api-gunicorn`) — no code change needed.
+
 ### Notification Lifecycle
 
 `DRAFT → QUEUED → PROCESSING → SENT/PARTIAL/FAILED` (also `SCHEDULED` for future notifications, `NO_TARGET` when no linked devices).
