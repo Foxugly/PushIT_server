@@ -267,10 +267,22 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
     import sentry_sdk
+    from django.core.exceptions import DisallowedHost
+
+    def _sentry_before_send(event, hint):
+        # Drop common public-endpoint noise: bots/scanners hitting the API with
+        # a bad Host header raise DisallowedHost (a handled 400, not a real bug).
+        exc = (hint.get("exc_info") or (None, None, None))[1]
+        if isinstance(exc, DisallowedHost):
+            return None
+        if str(event.get("logger", "")).startswith("django.security.DisallowedHost"):
+            return None
+        return event
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         environment=STATE,
         traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
         send_default_pii=env.bool("SENTRY_SEND_PII", default=False),
+        before_send=_sentry_before_send,
     )
