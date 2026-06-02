@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PushIT Server is a Django REST API for managing push notification delivery. It handles user/app registration, device management, notification creation & scheduling (with quiet periods and templates), delivery via FCM, and inbound email as a notification source via Microsoft Graph API polling.
 
-**Stack:** Python 3.12, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/prod), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API), Firebase Admin SDK.
+**Stack:** Python 3.12, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/CI) + PostgreSQL (prod), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API), Firebase Admin SDK.
 
 ## Common Commands
 
@@ -146,7 +146,7 @@ All endpoints under `/api/v1/`. URL modules per app (`*/api_urls.py`), wired thr
 
 ## Testing
 
-Pytest with `pytest-django`. Config in `pytest.ini`. Tests live in each app's `tests/` directory plus top-level `tests/` for integration/cross-cutting tests. Use `@pytest.mark.integration` for tests needing a fresh database. Concurrent send test is skipped on SQLite (`DB_SUPPORTS_ROW_LOCKING=False`).
+Pytest with `pytest-django`. Config in `pytest.ini`. Tests live in each app's `tests/` directory plus top-level `tests/` for integration/cross-cutting tests. Use `@pytest.mark.integration` for tests needing a fresh database. CI runs tests on SQLite, so the concurrent tests (send + the two app-token create tests) are skipped there (`DB_SUPPORTS_ROW_LOCKING=False`); they only run against PostgreSQL.
 
 ## Deployment
 
@@ -159,6 +159,7 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 - **User:** `django:www-data`
 - **Services:** Gunicorn (TCP `127.0.0.1:8001`) + nginx reverse proxy + Celery worker + Celery beat + `pushit-env-fetch` (SSM → `/run/pushit/.env` at boot)
 - **Redis:** DB `/2` (broker), DB `/3` (result backend), queue `pushit` (isolated from QuizOnline on `/0`-`/1`)
+- **Database:** PostgreSQL 16 (local on the shared EC2) — database `pushit`, role `pushit`, connected over `127.0.0.1:5432`. Credentials in SSM (`DATABASE_*`, password as SecureString). Migrated from SQLite on 2026-06-02 (dump/loaddata).
 
 ### CI/CD (GitHub Actions)
 
@@ -258,5 +259,5 @@ sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh
 
 ## Current Limitations
 
-- SQLite in dev and prod — may migrate to PostgreSQL later
+- SQLite in dev/CI, PostgreSQL in prod (migrated 2026-06-02). CI tests run on SQLite, so the concurrency tests stay skipped there; the `SQLITE_TIMEOUT` busy-timeout setting only matters for SQLite (no-op on PostgreSQL).
 - Celery eager mode in DEV/TEST — no actual async task processing
