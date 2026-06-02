@@ -152,6 +152,10 @@ def test_create_notification_without_idempotency_key_returns_400():
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.skipif(
+    not __import__("django.conf", fromlist=["settings"]).settings.DB_SUPPORTS_ROW_LOCKING,
+    reason="Concurrent app-token requests require PostgreSQL (SQLite :memory: + live_server threads are unreliable)",
+)
 def test_concurrent_create_notification_with_same_idempotency_key_is_idempotent(live_server):
     user = User.objects.create_user(
         email="renaud@example.com",
@@ -196,6 +200,10 @@ def test_concurrent_create_notification_with_same_idempotency_key_is_idempotent(
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.skipif(
+    not __import__("django.conf", fromlist=["settings"]).settings.DB_SUPPORTS_ROW_LOCKING,
+    reason="Concurrent app-token requests require PostgreSQL (SQLite :memory: + live_server threads are unreliable)",
+)
 def test_concurrent_create_notification_with_same_idempotency_key_and_different_payload_conflicts(live_server):
     user = User.objects.create_user(
         email="renaud@example.com",
