@@ -1,0 +1,19 @@
+[Unit]
+Description=PushIT — fetch environment from AWS SSM into /run/pushit/.env
+After=network-online.target
+Wants=network-online.target
+# Must complete before any process that needs the env file.
+Before=pushit-api-gunicorn.service pushit-celery-worker.service pushit-celery-beat.service
+
+[Service]
+# oneshot + RemainAfterExit: runs once at boot and stays "active" afterwards.
+# A code deploy does NOT restart this unit, so it keeps the env already fetched.
+# To pick up changed SSM values: `sudo systemctl restart pushit-env-fetch`.
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/var/www/django_websites/PushIT_server/deploy/fetch-env-from-ssm.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -153,7 +153,7 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 - **URL:** `https://pushit-api.foxugly.com` (API), `https://pushit.foxugly.com` (frontend)
 - **Path:** `/var/www/django_websites/PushIT_server/`
 - **User:** `django:www-data`
-- **Services:** Gunicorn (unix socket) + Apache2 reverse proxy + Celery worker + Celery beat
+- **Services:** Gunicorn (TCP `127.0.0.1:8001`) + nginx reverse proxy + Celery worker + Celery beat + `pushit-env-fetch` (SSM → `/run/pushit/.env` at boot)
 - **Redis:** DB `/2` (broker), DB `/3` (result backend), queue `pushit` (isolated from QuizOnline on `/0`-`/1`)
 
 ### CI/CD (GitHub Actions)
@@ -161,26 +161,50 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 Push to `main` triggers: tests (Python 3.12) → SSH deploy to EC2.
 
 - SSH as `ubuntu` → `sudo -u django` for deploy operations
-- `.env` injected from GitHub Secret `DOTENV_PROD` on each deploy
+- Env vars come from AWS SSM (`/pushit/prod/*`), fetched into `/run/pushit/.env` at boot — the deploy no longer writes a `.env` or uses `DOTENV_PROD`
 - Integration tests (`@pytest.mark.integration`) are excluded from CI (`-m "not integration"`)
 
-### Adding a new environment variable — IMPORTANT
+### Adding / changing an environment variable — IMPORTANT
 
-The deploy step **overwrites `/var/www/django_websites/PushIT_server/.env` with
-the contents of the `DOTENV_PROD` GitHub Secret on every push to `main`**.
-Editing `.env` directly on the server is fine for ad-hoc testing, but the
-next deploy will silently revert your changes. To add a new env var
-durably, do all three:
+The source of truth for prod env vars is **AWS SSM Parameter Store**
+(`/pushit/prod/*`, region `eu-west-1`), **not** a `.env` on the server. At boot
+`pushit-env-fetch.service` runs `deploy/fetch-env-from-ssm.sh`, which reads SSM
+via the EC2 instance role (IMDS, no keys on disk) and writes `/run/pushit/.env`
+(tmpfs, `640 django:www-data`). gunicorn / celery / beat load it via
+`EnvironmentFile=` + `Requires=pushit-env-fetch.service` (they refuse to start
+if the fetch fails); `deploy.sh` sources the same file for `manage.py`.
 
-1. Add the variable to `.env_template` (with a comment, no real value).
-2. Add a `settings.X = env("X", default=...)` line to `config/settings/base.py`.
-3. Update the `DOTENV_PROD` GitHub Secret with the production value at
-   <https://github.com/Foxugly/PushIT_server/settings/secrets/actions>.
+To add or change a variable:
 
-If you forget step 3, the variable will be empty in production after the
-next deploy and any code path that depends on it will break (with
-potentially confusing symptoms — e.g. PowerShell scripts failing on
-mandatory parameters because the env var was empty).
+1. Add it to `.env_template` (the catalog of all vars).
+2. If code reads it, add `settings.X = env("X", default=...)` to `config/settings/base.py`.
+3. Decide String vs SecureString — secrets go in `SECRET_KEYS` inside `deploy/seed-parameter-store.{sh,ps1}`.
+4. Seed SSM from your machine (needs `ssm:PutParameter`):
+   `bash deploy/seed-parameter-store.sh ./prod.env` (or `.ps1` on Windows), or a single value with `aws ssm put-parameter`.
+
+**The trap (same mechanism as QuizOnline):** `pushit-env-fetch` is
+`Type=oneshot` + `RemainAfterExit=yes`, so it stays "active" after its first
+run. A normal code deploy (`deploy.sh`) restarts gunicorn/celery but **does NOT
+re-fetch** — the processes keep the old env. To apply a changed variable,
+re-fetch explicitly, then restart the apps, in this order:
+
+```bash
+# 1. update SSM (one var, or bulk: bash deploy/seed-parameter-store.sh ./prod.env)
+aws ssm put-parameter --name /pushit/prod/MY_VAR --value "..." \
+    --type SecureString --overwrite --region eu-west-1
+# 2. re-fetch -> rewrites /run/pushit/.env
+sudo systemctl restart pushit-env-fetch
+# 3. make the processes reload the new config
+sudo systemctl restart pushit-api-gunicorn pushit-celery-worker pushit-celery-beat
+```
+
+> `--overwrite` does **not** change a parameter's Type. To promote a String to
+> SecureString, `aws ssm delete-parameter` first, then re-seed.
+
+**IAM:** the EC2 instance role (shared with QuizOnline) must allow
+`ssm:GetParametersByPath` on `arn:aws:ssm:eu-west-1:*:parameter/pushit/prod/*`
+plus `kms:Decrypt` on the `aws/ssm` key. `/run` is tmpfs (cleared on reboot),
+so the file is re-fetched every boot — SSM must be reachable then.
 
 ### Git permissions on the server
 
@@ -199,26 +223,30 @@ sudo -u django git -C /var/www/django_websites/PushIT_server config core.sharedR
 
 ### Deploy files
 
-- `deploy/apache/pushit.conf` — Apache2 VirtualHost (reverse proxy + static/media)
-- `deploy/gunicorn.conf.py` — Gunicorn config (unix socket, auto-scaled workers)
-- `deploy/systemd/pushit-web.service` — Gunicorn service
+- `deploy/nginx/pushit-api.conf` — nginx reverse proxy (`proxy_pass http://127.0.0.1:8001`, static/media)
+- `deploy/gunicorn.conf.py` — Gunicorn config (TCP `127.0.0.1:8001`, 3 workers)
+- `deploy/systemd/pushit-api-gunicorn.service` — Gunicorn service (`Restart=always`, `EnvironmentFile=/run/pushit/.env`)
+- `deploy/systemd/pushit-env-fetch.service` — oneshot, fetches env from SSM at boot
+- `deploy/fetch-env-from-ssm.sh` — SSM → `/run/pushit/.env` (run on server as root)
+- `deploy/seed-parameter-store.sh` / `.ps1` — seed SSM `/pushit/prod/*` from a local `.env` (run from your machine)
 - `deploy/systemd/pushit-celery-worker.service` — Celery worker (queue `pushit`, concurrency 2)
 - `deploy/systemd/pushit-celery-beat.service` — Celery beat scheduler
 - `deploy/setup-server.sh` — One-time server provisioning
-- `deploy/deploy.sh` — Deploy script (pull, deps, migrate, collectstatic, restart)
+- `deploy/deploy.sh` — Deploy script (pull, deps, source env, migrate, collectstatic, restart)
 - `.github/workflows/deploy.yml` — CI/CD pipeline
 
 ### Server commands
 
 ```bash
 # Check service status
-sudo systemctl status pushit-web pushit-celery-worker pushit-celery-beat
+sudo systemctl status pushit-api-gunicorn pushit-celery-worker pushit-celery-beat pushit-env-fetch
 
 # View logs
-journalctl -u pushit-web -f
+journalctl -u pushit-api-gunicorn -f
+journalctl -u pushit-env-fetch -f
 journalctl -u pushit-celery-worker -f
 tail -f /var/log/pushit/gunicorn-access.log
-tail -f /var/log/apache2/pushit-error.log
+tail -f /var/log/nginx/pushit-error.log
 
 # Manual deploy
 sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh

@@ -1,11 +1,14 @@
 [Unit]
 Description=PushIT Celery Beat Scheduler
-After=network.target redis-server.service
+After=network.target redis-server.service pushit-env-fetch.service
+# Hard dependency: without the SSM-fetched env, refuse to start.
+Requires=pushit-env-fetch.service
 
 [Service]
 User=django
 Group=www-data
 WorkingDirectory=/var/www/django_websites/PushIT_server
+EnvironmentFile=/run/pushit/.env
 ExecStart=/var/www/django_websites/PushIT_server/.venv/bin/celery -A config beat --loglevel=info --schedule=/var/www/django_websites/PushIT_server/celerybeat-schedule
 Restart=on-failure
 RestartSec=10

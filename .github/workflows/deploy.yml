@@ -35,17 +35,16 @@ jobs:
     environment: production
 
     steps:
-      - name: Write .env and deploy
+      # Env vars are NOT injected here. The source of truth is AWS SSM
+      # (/pushit/prod/*), fetched into /run/pushit/.env at boot by
+      # pushit-env-fetch.service and sourced by deploy.sh. To change a value,
+      # seed SSM (deploy/seed-parameter-store.{sh,ps1}) and restart
+      # pushit-env-fetch — see CLAUDE.md. (The old DOTENV_PROD secret is unused.)
+      - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOTENV_PROD
           script: |
-            sudo -u django bash -c 'echo "$0" > /var/www/django_websites/PushIT_server/.env' "$DOTENV_PROD"
-            sudo chmod 600 /var/www/django_websites/PushIT_server/.env
-            sudo chown django:www-data /var/www/django_websites/PushIT_server/.env
             sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh
-        env:
-          DOTENV_PROD: ${{ secrets.DOTENV_PROD }}

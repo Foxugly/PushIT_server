@@ -3,7 +3,11 @@
 # PushIT — Server setup for Ubuntu 24.04 EC2
 #
 # Cohabits with QuizOnline already deployed at /opt/quizonline/.
-# Assumes apache2, redis-server, python3.14, django:www-data already exist.
+# Assumes nginx, redis-server, python3, django:www-data already exist.
+#
+# Env vars come from AWS SSM (/pushit/prod/*, eu-west-1), NOT a .env on disk.
+# BEFORE running this, seed SSM from your machine and grant the EC2 role read
+# access — see "=== 6/8" below and CLAUDE.md.
 #
 # Run as 'ubuntu' user (needs sudo):
 #   bash /tmp/setup-pushit.sh
@@ -34,9 +38,10 @@ else
     echo "User $APP_USER already exists: $(id $APP_USER)"
 fi
 
-# Check required packages (skip install if already present)
+# Check required packages (skip install if already present).
+# awscli is needed by fetch-env-from-ssm.sh.
 MISSING_PKGS=()
-for pkg in apache2 redis-server certbot python3-certbot-apache git; do
+for pkg in nginx redis-server certbot python3-certbot-nginx git awscli; do
     if ! dpkg -l "$pkg" &>/dev/null; then
         MISSING_PKGS+=("$pkg")
     fi
@@ -49,9 +54,6 @@ if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
 else
     echo "All required packages already installed."
 fi
-
-# Ensure required Apache modules are enabled
-sudo a2enmod proxy proxy_http proxy_uwsgi headers ssl rewrite 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 echo "=== 2/7 Create app directory ==="
@@ -83,74 +85,66 @@ sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
 
 # ---------------------------------------------------------------------------
-echo "=== 5/7 Environment file ==="
+echo "=== 5/8 Install systemd services + sudoers ==="
 # ---------------------------------------------------------------------------
 
-if [ ! -f "$APP_DIR/.env" ]; then
-    echo ""
-    echo "┌──────────────────────────────────────────────────────────────────┐"
-    echo "│  No .env found. It will be written by GitHub Actions on first   │"
-    echo "│  deploy via the DOTENV_PROD secret.                             │"
-    echo "│                                                                 │"
-    echo "│  For initial setup, create it manually:                         │"
-    echo "│    sudo -u $APP_USER nano $APP_DIR/.env               │"
-    echo "│                                                                 │"
-    echo "│  See .env_template for required variables.                      │"
-    echo "└──────────────────────────────────────────────────────────────────┘"
-    echo ""
-    # Create a minimal .env so migrate/collectstatic can run
-    sudo -u "$APP_USER" bash -c "cat > $APP_DIR/.env << 'ENVEOF'
-DJANGO_SECRET_KEY=initial-setup-change-me
-STATE=PROD
-DEBUG=False
-ALLOWED_HOSTS=$DOMAIN
-MEDIA_ROOT_DIR=media
-REDIS_URL=redis://127.0.0.1:6379/0
-ENVEOF"
-    sudo chmod 600 "$APP_DIR/.env"
-else
-    echo ".env already exists, skipping."
-fi
-
-# ---------------------------------------------------------------------------
-echo "=== 6/7 Initial migrate + collectstatic ==="
-# ---------------------------------------------------------------------------
-
-sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" migrate --noinput
-sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput
-
-# ---------------------------------------------------------------------------
-echo "=== 7/7 Install services + Apache vhost ==="
-# ---------------------------------------------------------------------------
-
-# Systemd services
+# Systemd units (includes pushit-env-fetch, which writes /run/pushit/.env).
 sudo cp "$APP_DIR/deploy/systemd/"*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# Sudoers for deploy.sh (append to existing file if present)
+# Sudoers for deploy.sh. It restarts the app services as root; it does NOT
+# restart pushit-env-fetch (env changes are applied manually — see CLAUDE.md).
+# Rewritten unconditionally so re-runs pick up renamed units.
 SUDOERS_FILE="/etc/sudoers.d/pushit-deploy"
-if [ ! -f "$SUDOERS_FILE" ]; then
-    echo "$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-web, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload apache2" \
-        | sudo tee "$SUDOERS_FILE" > /dev/null
-    sudo chmod 440 "$SUDOERS_FILE"
-    echo "Sudoers rules added for $APP_USER."
-else
-    echo "Sudoers file already exists, skipping."
+sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
+$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-api-gunicorn, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload nginx
+EOF
+sudo chmod 440 "$SUDOERS_FILE"
+echo "Sudoers rules written for $APP_USER."
+
+# ---------------------------------------------------------------------------
+echo "=== 6/8 Fetch environment from AWS SSM ==="
+# ---------------------------------------------------------------------------
+#
+# Prerequisites (do these BEFORE running this script):
+#   1. Seed SSM from your machine:
+#        bash deploy/seed-parameter-store.sh ./prod.env   (or the .ps1 on Windows)
+#   2. The EC2 instance role must allow ssm:GetParametersByPath on
+#        arn:aws:ssm:eu-west-1:*:parameter/pushit/prod/*   (+ kms:Decrypt).
+#
+sudo systemctl enable pushit-env-fetch
+if ! sudo systemctl start pushit-env-fetch; then
+    echo "ERROR: pushit-env-fetch failed — is SSM /pushit/prod seeded and the" >&2
+    echo "       EC2 role allowed to read it?  journalctl -u pushit-env-fetch" >&2
+    exit 1
 fi
 
-# Apache vhost (alongside existing QuizOnline vhost)
-sudo cp "$APP_DIR/deploy/apache/pushit.conf" /etc/apache2/sites-available/pushit.conf
-sudo a2ensite pushit
-sudo apache2ctl configtest
-sudo systemctl reload apache2
+# ---------------------------------------------------------------------------
+echo "=== 7/8 Initial migrate + collectstatic ==="
+# ---------------------------------------------------------------------------
 
-# SSL certificate for pushit subdomain
+# manage.py run by hand doesn't get systemd's EnvironmentFile — source it.
+sudo -u "$APP_USER" bash -c "set -a; . /run/pushit/.env; set +a; \
+    '$APP_DIR/.venv/bin/python' '$APP_DIR/manage.py' migrate --noinput && \
+    '$APP_DIR/.venv/bin/python' '$APP_DIR/manage.py' collectstatic --noinput"
+
+# ---------------------------------------------------------------------------
+echo "=== 8/8 nginx vhost + TLS + start services ==="
+# ---------------------------------------------------------------------------
+
+# nginx vhost (alongside the existing QuizOnline vhost)
+sudo cp "$APP_DIR/deploy/nginx/pushit-api.conf" /etc/nginx/sites-available/pushit-api.conf
+sudo ln -sf /etc/nginx/sites-available/pushit-api.conf /etc/nginx/sites-enabled/pushit-api.conf
+sudo nginx -t
+sudo systemctl reload nginx
+
+# SSL certificate for the pushit subdomain (certbot edits the nginx vhost).
 echo ""
 echo ">>> Getting SSL certificate for $DOMAIN..."
-sudo certbot --apache -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
+sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
 
 # Enable and start PushIT services (redis already running for QuizOnline)
-sudo systemctl enable --now pushit-web
+sudo systemctl enable --now pushit-api-gunicorn
 sudo systemctl enable --now pushit-celery-worker
 sudo systemctl enable --now pushit-celery-beat
 
@@ -163,10 +157,11 @@ echo "  Health:        https://$DOMAIN/health/live/"
 echo ""
 echo "  QuizOnline:    (unchanged, still running)"
 echo ""
-echo "  Logs:          journalctl -u pushit-web -f"
+echo "  Logs:          journalctl -u pushit-api-gunicorn -f"
+echo "                 journalctl -u pushit-env-fetch -f"
 echo "                 journalctl -u pushit-celery-worker -f"
 echo "                 tail -f /var/log/pushit/gunicorn-access.log"
-echo "                 tail -f /var/log/apache2/pushit-error.log"
+echo "                 tail -f /var/log/nginx/pushit-error.log"
 echo ""
 echo "  SSH deploy:    Add django's SSH key for GitHub Actions:"
 echo "                 sudo -u django mkdir -p /home/django/.ssh"
