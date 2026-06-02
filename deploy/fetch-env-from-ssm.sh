@@ -7,47 +7,50 @@
 # touches disk, never lands in an EBS snapshot, and is re-fetched each boot.
 #
 # Source of truth = SSM /pushit/prod/* (region eu-west-1), read with the EC2
-# instance role via IMDS — no AWS keys on disk.
+# instance role via IMDS — no AWS keys on disk. (The unit blanks
+# AWS_SHARED_CREDENTIALS_FILE/AWS_CONFIG_FILE so the role is used, not certbot's.)
 #
 # Guard-rails (so the box never serves traffic with a broken config):
-#   - refuses to overwrite the existing .env with an empty result (e.g. broken
-#     IAM or wrong prefix) — the last valid .env is kept;
+#   - aws failure stops the script before touching $ENV_FILE (last valid kept);
+#   - refuses to write an empty result;
 #   - rejects any value containing a newline (would corrupt the EnvironmentFile);
 #   - writes atomically (.env.tmp -> mv) with mode 640, owner django:www-data;
 #   - exits non-zero on any failure -> pushit-* units (Requires=) won't start.
 # =============================================================================
 set -euo pipefail
+umask 077   # temp files (which briefly hold decrypted secrets) are root-only.
 
 SSM_PREFIX="/pushit/prod"
 AWS_REGION="eu-west-1"
 RUN_DIR="/run/pushit"
 ENV_FILE="$RUN_DIR/.env"
 TMP_FILE="$RUN_DIR/.env.tmp"
+RAW_FILE="$RUN_DIR/.ssm.json"
 OWNER="django:www-data"
 
 mkdir -p "$RUN_DIR"
 
-# Fetch every parameter under the prefix (SecureStrings decrypted via the EC2
-# instance role) and reconstruct KEY=VALUE lines. Parsing in python3 is robust
-# against tabs/spaces in values and lets us reject newline-bearing values.
-# A failure anywhere in this pipeline (pipefail) leaves TMP_FILE unpromoted,
-# so the previous $ENV_FILE survives untouched.
+# Fetch raw JSON to a file first. If aws errors (IAM/IMDS/network), we stop here
+# (set -e) and the previous $ENV_FILE is left untouched.
 aws ssm get-parameters-by-path \
     --path "$SSM_PREFIX" \
     --recursive \
     --with-decryption \
     --region "$AWS_REGION" \
-    --output json \
-| python3 - "$SSM_PREFIX" "$TMP_FILE" <<'PY'
+    --output json > "$RAW_FILE"
+
+# Parse JSON -> KEY=VALUE. The program is read from the heredoc (python3 -),
+# and the data is read from the file passed as an argument — so there is no
+# clash between "program on stdin" and "data on stdin".
+python3 - "$SSM_PREFIX" "$TMP_FILE" "$RAW_FILE" <<'PY'
 import json, sys
 
-prefix, tmp_path = sys.argv[1], sys.argv[2]
-params = json.load(sys.stdin).get("Parameters", [])
+prefix, tmp_path, raw_path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(raw_path) as fh:
+    params = json.load(fh).get("Parameters", [])
 
 if not params:
-    sys.stderr.write(
-        f"ERROR: no parameters under {prefix}; refusing to write an empty env.\n"
-    )
+    sys.stderr.write(f"ERROR: no parameters under {prefix}; refusing to write an empty env.\n")
     sys.exit(1)
 
 lines = []
@@ -62,6 +65,8 @@ for p in params:
 with open(tmp_path, "w") as fh:
     fh.write("\n".join(sorted(lines)) + "\n")
 PY
+
+rm -f "$RAW_FILE"
 
 # Belt-and-braces: never promote an empty file.
 if [ ! -s "$TMP_FILE" ]; then
