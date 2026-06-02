@@ -251,3 +251,18 @@ SPECTACULAR_SETTINGS = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- Sentry (error tracking / performance) ---
+# Inactive when SENTRY_DSN is empty (dev/test). The SDK auto-enables its Django
+# and Celery integrations when those packages are importable, so a bare init is
+# enough. DSN comes from SSM /pushit/prod/SENTRY_DSN in prod.
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=STATE,
+        traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
+        send_default_pii=env.bool("SENTRY_SEND_PII", default=False),
+    )
