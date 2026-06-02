@@ -96,6 +96,16 @@ def get_application_for_raw_app_token(raw_token: str | None) -> Application:
             "Invalid app token.",
             code="app_token_invalid",
         )
+    except Application.MultipleObjectsReturned:
+        # Two applications share this token hash — a data-integrity violation
+        # (app_token_hash is declared unique). Fail closed: never authenticate an
+        # ambiguous token, which could otherwise grant cross-application access.
+        # The counter surfaces it for monitoring; the rows must be fixed manually.
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "duplicate"})
+        raise exceptions.AuthenticationFailed(
+            "Invalid app token.",
+            code="app_token_invalid",
+        )
 
     if not application.is_active:
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
