@@ -106,6 +106,10 @@ Called from `Application.save()` (add alias), `Application.delete()` (remove ali
 - `retry_pending_deliveries_task` — retries failed deliveries (3 attempts, exponential backoff)
 - `poll_inbound_mailbox_task` — Graph API polling for inbound email notifications
 
+Worker children recycle to bound memory on the shared EC2: `CELERY_WORKER_MAX_TASKS_PER_CHILD` (default 200) and `CELERY_WORKER_MAX_MEMORY_PER_CHILD` (KB, default ~195 MB) turn a slow leak or a fat task into a graceful recycle instead of a kernel OOM SIGKILL. The Celery worker/beat run as the systemd units `pushit-api-celery` / `pushit-api-celery-beat`.
+
+> **Not in SSM (by design):** these two vars are intentionally left out of `/pushit/prod/*`. Their `base.py` defaults already encode the prod-intended values, so prod picks them up with nothing seeded. Add them to SSM only if you need to tune the memory ceiling in prod *without a code deploy* — they are non-secret (`String` type, in the defaults block of `seed-parameter-store.*`, not `SECRET_KEYS`), and after seeding you must re-fetch + restart (`systemctl restart pushit-env-fetch pushit-api-celery pushit-api-celery-beat`) for the worker to reload. Listing them in `.env_template` is just catalog documentation and does not imply they must be seeded.
+
 ### Key Business Logic Locations
 
 - `notifications/services.py` — send_notification, delivery orchestration, webhook callbacks
