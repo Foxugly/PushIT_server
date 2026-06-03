@@ -70,10 +70,14 @@ class DeviceReadSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_application_ids(self, obj) -> list[int]:
-        return list(
-            obj.application_links.filter(is_active=True)
-            .values_list("application_id", flat=True)
-        )
+        # Read from the prefetched link set (DeviceListApiView prefetches
+        # application_links) and filter is_active in Python — avoids an N+1 per
+        # device on list. On detail (no prefetch) this is one query for one device.
+        return [
+            link.application_id
+            for link in obj.application_links.all()
+            if link.is_active
+        ]
 
 
 class DeviceUpdateSerializer(serializers.ModelSerializer):

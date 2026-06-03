@@ -19,7 +19,10 @@ from rest_framework.views import APIView
 
 from config.api_errors import error_response
 from .models import Notification, NotificationStatus
-from .utils import apply_effective_schedule_filters
+from .utils import (
+    apply_effective_schedule_filters,
+    notification_filter_needs_effective,
+)
 from .serializers import (
     DetailResponseSerializer,
     NotificationCreateSerializer,
@@ -276,8 +279,12 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
         if status_filter is not None:
             queryset = queryset.filter(status=status_filter)
 
-        queryset = list(queryset)
-        queryset = apply_effective_schedule_filters(queryset, request, notification_filter)
+        # Only materialise the whole queryset when an effective-schedule filter
+        # or ordering is requested; otherwise paginate at the DB level.
+        if notification_filter_needs_effective(request, notification_filter):
+            queryset = apply_effective_schedule_filters(
+                list(queryset), request, notification_filter
+            )
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -471,8 +478,11 @@ class NotificationFutureListApiView(generics.ListAPIView):
         filter_serializer.is_valid(raise_exception=True)
         future_filter = filter_serializer.validated_data
 
-        queryset = list(self.get_queryset())
-        queryset = apply_effective_schedule_filters(queryset, request, future_filter)
+        queryset = self.get_queryset()
+        if notification_filter_needs_effective(request, future_filter):
+            queryset = apply_effective_schedule_filters(
+                list(queryset), request, future_filter
+            )
 
         page = self.paginate_queryset(queryset)
         if page is not None:

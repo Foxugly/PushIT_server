@@ -19,7 +19,11 @@ from .serializers import (
     NotificationListFilterSerializer,
     NotificationReadSerializer,
 )
-from .utils import apply_effective_schedule_filters, compute_request_fingerprint
+from .utils import (
+    apply_effective_schedule_filters,
+    compute_request_fingerprint,
+    notification_filter_needs_effective,
+)
 
 
 @extend_schema_view(
@@ -339,8 +343,10 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
         if status_filter is not None:
             queryset = queryset.filter(status=status_filter)
 
-        queryset = list(queryset)
-        queryset = apply_effective_schedule_filters(queryset, request, list_filter)
+        if notification_filter_needs_effective(request, list_filter):
+            queryset = apply_effective_schedule_filters(
+                list(queryset), request, list_filter
+            )
 
         page = self.paginate_queryset(queryset)
         if page is not None:
