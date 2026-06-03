@@ -18,6 +18,7 @@
 #   - Security group: inbound 22, 80, 443 (likely already open)
 # =============================================================================
 set -euo pipefail
+umask 027   # nouveaux dirs 750 / fichiers 640 dès clone/pip/collectstatic (OPERATIONS.md §3.1/§3.2)
 
 APP_DIR="/var/www/django_websites/PushIT_server"
 APP_USER="django"
@@ -142,6 +143,11 @@ echo "=== 7/8 Initial migrate + collectstatic ==="
 sudo -u "$APP_USER" bash -c "set -a; . /run/pushit/.env; set +a; \
     '$APP_DIR/.venv/bin/python' '$APP_DIR/manage.py' migrate --noinput && \
     '$APP_DIR/.venv/bin/python' '$APP_DIR/manage.py' collectstatic --noinput"
+
+# Normalize ownership + perms (idempotent). Run by 'ubuntu' here, so sudo is the
+# provisioning user's own privilege — NOT a new rule in django's sudoers.
+sudo chown -R "$APP_USER":"$APP_GROUP" "$APP_DIR"
+sudo chmod -R g-w,o-rwx "$APP_DIR"
 
 # ---------------------------------------------------------------------------
 echo "=== 8/8 nginx vhost + TLS + start services ==="
