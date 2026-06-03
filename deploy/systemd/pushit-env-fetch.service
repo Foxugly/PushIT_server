@@ -18,7 +18,12 @@ RemainAfterExit=yes
 Environment=AWS_SHARED_CREDENTIALS_FILE=/dev/null
 Environment=AWS_CONFIG_FILE=/dev/null
 Environment=AWS_REGION=eu-west-1
-ExecStart=/var/www/django_websites/PushIT_server/deploy/fetch-env-from-ssm.sh
+# §3.10: this oneshot runs as root, so its script must NOT live in the
+# django-writable tree (a compromised gunicorn could edit it and have it run as
+# root). Installed root:root 0755 at /usr/local/sbin/pushit-env-fetch.sh by ROOT
+# (out-of-band, from the committed git blob); deploy/fetch-env-from-ssm.sh is the
+# versioned source, never the execution target.
+ExecStart=/usr/local/sbin/pushit-env-fetch.sh
 StandardOutput=journal
 StandardError=journal
 
