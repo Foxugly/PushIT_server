@@ -31,7 +31,10 @@ OWNER="django:www-data"
 mkdir -p "$RUN_DIR"
 # Dir must be traversable by the django service user (the .env itself stays 640,
 # so its contents remain protected). umask 077 above would otherwise make it 700.
-chmod 755 "$RUN_DIR"
+# 750 root:www-data — owner root writes it; the www-data group (django is a member)
+# gets r-x to traverse; "other" gets nothing. Mirrors QuizOnline's fetch script.
+chmod 750 "$RUN_DIR"
+chown root:www-data "$RUN_DIR"
 
 # Fetch raw JSON to a file first. If aws errors (IAM/IMDS/network), we stop here
 # (set -e) and the previous $ENV_FILE is left untouched.

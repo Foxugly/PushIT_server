@@ -96,9 +96,24 @@ sudo systemctl daemon-reload
 # restart pushit-env-fetch (env changes are applied manually — see CLAUDE.md).
 # Rewritten unconditionally so re-runs pick up renamed units.
 SUDOERS_FILE="/etc/sudoers.d/pushit-deploy"
-sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
-$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-api-gunicorn, /bin/systemctl restart pushit-api-celery, /bin/systemctl restart pushit-api-celery-beat, /bin/systemctl reload nginx
+# Quoted heredoc: keep the backslash line-continuations and the '!' negations
+# literal (an unquoted heredoc would swallow the trailing '\' and merge the
+# lines). APP_USER is "django" by construction; hardcoded here so the quoting
+# stays simple. Paths are matched literally by sudo, so keep /bin/systemctl and
+# /usr/sbin/nginx as proven (do NOT rewrite to /usr/bin despite usrmerge).
+sudo tee "$SUDOERS_FILE" > /dev/null <<'EOF'
+# PushIT deploy.sh privileges — restart app units + nginx control as root only.
+Cmnd_Alias PUSHIT_CTRL = \
+    /bin/systemctl restart pushit-api-gunicorn, \
+    /bin/systemctl restart pushit-api-celery, \
+    /bin/systemctl restart pushit-api-celery-beat, \
+    /usr/sbin/nginx -t, \
+    /bin/systemctl reload nginx
+django ALL=(root) NOPASSWD: PUSHIT_CTRL
+Defaults!PUSHIT_CTRL !setenv, !env_keep
 EOF
+# Validate syntax before it can break sudo for everyone, then lock perms.
+sudo visudo -c -f "$SUDOERS_FILE"
 sudo chmod 440 "$SUDOERS_FILE"
 echo "Sudoers rules written for $APP_USER."
 
