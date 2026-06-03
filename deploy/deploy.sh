@@ -43,10 +43,10 @@ echo ">>> Collecting static files..."
 # NOTE: pushit-env-fetch is intentionally NOT restarted here — a code deploy
 # keeps the env already in /run/pushit/.env. To pick up changed SSM values:
 #   sudo systemctl restart pushit-env-fetch
-#   sudo systemctl restart pushit-api-gunicorn pushit-celery-worker pushit-celery-beat
+#   sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat
 echo ">>> Restarting services..."
 sudo /bin/systemctl restart pushit-api-gunicorn
-sudo /bin/systemctl restart pushit-celery-worker
-sudo /bin/systemctl restart pushit-celery-beat
+sudo /bin/systemctl restart pushit-api-celery
+sudo /bin/systemctl restart pushit-api-celery-beat
 
 echo ">>> Deploy complete."

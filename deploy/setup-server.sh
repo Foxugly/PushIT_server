@@ -97,7 +97,7 @@ sudo systemctl daemon-reload
 # Rewritten unconditionally so re-runs pick up renamed units.
 SUDOERS_FILE="/etc/sudoers.d/pushit-deploy"
 sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
-$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-api-gunicorn, /bin/systemctl restart pushit-celery-worker, /bin/systemctl restart pushit-celery-beat, /bin/systemctl reload nginx
+$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart pushit-api-gunicorn, /bin/systemctl restart pushit-api-celery, /bin/systemctl restart pushit-api-celery-beat, /bin/systemctl reload nginx
 EOF
 sudo chmod 440 "$SUDOERS_FILE"
 echo "Sudoers rules written for $APP_USER."
@@ -145,8 +145,8 @@ sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
 
 # Enable and start PushIT services (redis already running for QuizOnline)
 sudo systemctl enable --now pushit-api-gunicorn
-sudo systemctl enable --now pushit-celery-worker
-sudo systemctl enable --now pushit-celery-beat
+sudo systemctl enable --now pushit-api-celery
+sudo systemctl enable --now pushit-api-celery-beat
 
 echo ""
 echo "=== Setup complete ==="
@@ -159,7 +159,7 @@ echo "  QuizOnline:    (unchanged, still running)"
 echo ""
 echo "  Logs:          journalctl -u pushit-api-gunicorn -f"
 echo "                 journalctl -u pushit-env-fetch -f"
-echo "                 journalctl -u pushit-celery-worker -f"
+echo "                 journalctl -u pushit-api-celery -f"
 echo "                 tail -f /var/log/pushit/gunicorn-access.log"
 echo "                 tail -f /var/log/nginx/pushit-error.log"
 echo ""

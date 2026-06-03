@@ -200,7 +200,7 @@ aws ssm put-parameter --name /pushit/prod/MY_VAR --value "..." \
 # 2. re-fetch -> rewrites /run/pushit/.env
 sudo systemctl restart pushit-env-fetch
 # 3. make the processes reload the new config
-sudo systemctl restart pushit-api-gunicorn pushit-celery-worker pushit-celery-beat
+sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat
 ```
 
 > `--overwrite` does **not** change a parameter's Type. To promote a String to
@@ -234,8 +234,8 @@ sudo -u django git -C /var/www/django_websites/PushIT_server config core.sharedR
 - `deploy/systemd/pushit-env-fetch.service` — oneshot, fetches env from SSM at boot
 - `deploy/fetch-env-from-ssm.sh` — SSM → `/run/pushit/.env` (run on server as root)
 - `deploy/seed-parameter-store.sh` / `.ps1` — seed SSM `/pushit/prod/*` from a local `.env` (run from your machine)
-- `deploy/systemd/pushit-celery-worker.service` — Celery worker (queue `pushit`, concurrency 2)
-- `deploy/systemd/pushit-celery-beat.service` — Celery beat scheduler
+- `deploy/systemd/pushit-api-celery.service` — Celery worker (queue `pushit`, concurrency 2)
+- `deploy/systemd/pushit-api-celery-beat.service` — Celery beat scheduler
 - `deploy/setup-server.sh` — One-time server provisioning
 - `deploy/deploy.sh` — Deploy script (pull, deps, source env, migrate, collectstatic, restart)
 - `.github/workflows/deploy.yml` — CI/CD pipeline
@@ -244,12 +244,12 @@ sudo -u django git -C /var/www/django_websites/PushIT_server config core.sharedR
 
 ```bash
 # Check service status
-sudo systemctl status pushit-api-gunicorn pushit-celery-worker pushit-celery-beat pushit-env-fetch
+sudo systemctl status pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat pushit-env-fetch
 
 # View logs
 journalctl -u pushit-api-gunicorn -f
 journalctl -u pushit-env-fetch -f
-journalctl -u pushit-celery-worker -f
+journalctl -u pushit-api-celery -f
 tail -f /var/log/pushit/gunicorn-access.log
 tail -f /var/log/nginx/pushit-error.log
 
