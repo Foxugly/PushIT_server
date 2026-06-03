@@ -6,6 +6,7 @@
 #   /var/www/django_websites/PushIT_server/deploy/deploy.sh
 # =============================================================================
 set -euo pipefail
+umask 027   # nouveaux dirs 750 / fichiers 640 dès git/pip/collectstatic (OPERATIONS.md §3.1/§3.2)
 
 APP_DIR="/var/www/django_websites/PushIT_server"
 VENV="$APP_DIR/.venv"
@@ -39,6 +40,14 @@ echo ">>> Running migrations..."
 
 echo ">>> Collecting static files..."
 "$VENV/bin/python" manage.py collectstatic --noinput
+
+echo ">>> Normalizing permissions (idempotent: dirs 750 / files 640, no o-rwx, no g-w)..."
+# deploy.sh runs as django, which OWNS the whole tree (primary group www-data),
+# so this needs NO sudo: django chgrp's to its own group and chmod's its files.
+# chown first (fixes any group drift), then chmod (drop group-write + all "other").
+# Owner bits untouched -> execute preserved on .venv/bin, manage.py, etc.
+chown -R django:www-data "$APP_DIR"
+chmod -R g-w,o-rwx "$APP_DIR"
 
 # NOTE: pushit-env-fetch is intentionally NOT restarted here — a code deploy
 # keeps the env already in /run/pushit/.env. To pick up changed SSM values:

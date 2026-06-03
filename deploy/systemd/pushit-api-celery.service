@@ -7,6 +7,7 @@ Requires=pushit-env-fetch.service
 [Service]
 User=django
 Group=www-data
+UMask=0027
 WorkingDirectory=/var/www/django_websites/PushIT_server
 EnvironmentFile=/run/pushit/.env
 ExecStart=/var/www/django_websites/PushIT_server/.venv/bin/celery -A config worker --loglevel=info --concurrency=2 -Q pushit
