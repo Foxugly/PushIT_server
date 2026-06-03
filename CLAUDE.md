@@ -106,6 +106,8 @@ Called from `Application.save()` (add alias), `Application.delete()` (remove ali
 - `retry_pending_deliveries_task` — retries failed deliveries (3 attempts, exponential backoff)
 - `poll_inbound_mailbox_task` — Graph API polling for inbound email notifications
 
+Worker children recycle to bound memory on the shared EC2: `CELERY_WORKER_MAX_TASKS_PER_CHILD` (default 200) and `CELERY_WORKER_MAX_MEMORY_PER_CHILD` (KB, default ~195 MB) turn a slow leak or a fat task into a graceful recycle instead of a kernel OOM SIGKILL. The Celery worker/beat run as the systemd units `pushit-api-celery` / `pushit-api-celery-beat`.
+
 ### Key Business Logic Locations
 
 - `notifications/services.py` — send_notification, delivery orchestration, webhook callbacks

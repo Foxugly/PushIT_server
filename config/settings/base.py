@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -169,6 +170,13 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Recycle worker child processes to bound memory growth: replace a child after
+# it has handled MAX_TASKS_PER_CHILD tasks, or once its resident memory crosses
+# MAX_MEMORY_PER_CHILD (in KB). Turns a slow leak or a fat task into a graceful
+# recycle instead of a kernel OOM SIGKILL on the memory-tight shared EC2.
+CELERY_WORKER_MAX_TASKS_PER_CHILD = env.int("CELERY_WORKER_MAX_TASKS_PER_CHILD", default=200)
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = env.int("CELERY_WORKER_MAX_MEMORY_PER_CHILD", default=200_000)  # KB (~195 MB)
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -261,11 +269,19 @@ SPECTACULAR_SETTINGS = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Sentry (error tracking / performance) ---
-# Inactive when SENTRY_DSN is empty (dev/test). The SDK auto-enables its Django
+# Only active under PROD settings: even if a DSN is present locally (dev/test),
+# we never send events tagged environment=DEV/TEST — local `manage.py`/pytest
+# runs would otherwise pollute the dashboard with non-bugs. The prod check mirrors
+# the dispatch in config/settings/__init__.py (DJANGO_ENV=prod OR STATE=PROD), so
+# it holds however prod settings were selected. The SDK auto-enables its Django
 # and Celery integrations when those packages are importable, so a bare init is
 # enough. DSN comes from SSM /pushit/prod/SENTRY_DSN in prod.
+_SENTRY_PROD_ACTIVE = (
+    os.environ.get("DJANGO_ENV", "").strip().lower() == "prod"
+    or STATE.strip().upper() == "PROD"
+)
 SENTRY_DSN = env("SENTRY_DSN", default="")
-if SENTRY_DSN:
+if SENTRY_DSN and _SENTRY_PROD_ACTIVE:
     import sentry_sdk
     from django.core.exceptions import DisallowedHost
 
