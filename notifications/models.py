@@ -53,6 +53,12 @@ class Notification(models.Model):
                 name="uniq_notification_app_idempotency_key",
             )
         ]
+        indexes = [
+            # Celery dispatch_scheduled_notifications_task filters status + scheduled_for
+            # every minute; per-app lists/stats filter application + status.
+            models.Index(fields=["status", "scheduled_for"]),
+            models.Index(fields=["application", "status"]),
+        ]
 
     def __str__(self):
         return self.title
@@ -113,6 +119,11 @@ class NotificationDelivery(models.Model):
                 fields=["notification", "device"],
                 name="uniq_notification_device",
             )
+        ]
+        indexes = [
+            # retry_pending_deliveries_task scans status + next_retry_at on the
+            # largest table every minute.
+            models.Index(fields=["status", "next_retry_at"]),
         ]
 
 
