@@ -27,7 +27,7 @@ $AwsRegion = "eu-west-1"
 
 # Keys whose values are secrets -> SecureString (KMS key aws/ssm). Rest -> String.
 $SecretKeys = @(
-    "DJANGO_SECRET_KEY", "DATABASE_PASSWORD", "GRAPH_CLIENT_SECRET",
+    "SECRET_KEY", "DATABASE_PASSWORD", "GRAPH_CLIENT_SECRET",
     "METRICS_AUTH_TOKEN", "EXCHANGE_CERT_PASSWORD"
 )
 

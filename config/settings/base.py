@@ -13,7 +13,7 @@ environ.Env.read_env(BASE_DIR / ".env")
 SQLITE_NAME = Path(env("SQLITE_NAME", default=str(BASE_DIR / "db.sqlite3")))
 DATABASE_NAME = env("DATABASE_NAME", default="").strip() or str(SQLITE_NAME)
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="dev-secret-key")
+SECRET_KEY = env("SECRET_KEY", default="dev-secret-key")
 STATE = env("STATE", default="DEV")
 DEBUG = env.bool("DEBUG", default=False)
 

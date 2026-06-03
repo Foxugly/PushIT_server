@@ -61,7 +61,7 @@ Copier `.env_template` vers `.env` puis ajuster les variables utiles.
 Exemple minimal :
 
 ```env
-DJANGO_SECRET_KEY=django-insecure-change-me
+SECRET_KEY=django-insecure-change-me
 STATE=DEV
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
@@ -84,7 +84,7 @@ Variables utiles :
 - `INBOUND_EMAIL_IMAP_HOST`, `INBOUND_EMAIL_IMAP_PORT`, `INBOUND_EMAIL_IMAP_USERNAME`, `INBOUND_EMAIL_IMAP_PASSWORD`, `INBOUND_EMAIL_IMAP_FOLDER`
 - `PROMETHEUS_MULTIPROC_DIR` pour agréger correctement les métriques en multi-worker
 
-En `PROD`, `DJANGO_SECRET_KEY` et `ALLOWED_HOSTS` sont désormais obligatoires. Le démarrage échoue si ces variables ne sont pas définies explicitement.
+En `PROD`, `SECRET_KEY` et `ALLOWED_HOSTS` sont désormais obligatoires. Le démarrage échoue si ces variables ne sont pas définies explicitement.
 
 ### 3. Migrer la base
 

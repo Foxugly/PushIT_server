@@ -49,11 +49,11 @@ Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py
 
 **Caveat:** `STATE=TEST` alone does **not** activate test settings — you need `DJANGO_ENV=test` for that. The `else` branch falls through to dev.
 
-Key env vars: `STATE`, `DJANGO_SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
+Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
 
 **DEV/TEST behavior:** Celery runs eagerly (synchronous, no broker needed), passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty. FCM uses a mock when `FCM_SERVICE_ACCOUNT_PATH` is empty.
 
-**PROD enforcement:** `DJANGO_SECRET_KEY` and `ALLOWED_HOSTS` are mandatory — startup fails if missing. Full HSTS, SSL redirect, secure cookies are enabled.
+**PROD enforcement:** `SECRET_KEY` and `ALLOWED_HOSTS` are mandatory — startup fails if missing. Full HSTS, SSL redirect, secure cookies are enabled.
 
 `DB_SUPPORTS_ROW_LOCKING` is derived from the database engine — `True` for PostgreSQL, `False` for SQLite. This controls whether `select_for_update()` is used in the notification send flow.
 

@@ -24,7 +24,7 @@ jobs:
       - name: Run tests
         env:
           STATE: TEST
-          DJANGO_SECRET_KEY: test-secret-key
+          SECRET_KEY: test-secret-key
           MEDIA_ROOT_DIR: media
         run: pytest -q -m "not integration"
 

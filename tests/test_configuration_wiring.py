@@ -138,7 +138,7 @@ def test_prod_settings_require_explicit_secret_key_and_allowed_hosts():
     env = os.environ.copy()
     env["DJANGO_SETTINGS_MODULE"] = "config.settings"
     env["DJANGO_ENV"] = "prod"
-    env["DJANGO_SECRET_KEY"] = ""
+    env["SECRET_KEY"] = ""
     env["ALLOWED_HOSTS"] = ""
 
     result = subprocess.run(
@@ -152,7 +152,7 @@ def test_prod_settings_require_explicit_secret_key_and_allowed_hosts():
 
     assert result.returncode != 0
     assert (
-        "DJANGO_SECRET_KEY must be explicitly set in PROD." in result.stderr
+        "SECRET_KEY must be explicitly set in PROD." in result.stderr
         or "ALLOWED_HOSTS must be explicitly set in PROD." in result.stderr
     )
 
