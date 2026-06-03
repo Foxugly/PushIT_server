@@ -167,11 +167,14 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 
 ### CI/CD (GitHub Actions)
 
-Push to `main` triggers: tests (Python 3.12) → SSH deploy to EC2.
+Push to `main` triggers: tests (Python 3.12) → **OIDC → SSM deploy** (no long-lived SSH key).
 
-- SSH as `ubuntu` → `sudo -u django` for deploy operations
+- The deploy job runs under `environment: production`, assumes the per-repo IAM role
+  `pushit-deploy` via GitHub OIDC, then `aws ssm send-command` runs `sudo -u django deploy.sh`
+  on the EC2 instance (AWS-RunShellScript runs the command as root; deploy.sh does the work as django).
 - Env vars come from AWS SSM (`/pushit/prod/*`), fetched into `/run/pushit/.env` at boot — the deploy no longer writes a `.env` or uses `DOTENV_PROD`
 - Integration tests (`@pytest.mark.integration`) are excluded from CI (`-m "not integration"`)
+- *History:* migrated SSH-action → OIDC→SSM on 2026-06-03; dropped the `EC2_SSH_KEY` / `EC2_HOST` / `EC2_USER` / `DOTENV_PROD` secrets (now only `AWS_DEPLOY_ROLE_ARN` + `EC2_INSTANCE_ID`). Fleet model: **OPERATIONS.md §3.11**.
 
 ### Adding / changing an environment variable — IMPORTANT
 
@@ -210,10 +213,13 @@ sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-b
 > `--overwrite` does **not** change a parameter's Type. To promote a String to
 > SecureString, `aws ssm delete-parameter` first, then re-seed.
 
-**IAM:** the EC2 instance role (shared with QuizOnline) must allow
-`ssm:GetParametersByPath` on `arn:aws:ssm:eu-west-1:*:parameter/pushit/prod/*`
-plus `kms:Decrypt` on the `aws/ssm` key. `/run` is tmpfs (cleared on reboot),
-so the file is re-fetched every boot — SSM must be reachable then.
+**IAM (two distinct roles):**
+- **Instance role** (`quizonline-ec2`, shared) — used by `pushit-env-fetch` at boot: must allow
+  `ssm:GetParametersByPath` on `arn:aws:ssm:eu-west-1:*:parameter/pushit/prod/*` plus `kms:Decrypt`
+  on the `aws/ssm` key. `/run` is tmpfs (cleared on reboot), so the file is re-fetched every boot.
+- **Deploy role** (`pushit-deploy`, OIDC) — used by the GitHub Actions deploy: trust pinned to
+  `repo:Foxugly/PushIT_server:environment:production`, perms `ssm:SendCommand` (instance +
+  `AWS-RunShellScript` doc) + `ssm:GetCommandInvocation` only. See OPERATIONS.md §3.11.
 
 ### Git permissions on the server
 
@@ -274,8 +280,8 @@ three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
 - `deploy/nginx/pushit-api.conf` — nginx reverse proxy (`proxy_pass http://127.0.0.1:8001`, static/media)
 - `deploy/gunicorn.conf.py` — Gunicorn config (TCP `127.0.0.1:8001`, 3 workers)
 - `deploy/systemd/pushit-api-gunicorn.service` — Gunicorn service (`Restart=always`, `EnvironmentFile=/run/pushit/.env`)
-- `deploy/systemd/pushit-env-fetch.service` — oneshot, fetches env from SSM at boot
-- `deploy/fetch-env-from-ssm.sh` — SSM → `/run/pushit/.env` (run on server as root)
+- `deploy/systemd/pushit-env-fetch.service` — oneshot; `ExecStart=/usr/local/sbin/pushit-env-fetch.sh` (root-owned, §3.10), fetches env from SSM at boot
+- `deploy/fetch-env-from-ssm.sh` — versioned **source** for that script; installed `root:root 0755` to `/usr/local/sbin/pushit-env-fetch.sh` out-of-band (never executed from the django-writable tree)
 - `deploy/seed-parameter-store.sh` / `.ps1` — seed SSM `/pushit/prod/*` from a local `.env` (run from your machine)
 - `deploy/systemd/pushit-api-celery.service` — Celery worker (queue `pushit`, concurrency 2)
 - `deploy/systemd/pushit-api-celery-beat.service` — Celery beat scheduler
