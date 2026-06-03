@@ -27,10 +27,15 @@ echo ">>> Installing dependencies..."
 ENV_FILE="/run/pushit/.env"
 if [ -f "$ENV_FILE" ]; then
     echo ">>> Loading env from $ENV_FILE..."
-    set -a
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-    set +a
+    # Parse literally (key=value), NOT `source`: this is a systemd
+    # EnvironmentFile, and values (e.g. DJANGO_SECRET_KEY) may contain
+    # shell-special chars ($ ` ( ) …) that `.` would expand/mangle — which
+    # silently emptied SECRET_KEY and broke `migrate`. Mirrors systemd parsing.
+    while IFS='=' read -r _k _v || [ -n "$_k" ]; do
+        case "$_k" in ''|\#*) continue ;; esac
+        export "$_k=$_v"
+    done < "$ENV_FILE"
+    unset _k _v
 else
     echo "WARNING: $ENV_FILE missing — has pushit-env-fetch run? Trying without it." >&2
 fi
