@@ -57,6 +57,7 @@ jobs:
         run: |
           cat > /tmp/ssm-params.json <<'EOF'
           { "commands": [
+            "sudo -u django bash -c 'umask 027; cd /var/www/django_websites/PushIT_server && git fetch --quiet origin main && git reset --hard --quiet origin/main'",
             "sudo -u django bash /var/www/django_websites/PushIT_server/deploy/deploy.sh"
           ], "executionTimeout": ["900"] }
           EOF
