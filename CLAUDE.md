@@ -230,6 +230,45 @@ sudo chmod -R g+w /var/www/django_websites/PushIT_server/.git
 sudo -u django git -C /var/www/django_websites/PushIT_server config core.sharedRepository group
 ```
 
+### File permissions convention
+
+The deployed tree under `/var/www/django_websites/PushIT_server` is owned by
+`django:www-data` and must follow: **dirs `750`, files `640`, no "other" perms,
+no group-write** (nginx serves static/media as the `www-data` *group*, so it
+only needs group `r`/`x` — never "other" or group-write). This is enforced at
+three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
+~hundreds of world-readable `644` files behind:
+
+1. **At creation** — `deploy.sh` and `setup-server.sh` set `umask 027` at the
+   top (before `git`/`pip`/`collectstatic`). In `setup-server.sh` the
+   `sudo -u django` steps inherit it via sudo's default umask *union*.
+2. **At deploy end** — `deploy.sh` normalizes idempotently after
+   `collectstatic`: `chown -R django:www-data` then `chmod -R g-w,o-rwx`.
+   **No `sudo`**: `deploy.sh` runs as `django`, which owns the tree (primary
+   group `www-data`), so it can chgrp/chmod its own files — do **not** add a
+   broad `chown`/`chmod` rule to the `pushit-deploy` sudoers. Owner bits are
+   left intact, so execute is preserved on `.venv/bin`, `manage.py`, etc.
+   `setup-server.sh` runs the same step via the provisioning user's (`ubuntu`)
+   own `sudo`.
+3. **At runtime** — `UMask=0027` in the `[Service]` block of
+   `pushit-api-{gunicorn,celery,celery-beat}.service` keeps runtime-created
+   files (`__pycache__`, `celerybeat-schedule`, caches) conformant. Units live
+   in `/etc/systemd/system`, so changes need a manual root step
+   (`cp` → `daemon-reload` → `restart`); a code deploy does **not** apply them.
+
+> A code deploy that *changes* `deploy.sh` runs the **old** script that turn
+> (bash reads it before its own `git reset`), so umask/normalization take effect
+> on the *next* deploy. To fix existing drift immediately, run as root:
+> `sudo chmod -R g-w,o-rwx /var/www/django_websites/PushIT_server`, then verify
+> `sudo find <tree> ! -type l -perm /007 | wc -l` and `-perm /020` both report `0`.
+
+> **Note vs. the git-recovery above:** that recovery sets `.git` group-write
+> (`g+w` + `core.sharedRepository group`) for a broken multi-user state; the
+> normalization strips it again. That's fine — `django` is the sole writer in
+> normal operation, so `.git` does not need group-write. `/run/pushit` (`750
+> root:www-data`) and the `pushit-deploy` sudoers are governed separately and
+> are out of scope for this normalization.
+
 ### Deploy files
 
 - `deploy/nginx/pushit-api.conf` — nginx reverse proxy (`proxy_pass http://127.0.0.1:8001`, static/media)
@@ -241,7 +280,7 @@ sudo -u django git -C /var/www/django_websites/PushIT_server config core.sharedR
 - `deploy/systemd/pushit-api-celery.service` — Celery worker (queue `pushit`, concurrency 2)
 - `deploy/systemd/pushit-api-celery-beat.service` — Celery beat scheduler
 - `deploy/setup-server.sh` — One-time server provisioning
-- `deploy/deploy.sh` — Deploy script (pull, deps, source env, migrate, collectstatic, restart)
+- `deploy/deploy.sh` — Deploy script (pull, deps, source env, migrate, collectstatic, normalize perms, restart)
 - `.github/workflows/deploy.yml` — CI/CD pipeline
 
 ### Server commands
