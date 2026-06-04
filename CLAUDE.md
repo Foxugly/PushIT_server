@@ -163,7 +163,7 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 - **User:** `django:www-data`
 - **Services:** Gunicorn (TCP `127.0.0.1:8001`) + nginx reverse proxy + Celery worker + Celery beat + `pushit-env-fetch` (SSM → `/run/pushit/.env` at boot)
 - **Redis:** DB `/2` (broker), DB `/3` (result backend), queue `pushit` (isolated from QuizOnline on `/0`-`/1`)
-- **Database:** PostgreSQL 16 (local on the shared EC2) — database `pushit`, role `pushit`, connected over `127.0.0.1:5432`. Credentials in SSM (`DATABASE_*`, password as SecureString). Migrated from SQLite on 2026-06-02 (dump/loaddata).
+- **Database:** PostgreSQL 16 (local on the shared EC2) — database `pushit`, role `pushit`, connected over `127.0.0.1:5432`. Credentials in SSM via the fleet **`DB_*` 6-var convention** (`DB_ENGINE`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`/`DB_HOST`/`DB_PORT`, password as SecureString; OPERATIONS.md §3.13). Migrated from SQLite on 2026-06-02 (dump/loaddata).
 
 ### CI/CD (GitHub Actions)
 
