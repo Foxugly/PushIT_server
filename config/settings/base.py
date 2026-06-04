@@ -11,14 +11,14 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 SQLITE_NAME = Path(env("SQLITE_NAME", default=str(BASE_DIR / "db.sqlite3")))
-# Fleet DB_* 6-var convention; DATABASE_* kept as a transition fallback.
-DATABASE_NAME = env("DB_NAME", default=env("DATABASE_NAME", default="")).strip() or str(SQLITE_NAME)
+# Fleet DB_* 6-var convention on box-local PostgreSQL (OPERATIONS.md §3.13).
+DATABASE_NAME = env("DB_NAME", default="").strip() or str(SQLITE_NAME)
 _DB_ENGINE_ALIASES = {
     "sqlite3": "django.db.backends.sqlite3",
     "postgresql": "django.db.backends.postgresql",
     "postgres": "django.db.backends.postgresql",
 }
-_db_engine = env("DB_ENGINE", default=env("DATABASE_ENGINE", default="sqlite3"))
+_db_engine = env("DB_ENGINE", default="sqlite3")
 
 SECRET_KEY = env("SECRET_KEY", default="dev-secret-key")
 STATE = env("STATE", default="DEV")
@@ -88,10 +88,10 @@ DATABASES = {
     "default": {
         "ENGINE": _DB_ENGINE_ALIASES.get(_db_engine, _db_engine),
         "NAME": DATABASE_NAME,
-        "HOST": env("DB_HOST", default=env("DATABASE_HOST", default="")),
-        "PORT": env("DB_PORT", default=env("DATABASE_PORT", default="")),
-        "USER": env("DB_USER", default=env("DATABASE_USER", default="")),
-        "PASSWORD": env("DB_PASSWORD", default=env("DATABASE_PASSWORD", default="")),
+        "HOST": env("DB_HOST", default=""),
+        "PORT": env("DB_PORT", default=""),
+        "USER": env("DB_USER", default=""),
+        "PASSWORD": env("DB_PASSWORD", default=""),
     }
 }
 
