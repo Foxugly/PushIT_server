@@ -25,7 +25,7 @@ AWS_REGION="eu-west-1"
 
 # Keys whose values are secrets -> stored as SecureString (KMS key aws/ssm).
 # Everything else is stored as a plain String.
-SECRET_KEYS=" SECRET_KEY DATABASE_PASSWORD GRAPH_CLIENT_SECRET METRICS_AUTH_TOKEN EXCHANGE_CERT_PASSWORD "
+SECRET_KEYS=" SECRET_KEY DB_PASSWORD GRAPH_CLIENT_SECRET METRICS_AUTH_TOKEN EXCHANGE_CERT_PASSWORD "
 
 [ -f "$ENV_FILE" ] || { echo "No such file: $ENV_FILE" >&2; exit 1; }
 

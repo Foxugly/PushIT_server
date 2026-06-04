@@ -49,7 +49,7 @@ Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py
 
 **Caveat:** `STATE=TEST` alone does **not** activate test settings — you need `DJANGO_ENV=test` for that. The `else` branch falls through to dev.
 
-Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`, `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
+Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DB_ENGINE`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` (fleet DB_* convention, OPERATIONS.md §3.13), `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_MAILBOX_USER_ID`, `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
 
 **DEV/TEST behavior:** Celery runs eagerly (synchronous, no broker needed), passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty. FCM uses a mock when `FCM_SERVICE_ACCOUNT_PATH` is empty.
 
