@@ -313,3 +313,13 @@ if SENTRY_DSN and _SENTRY_PROD_ACTIVE:
         send_default_pii=env.bool("SENTRY_SEND_PII", default=False),
         before_send=_sentry_before_send,
     )
+
+# --- Cloudflare Turnstile (captcha on /auth/register/) ---
+# TURNSTILE_SITE_KEY is the public widget key (safe to expose to the frontend);
+# TURNSTILE_SECRET_KEY is the server-side verification secret and MUST stay in
+# the environment (SSM /pushit/prod/TURNSTILE_SECRET_KEY in prod), never committed.
+# Rollout is gated on the secret: while it is empty, registration verification is
+# skipped (non-breaking), so the captcha can ship to prod and be activated later
+# just by seeding the SSM secret + the frontend site key. See accounts/turnstile.py.
+TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")
+TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")

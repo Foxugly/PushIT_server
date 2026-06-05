@@ -38,10 +38,16 @@ LanguageUpdateValidationErrorResponseSerializer = build_validation_error_seriali
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    # Cloudflare Turnstile token. Optional at the serializer layer so the field
+    # exists in the schema without breaking register while the captcha is not yet
+    # provisioned; the view enforces it (fail-closed) only once a secret is set.
+    turnstile_token = serializers.CharField(
+        write_only=True, required=False, allow_blank=True
+    )
 
     class Meta:
         model = User
-        fields = ["email", "username", "password"]
+        fields = ["email", "username", "password", "turnstile_token"]
 
     def validate_email(self, value):
         value = value.strip().lower()

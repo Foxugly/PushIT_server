@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from config.api_errors import error_response
+from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
 from .api_serializers import (
     DetailResponseSerializer,
     LanguageUpdateValidationErrorResponseSerializer,
@@ -53,6 +54,20 @@ class RegisterApiView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Server-side Turnstile check before any DB write. Gated on the secret:
+        # when no secret is configured the captcha is not yet provisioned, so we
+        # skip it (register keeps working). Once configured, it is fail-closed —
+        # any missing/invalid token or siteverify failure returns captcha_failed.
+        if turnstile_enabled():
+            token = serializer.validated_data.get("turnstile_token") or ""
+            if not verify_turnstile_token(token, remote_ip=get_remote_ip(request)):
+                return error_response(
+                    code="captcha_failed",
+                    detail="Captcha verification failed. Please try again.",
+                    http_status=status.HTTP_400_BAD_REQUEST,
+                )
+
         user = serializer.save()
         return Response(UserMeSerializer(user).data, status=status.HTTP_201_CREATED)
 

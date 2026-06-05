@@ -36,6 +36,78 @@ def test_register_preflight_allows_local_frontend_origin():
 
 
 @pytest.mark.django_db
+def test_register_without_turnstile_secret_skips_captcha():
+    """Rollout gate: with no TURNSTILE_SECRET_KEY configured (default), register
+    succeeds without a token — the captcha is not yet enforced."""
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "nocaptcha@example.com",
+        "username": "nocaptcha",
+        "password": "MotDePasseTresSolide123!",
+    }, format="json")
+    assert response.status_code == 201
+    assert User.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_register_with_turnstile_enabled_and_valid_token(settings, monkeypatch):
+    settings.TURNSTILE_SECRET_KEY = "test-secret"
+    monkeypatch.setattr(
+        "accounts.api_views.verify_turnstile_token",
+        lambda token, remote_ip=None: True,
+    )
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "ok@example.com",
+        "username": "okuser",
+        "password": "MotDePasseTresSolide123!",
+        "turnstile_token": "tok",
+    }, format="json")
+    assert response.status_code == 201
+    assert User.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_register_with_turnstile_enabled_invalid_token_returns_400(settings, monkeypatch):
+    """Fail-closed: a rejected token blocks register before any DB write."""
+    settings.TURNSTILE_SECRET_KEY = "test-secret"
+    monkeypatch.setattr(
+        "accounts.api_views.verify_turnstile_token",
+        lambda token, remote_ip=None: False,
+    )
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "blocked@example.com",
+        "username": "blocked",
+        "password": "MotDePasseTresSolide123!",
+        "turnstile_token": "bad",
+    }, format="json")
+    assert response.status_code == 400
+    assert response.data["code"] == "captcha_failed"
+    assert User.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_register_with_turnstile_enabled_missing_token_returns_400(settings, monkeypatch):
+    settings.TURNSTILE_SECRET_KEY = "test-secret"
+    # verify_turnstile_token would return False for an empty token anyway, but
+    # assert the view short-circuits cleanly without calling Cloudflare.
+    monkeypatch.setattr(
+        "accounts.api_views.verify_turnstile_token",
+        lambda token, remote_ip=None: bool(token),
+    )
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "notoken@example.com",
+        "username": "notoken",
+        "password": "MotDePasseTresSolide123!",
+    }, format="json")
+    assert response.status_code == 400
+    assert response.data["code"] == "captcha_failed"
+    assert User.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_login_success():
     client = APIClient()
     User.objects.create_user(
