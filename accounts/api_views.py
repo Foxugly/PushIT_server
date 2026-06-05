@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -6,9 +7,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from config.api_errors import error_response
+from .password_reset import confirm_password_reset, request_password_reset
 from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
 from .api_serializers import (
     DetailResponseSerializer,
+    ForgotPasswordSerializer,
     LanguageUpdateValidationErrorResponseSerializer,
     LoginResponseSerializer,
     LoginSerializer,
@@ -17,13 +20,14 @@ from .api_serializers import (
     LogoutValidationErrorResponseSerializer,
     RegisterSerializer,
     RegisterValidationErrorResponseSerializer,
+    ResetPasswordConfirmSerializer,
     TokenRefreshResponseSerializer,
     TokenRefreshValidationErrorResponseSerializer,
     UserLanguageUpdateSerializer,
     UserMeSerializer,
     build_token_response_for_user,
 )
-from .throttles import LoginRateThrottle, RegisterRateThrottle
+from .throttles import LoginRateThrottle, PasswordResetRateThrottle, RegisterRateThrottle
 
 
 @extend_schema_view(
@@ -70,6 +74,97 @@ class RegisterApiView(APIView):
 
         user = serializer.save()
         return Response(UserMeSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Request a password reset",
+        description=(
+            "Sends a password-reset link to the email if it matches an active "
+            "account. Always returns 200 with the same body (anti-leak), whether "
+            "or not the email exists."
+        ),
+        tags=["Accounts"],
+        auth=[],
+        request=ForgotPasswordSerializer,
+        responses={200: DetailResponseSerializer},
+    )
+)
+class ForgotPasswordApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [PasswordResetRateThrottle]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Turnstile gate (same model as register): verified only once a secret is
+        # configured, fail-closed. Runs before the anti-leak no-op so a bot can't
+        # use this endpoint to probe addresses without solving the captcha.
+        if turnstile_enabled():
+            token = serializer.validated_data.get("turnstile_token") or ""
+            if not verify_turnstile_token(token, remote_ip=get_remote_ip(request)):
+                return error_response(
+                    code="captcha_failed",
+                    detail="Captcha verification failed. Please try again.",
+                    http_status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        request_password_reset(serializer.validated_data["email"])
+        # Anti-leak: identical response whether or not the email matched.
+        return Response(
+            {"code": "ok", "detail": "If that email exists, a reset link has been sent."},
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Confirm a password reset",
+        description="Sets a new password given the uid + token from the emailed link.",
+        tags=["Accounts"],
+        auth=[],
+        request=ResetPasswordConfirmSerializer,
+        responses={
+            200: DetailResponseSerializer,
+            400: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Invalid/expired link or weak password",
+            ),
+        },
+    )
+)
+class ResetPasswordConfirmApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [PasswordResetRateThrottle]
+
+    def post(self, request):
+        serializer = ResetPasswordConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            ok = confirm_password_reset(data["uid"], data["token"], data["password"])
+        except DjangoValidationError as exc:
+            return error_response(
+                code="password_invalid",
+                detail=" ".join(exc.messages),
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not ok:
+            return error_response(
+                code="reset_link_invalid",
+                detail="This reset link is invalid or has expired. Please request a new one.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {"code": "ok", "detail": "Your password has been reset. You can now sign in."},
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(

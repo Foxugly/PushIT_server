@@ -88,6 +88,26 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    """Body of POST /auth/forgot-password/. Anti-leak: the view always returns
+    200 regardless of whether the email matches a user."""
+
+    email = serializers.EmailField()
+    # Optional at the serializer layer; the view enforces Turnstile (fail-closed)
+    # only once a secret is configured.
+    turnstile_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+
+class ResetPasswordConfirmSerializer(serializers.Serializer):
+    """Body of POST /auth/reset-password/. `uid` + `token` come from the emailed
+    link; `password` is the new password (validated against Django's validators
+    in the service layer)."""
+
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(write_only=True, min_length=8)
+
+
 class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

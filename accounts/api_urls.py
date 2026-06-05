@@ -1,5 +1,13 @@
 from django.urls import path
-from .api_views import RegisterApiView, LoginApiView, LogoutApiView, MeApiView, CustomTokenRefreshView
+from .api_views import (
+    CustomTokenRefreshView,
+    ForgotPasswordApiView,
+    LoginApiView,
+    LogoutApiView,
+    MeApiView,
+    RegisterApiView,
+    ResetPasswordConfirmApiView,
+)
 
 urlpatterns = [
     path("register/", RegisterApiView.as_view(), name="auth-register"),
@@ -7,4 +15,6 @@ urlpatterns = [
     path("refresh/", CustomTokenRefreshView.as_view(), name="token-refresh"),
     path("logout/", LogoutApiView.as_view(), name="auth-logout"),
     path("me/", MeApiView.as_view(), name="auth-me"),
+    path("forgot-password/", ForgotPasswordApiView.as_view(), name="auth-forgot-password"),
+    path("reset-password/", ResetPasswordConfirmApiView.as_view(), name="auth-reset-password"),
 ]

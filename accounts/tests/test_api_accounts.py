@@ -1,4 +1,7 @@
 import pytest
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework.test import APIClient
 from accounts.models import User
 
@@ -105,6 +108,92 @@ def test_register_with_turnstile_enabled_missing_token_returns_400(settings, mon
     assert response.status_code == 400
     assert response.data["code"] == "captcha_failed"
     assert User.objects.count() == 0
+
+
+# --- Password reset (forgot-password + confirm) ---------------------------
+FORGOT_URL = "/api/v1/auth/forgot-password/"
+RESET_URL = "/api/v1/auth/reset-password/"
+
+
+def _reset_tokens(user):
+    return urlsafe_base64_encode(force_bytes(user.pk)), default_token_generator.make_token(user)
+
+
+@pytest.mark.django_db
+def test_forgot_password_unknown_email_returns_200_antileak():
+    client = APIClient()
+    response = client.post(FORGOT_URL, {"email": "nobody@example.com"}, format="json")
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_forgot_password_known_email_returns_200():
+    User.objects.create_user(
+        email="renaud@example.com", username="renaud", password="MotDePasseTresSolide123!"
+    )
+    client = APIClient()
+    response = client.post(FORGOT_URL, {"email": "renaud@example.com"}, format="json")
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_forgot_password_with_turnstile_invalid_token_returns_400(settings, monkeypatch):
+    settings.TURNSTILE_SECRET_KEY = "test-secret"
+    monkeypatch.setattr(
+        "accounts.api_views.verify_turnstile_token", lambda token, remote_ip=None: False
+    )
+    client = APIClient()
+    response = client.post(
+        FORGOT_URL, {"email": "renaud@example.com", "turnstile_token": "bad"}, format="json"
+    )
+    assert response.status_code == 400
+    assert response.data["code"] == "captcha_failed"
+
+
+@pytest.mark.django_db
+def test_reset_password_confirm_success_changes_password():
+    user = User.objects.create_user(
+        email="renaud@example.com", username="renaud", password="OldPassword123!"
+    )
+    uid, token = _reset_tokens(user)
+    client = APIClient()
+    response = client.post(
+        RESET_URL, {"uid": uid, "token": token, "password": "BrandNewPass456!"}, format="json"
+    )
+    assert response.status_code == 200
+    user.refresh_from_db()
+    assert user.check_password("BrandNewPass456!")
+
+
+@pytest.mark.django_db
+def test_reset_password_confirm_invalid_token_returns_400():
+    user = User.objects.create_user(
+        email="renaud@example.com", username="renaud", password="OldPassword123!"
+    )
+    uid, _ = _reset_tokens(user)
+    client = APIClient()
+    response = client.post(
+        RESET_URL, {"uid": uid, "token": "not-a-valid-token", "password": "BrandNewPass456!"},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert response.data["code"] == "reset_link_invalid"
+    user.refresh_from_db()
+    assert user.check_password("OldPassword123!")
+
+
+@pytest.mark.django_db
+def test_reset_password_confirm_weak_password_returns_400():
+    user = User.objects.create_user(
+        email="renaud@example.com", username="renaud", password="OldPassword123!"
+    )
+    uid, token = _reset_tokens(user)
+    client = APIClient()
+    response = client.post(
+        RESET_URL, {"uid": uid, "token": token, "password": "12345678"}, format="json"
+    )
+    assert response.status_code == 400
+    assert response.data["code"] == "password_invalid"
 
 
 @pytest.mark.django_db

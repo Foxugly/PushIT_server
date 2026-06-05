@@ -36,6 +36,10 @@ CORS_ALLOWED_ORIGINS = env.list(
 CORS_ALLOW_HEADERS = (*default_headers, "x-app-token", "sentry-trace", "baggage")
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
+# Public base URL of the Angular SPA, used to build the password-reset link
+# emailed to users ({FRONTEND_BASE_URL}/reset-password/{uid}/{token}).
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="https://pushit.foxugly.com")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -204,6 +208,7 @@ REST_FRAMEWORK = {
         "user": "120/min",
         "login": "10/min",
         "register": "5/min",
+        "password_reset": "5/min",
         "app_token": "300/min",
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

@@ -7,3 +7,7 @@ class LoginRateThrottle(AnonRateThrottle):
 
 class RegisterRateThrottle(AnonRateThrottle):
     scope = "register"
+
+
+class PasswordResetRateThrottle(AnonRateThrottle):
+    scope = "password_reset"
