@@ -65,6 +65,9 @@ def test_rest_framework_and_schema_wiring():
     assert "config.middleware.RequestIdMiddleware" in settings.MIDDLEWARE
     assert "http://localhost:4200" in settings.CORS_ALLOWED_ORIGINS
     assert "http://127.0.0.1:4200" in settings.CORS_ALLOWED_ORIGINS
+    # Sentry browserTracing in the SPA sends these on cross-origin API calls.
+    assert "sentry-trace" in settings.CORS_ALLOW_HEADERS
+    assert "baggage" in settings.CORS_ALLOW_HEADERS
     assert settings.INBOUND_EMAIL_DOMAIN == "pushit.com"
     assert "pushit-poll-inbound-mailbox" in settings.CELERY_BEAT_SCHEDULE
     assert settings.CELERY_BEAT_SCHEDULE["pushit-poll-inbound-mailbox"]["task"] == "notifications.tasks.poll_inbound_mailbox_task"

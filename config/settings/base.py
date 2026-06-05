@@ -29,7 +29,11 @@ CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=["http://localhost:4200", "http://127.0.0.1:4200"],
 )
-CORS_ALLOW_HEADERS = (*default_headers, "x-app-token")
+# The Angular SPA (pushit.foxugly.com) runs @sentry/angular browserTracing with
+# pushit-api in tracePropagationTargets, so it attaches `sentry-trace` + `baggage`
+# to every cross-origin API request. They must be allow-listed or the CORS
+# preflight fails and login/register break ("Une erreur est survenue").
+CORS_ALLOW_HEADERS = (*default_headers, "x-app-token", "sentry-trace", "baggage")
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 INSTALLED_APPS = [
