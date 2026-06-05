@@ -10,7 +10,7 @@
 
   After seeding, apply on the server (see CLAUDE.md):
     sudo systemctl restart pushit-env-fetch
-    sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat
+    sudo systemctl restart pushit-gunicorn pushit-celery pushit-celery-beat
 
 .EXAMPLE
   ./deploy/seed-parameter-store.ps1 ./prod.env
@@ -56,4 +56,4 @@ foreach ($line in Get-Content -LiteralPath $EnvFile) {
 Write-Host "Done. Seeded $SsmPrefix/* in $AwsRegion."
 Write-Host "Re-fetch on the server:"
 Write-Host "  sudo systemctl restart pushit-env-fetch"
-Write-Host "  sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat"
+Write-Host "  sudo systemctl restart pushit-gunicorn pushit-celery pushit-celery-beat"

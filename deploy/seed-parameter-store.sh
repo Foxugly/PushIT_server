@@ -15,7 +15,7 @@
 #
 # After seeding, apply on the server (see CLAUDE.md):
 #   sudo systemctl restart pushit-env-fetch
-#   sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat
+#   sudo systemctl restart pushit-gunicorn pushit-celery pushit-celery-beat
 # =============================================================================
 set -euo pipefail
 
@@ -59,4 +59,4 @@ done < "$ENV_FILE"
 echo "Done. Seeded $SSM_PREFIX/* in $AWS_REGION."
 echo "Re-fetch on the server:"
 echo "  sudo systemctl restart pushit-env-fetch"
-echo "  sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat"
+echo "  sudo systemctl restart pushit-gunicorn pushit-celery pushit-celery-beat"

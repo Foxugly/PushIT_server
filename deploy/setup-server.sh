@@ -105,9 +105,9 @@ SUDOERS_FILE="/etc/sudoers.d/pushit-deploy"
 sudo tee "$SUDOERS_FILE" > /dev/null <<'EOF'
 # PushIT deploy.sh privileges — restart app units + nginx control as root only.
 Cmnd_Alias PUSHIT_CTRL = \
-    /bin/systemctl restart pushit-api-gunicorn, \
-    /bin/systemctl restart pushit-api-celery, \
-    /bin/systemctl restart pushit-api-celery-beat, \
+    /bin/systemctl restart pushit-gunicorn, \
+    /bin/systemctl restart pushit-celery, \
+    /bin/systemctl restart pushit-celery-beat, \
     /usr/sbin/nginx -t, \
     /bin/systemctl reload nginx
 django ALL=(root) NOPASSWD: PUSHIT_CTRL
@@ -165,9 +165,9 @@ echo ">>> Getting SSL certificate for $DOMAIN..."
 sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
 
 # Enable and start PushIT services (redis already running for QuizOnline)
-sudo systemctl enable --now pushit-api-gunicorn
-sudo systemctl enable --now pushit-api-celery
-sudo systemctl enable --now pushit-api-celery-beat
+sudo systemctl enable --now pushit-gunicorn
+sudo systemctl enable --now pushit-celery
+sudo systemctl enable --now pushit-celery-beat
 
 echo ""
 echo "=== Setup complete ==="
@@ -178,9 +178,9 @@ echo "  Health:        https://$DOMAIN/health/live/"
 echo ""
 echo "  QuizOnline:    (unchanged, still running)"
 echo ""
-echo "  Logs:          journalctl -u pushit-api-gunicorn -f"
+echo "  Logs:          journalctl -u pushit-gunicorn -f"
 echo "                 journalctl -u pushit-env-fetch -f"
-echo "                 journalctl -u pushit-api-celery -f"
+echo "                 journalctl -u pushit-celery -f"
 echo "                 tail -f /var/log/pushit/gunicorn-access.log"
 echo "                 tail -f /var/log/nginx/pushit-error.log"
 echo ""
