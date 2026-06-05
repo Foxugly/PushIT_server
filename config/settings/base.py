@@ -234,7 +234,11 @@ INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="pushit.com")
 GRAPH_TENANT_ID = env("GRAPH_TENANT_ID", default="")
 GRAPH_CLIENT_ID = env("GRAPH_CLIENT_ID", default="")
 GRAPH_CLIENT_SECRET = env("GRAPH_CLIENT_SECRET", default="")
-GRAPH_MAILBOX_USER_ID = env("GRAPH_MAILBOX_USER_ID", default="")
+# Canonical SSM name for the sending mailbox is GRAPH_SENDER (fleet
+# OPERATIONS.md §3.14, as on tm/foxugly); fall back to the legacy
+# GRAPH_MAILBOX_USER_ID until the SSM rename is migrated. The setting keeps its
+# name so graph_mail.py is untouched.
+GRAPH_MAILBOX_USER_ID = env("GRAPH_SENDER", default="") or env("GRAPH_MAILBOX_USER_ID", default="")
 
 # --- Exchange Online alias management (PowerShell + ExchangeOnlineManagement) ---
 # Path to scripts/exchange/manage_alias.ps1 (absolute on prod).
