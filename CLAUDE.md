@@ -214,7 +214,7 @@ sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-b
 > SecureString, `aws ssm delete-parameter` first, then re-seed.
 
 **IAM (two distinct roles):**
-- **Instance role** (`quizonline-ec2`, shared) — used by `pushit-env-fetch` at boot: must allow
+- **Instance role** (`foxugly-fleet-ec2`, shared) — used by `pushit-env-fetch` at boot: must allow
   `ssm:GetParametersByPath` on `arn:aws:ssm:eu-west-1:*:parameter/pushit/prod/*` plus `kms:Decrypt`
   on the `aws/ssm` key. `/run` is tmpfs (cleared on reboot), so the file is re-fetched every boot.
 - **Deploy role** (`pushit-deploy`, OIDC) — used by the GitHub Actions deploy: trust pinned to
