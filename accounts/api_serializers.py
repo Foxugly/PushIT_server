@@ -12,7 +12,7 @@ from .models import User, UserLanguage
 
 RegisterValidationErrorResponseSerializer = build_validation_error_serializer(
     "RegisterValidationErrorResponse",
-    ["email", "username", "password"],
+    ["email", "password"],
 )
 
 LoginValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -47,7 +47,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["email", "username", "password", "turnstile_token"]
+        fields = ["email", "password", "turnstile_token"]
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -62,7 +62,6 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         return User.objects.create_user(
             email=validated_data["email"],
-            username=validated_data["username"],
             password=validated_data["password"],
         )
 
@@ -111,7 +110,7 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
 class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "username", "userkey", "is_active", "language"]
+        fields = ["id", "email", "userkey", "is_active", "language"]
 
 
 class UserLanguageUpdateSerializer(serializers.ModelSerializer):

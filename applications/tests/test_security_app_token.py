@@ -23,7 +23,6 @@ def test_app_auth_updates_last_used_at():
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
 
@@ -57,7 +56,6 @@ def test_inactive_app_token_is_rejected():
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
 
@@ -87,7 +85,6 @@ def test_revoked_app_token_is_rejected():
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
 
@@ -117,7 +114,6 @@ def test_missing_app_token_returns_explicit_business_code():
     client = APIClient()
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     _authenticate(client, user)
@@ -140,7 +136,6 @@ def test_missing_app_token_returns_explicit_business_code():
 def test_app_token_auth_does_not_expose_owner_as_request_user():
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application(owner=user, name="App")
@@ -188,7 +183,6 @@ def test_app_token_principal_rejects_user_like_attributes():
 def test_has_app_token_permission_requires_consistent_principal_and_application():
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application.objects.create(owner=user, name="App")

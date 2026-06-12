@@ -42,7 +42,7 @@ def request_password_reset(email: str) -> None:
 
     subject = "Reset your PushIT password"
     body = (
-        f"Hello {user.username},\n\n"
+        "Hello,\n\n"
         "We received a request to reset your PushIT password. "
         "Open the link below to choose a new one:\n\n"
         f"{link}\n\n"

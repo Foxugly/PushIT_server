@@ -18,7 +18,6 @@ def test_create_notification_with_app_token():
 
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -49,7 +48,6 @@ def test_create_notification_with_same_idempotency_key_returns_existing_notifica
 
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -88,7 +86,6 @@ def test_create_notification_with_same_idempotency_key_and_different_payload_ret
 
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -129,7 +126,6 @@ def test_create_notification_without_idempotency_key_returns_400():
 
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -159,7 +155,6 @@ def test_create_notification_without_idempotency_key_returns_400():
 def test_concurrent_create_notification_with_same_idempotency_key_is_idempotent(live_server):
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -207,7 +202,6 @@ def test_concurrent_create_notification_with_same_idempotency_key_is_idempotent(
 def test_concurrent_create_notification_with_same_idempotency_key_and_different_payload_conflicts(live_server):
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -250,7 +244,6 @@ def test_list_notifications_with_app_token_can_filter_by_effective_scheduled_ran
 
     user = User.objects.create_user(
         email="app-list@example.com",
-        username="app-list",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -309,7 +302,6 @@ def test_list_notifications_with_app_token_can_filter_by_status_and_shift_flag()
 
     user = User.objects.create_user(
         email="app-list3@example.com",
-        username="app-list3",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -358,7 +350,6 @@ def test_list_notifications_with_app_token_rejects_invalid_effective_range():
 
     user = User.objects.create_user(
         email="app-list2@example.com",
-        username="app-list2",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")

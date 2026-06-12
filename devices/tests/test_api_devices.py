@@ -11,7 +11,6 @@ def test_device_detail_not_found_returns_device_not_found_code():
     client = APIClient()
     user = User.objects.create_user(
         email="owner@example.com",
-        username="owner",
         password="MotDePasseTresSolide123!",
     )
     Application.objects.create(owner=user, name="Mon App")

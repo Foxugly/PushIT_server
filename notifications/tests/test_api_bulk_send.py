@@ -16,7 +16,7 @@ def test_bulk_send_queues_multiple_notifications(mock_delay):
 
     client = APIClient()
     user = User.objects.create_user(
-        email="bulk@example.com", username="bulk", password="StrongPass123!",
+        email="bulk@example.com", password="StrongPass123!",
     )
     app = Application.objects.create(owner=user, name="Bulk App")
     n1 = Notification.objects.create(application=app, title="N1", message="M1", status=NotificationStatus.DRAFT)
@@ -45,7 +45,7 @@ def test_bulk_send_queues_multiple_notifications(mock_delay):
 def test_bulk_send_rejects_empty_list():
     client = APIClient()
     user = User.objects.create_user(
-        email="empty@example.com", username="empty", password="StrongPass123!",
+        email="empty@example.com", password="StrongPass123!",
     )
     access = str(RefreshToken.for_user(user).access_token)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")

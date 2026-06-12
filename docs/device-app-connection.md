@@ -53,7 +53,6 @@ Successful response:
   "user": {
     "id": 1,
     "email": "user@example.com",
-    "username": "user",
     "userkey": "usr_xxxxxxxxxxxx",
     "is_active": true,
     "language": "FR"

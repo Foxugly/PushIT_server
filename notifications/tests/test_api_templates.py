@@ -12,7 +12,6 @@ from devices.models import Device, DeviceApplicationLink
 def auth_context():
     user = User.objects.create_user(
         email="tpl@example.com",
-        username="tpl",
         password="StrongPass123!",
     )
     app = Application.objects.create(owner=user, name="Template App")
@@ -92,7 +91,7 @@ def test_template_duplicate_name_rejected(auth_context):
 @pytest.mark.django_db
 def test_model_render():
     user = User.objects.create_user(
-        email="render@example.com", username="render", password="StrongPass123!",
+        email="render@example.com", password="StrongPass123!",
     )
     app = Application.objects.create(owner=user, name="Render App")
     tpl = NotificationTemplate.objects.create(
@@ -109,7 +108,7 @@ def test_model_render():
 @pytest.mark.django_db
 def test_model_render_no_variables():
     user = User.objects.create_user(
-        email="render2@example.com", username="render2", password="StrongPass123!",
+        email="render2@example.com", password="StrongPass123!",
     )
     app = Application.objects.create(owner=user, name="Render App 2")
     tpl = NotificationTemplate.objects.create(

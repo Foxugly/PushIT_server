@@ -11,7 +11,6 @@ def test_revoke_token_endpoint():
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
 

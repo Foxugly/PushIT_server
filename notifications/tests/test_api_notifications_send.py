@@ -20,7 +20,6 @@ def test_send_notification_endpoint_accepts_draft(mock_delay):
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application.objects.create(owner=user, name="App")
@@ -56,7 +55,6 @@ def test_send_notification_endpoint_rejects_already_queued(mock_delay):
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application.objects.create(owner=user, name="App")
@@ -90,7 +88,6 @@ def test_send_notification_endpoint_rejects_already_queued(mock_delay):
 def test_concurrent_send_notification_only_queues_once(live_server):
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application.objects.create(owner=user, name="App")
@@ -135,7 +132,6 @@ def test_send_notification_endpoint_rejects_already_sent(mock_delay):
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application.objects.create(owner=user, name="App")
@@ -170,7 +166,6 @@ def test_send_notification_endpoint_restores_status_when_queue_publish_fails(moc
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     app = Application.objects.create(owner=user, name="App")
@@ -203,7 +198,6 @@ def test_notification_detail_not_found_returns_notification_not_found_code():
 
     user = User.objects.create_user(
         email="u1@example.com",
-        username="u1",
         password="1234Test!!",
     )
     Application.objects.create(owner=user, name="App")

@@ -19,7 +19,6 @@ def test_register_validation_errors_follow_global_contract():
     assert response.data["detail"] == "Validation error."
     assert "errors" in response.data
     assert "email" in response.data["errors"]
-    assert "username" in response.data["errors"]
     assert "password" in response.data["errors"]
 
 
@@ -48,7 +47,6 @@ def test_me_patch_invalid_language_follows_global_contract():
 
     authenticated_user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     client.force_authenticate(user=authenticated_user)

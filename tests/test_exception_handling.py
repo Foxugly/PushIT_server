@@ -45,7 +45,6 @@ def test_internal_error_response_includes_incident_id_and_logs_user_context(capl
     client = APIClient()
     user = User.objects.create_user(
         email="incident@example.com",
-        username="incident",
         password="MotDePasseTresSolide123!",
     )
     access = str(RefreshToken.for_user(user).access_token)
@@ -75,7 +74,6 @@ def test_internal_error_logs_application_context_for_app_token_requests(caplog):
     client = APIClient()
     user = User.objects.create_user(
         email="app@example.com",
-        username="app-owner",
         password="MotDePasseTresSolide123!",
     )
     application = Application.objects.create(owner=user, name="App")

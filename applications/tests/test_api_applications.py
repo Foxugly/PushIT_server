@@ -11,7 +11,6 @@ def test_get_patch_and_delete_application():
     client = APIClient()
     user = User.objects.create_user(
         email="app@example.com",
-        username="appuser",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(
@@ -55,7 +54,6 @@ def test_application_patch_validation_error_follows_contract():
     client = APIClient()
     user = User.objects.create_user(
         email="app2@example.com",
-        username="appuser2",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="PushIT")
@@ -81,12 +79,10 @@ def test_application_detail_returns_not_found_for_other_user():
     client = APIClient()
     owner = User.objects.create_user(
         email="owner@example.com",
-        username="owner",
         password="MotDePasseTresSolide123!",
     )
     other_user = User.objects.create_user(
         email="other@example.com",
-        username="other",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=owner, name="Private app")

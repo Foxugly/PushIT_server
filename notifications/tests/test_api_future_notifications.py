@@ -37,7 +37,6 @@ def test_create_and_list_future_notifications():
     client = APIClient()
     user = User.objects.create_user(
         email="future@example.com",
-        username="future",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -74,7 +73,6 @@ def test_update_and_delete_future_notification():
     client = APIClient()
     user = User.objects.create_user(
         email="future2@example.com",
-        username="future2",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -111,7 +109,6 @@ def test_cannot_send_notification_scheduled_in_future():
     client = APIClient()
     user = User.objects.create_user(
         email="future3@example.com",
-        username="future3",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -136,7 +133,6 @@ def test_effective_scheduled_for_is_shifted_by_existing_quiet_period():
     client = APIClient()
     user = User.objects.create_user(
         email="future4@example.com",
-        username="future4",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -181,7 +177,6 @@ def test_effective_scheduled_for_reflects_quiet_period_created_after_notificatio
     client = APIClient()
     user = User.objects.create_user(
         email="future5@example.com",
-        username="future5",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -217,7 +212,6 @@ def test_effective_scheduled_for_is_shifted_by_existing_recurring_quiet_period()
     client = APIClient()
     user = User.objects.create_user(
         email="future-recurring@example.com",
-        username="future-recurring",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -258,7 +252,6 @@ def test_device_quiet_period_does_not_change_notification_effective_scheduled_fo
     client = APIClient()
     user = User.objects.create_user(
         email="future-device-quiet@example.com",
-        username="future-device-quiet",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -303,7 +296,6 @@ def test_list_future_notifications_can_filter_by_effective_scheduled_range():
     client = APIClient()
     user = User.objects.create_user(
         email="future6@example.com",
-        username="future6",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -355,7 +347,6 @@ def test_list_future_notifications_can_order_by_effective_scheduled_for_desc():
     client = APIClient()
     user = User.objects.create_user(
         email="future8@example.com",
-        username="future8",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -401,7 +392,6 @@ def test_list_future_notifications_can_filter_on_quiet_period_shift_flag():
     client = APIClient()
     user = User.objects.create_user(
         email="future9@example.com",
-        username="future9",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Future App")
@@ -456,7 +446,6 @@ def test_list_future_notifications_rejects_invalid_effective_range():
     client = APIClient()
     user = User.objects.create_user(
         email="future7@example.com",
-        username="future7",
         password="MotDePasseTresSolide123!",
     )
     access = str(RefreshToken.for_user(user).access_token)
@@ -480,7 +469,6 @@ def test_list_notifications_can_filter_by_application_status_and_shift_flag():
     client = APIClient()
     user = User.objects.create_user(
         email="future10@example.com",
-        username="future10",
         password="MotDePasseTresSolide123!",
     )
     first_app = Application.objects.create(owner=user, name="First App")

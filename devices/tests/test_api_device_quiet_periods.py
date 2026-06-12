@@ -18,7 +18,6 @@ def test_create_update_and_delete_device_quiet_period():
     client = APIClient()
     user = User.objects.create_user(
         email="device-quiet@example.com",
-        username="device-quiet",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="App")
@@ -75,7 +74,6 @@ def test_device_quiet_period_validation_error_contract():
     client = APIClient()
     user = User.objects.create_user(
         email="device-quiet2@example.com",
-        username="device-quiet2",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="App")

@@ -18,7 +18,6 @@ def _auth_client_for(user: User) -> APIClient:
 def test_identify_device_creates_user_device_without_app_links():
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     client = _auth_client_for(user)
@@ -49,7 +48,6 @@ def test_identify_device_creates_user_device_without_app_links():
 def test_identify_known_device_returns_linked_applications_for_authenticated_user():
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(
@@ -101,12 +99,10 @@ def test_identify_known_device_returns_linked_applications_for_authenticated_use
 def test_identify_existing_device_from_other_user_does_not_return_previous_links():
     previous_user = User.objects.create_user(
         email="old@example.com",
-        username="old",
         password="MotDePasseTresSolide123!",
     )
     current_user = User.objects.create_user(
         email="new@example.com",
-        username="new",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=previous_user, name="Previous App")
@@ -145,7 +141,6 @@ def test_identify_existing_device_from_other_user_does_not_return_previous_links
 def test_link_device_requires_user_auth_and_app_token():
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
@@ -175,7 +170,6 @@ def test_link_device_requires_user_auth_and_app_token():
 def test_link_device_reactivates_existing_inactive_link():
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")

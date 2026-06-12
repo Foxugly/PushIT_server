@@ -736,6 +736,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Template not found
+  /api/v1/auth/forgot-password/:
+    post:
+      operationId: api_v1_auth_forgot_password_create
+      description: Sends a password-reset link to the email if it matches an active
+        account. Always returns 200 with the same body (anti-leak), whether or not
+        the email exists.
+      summary: Request a password reset
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ForgotPassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ForgotPassword'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
   /api/v1/auth/login/:
     post:
       operationId: api_v1_auth_login_create
@@ -916,6 +944,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Too many registration attempts
+  /api/v1/auth/reset-password/:
+    post:
+      operationId: api_v1_auth_reset_password_create
+      description: Sets a new password given the uid + token from the emailed link.
+      summary: Confirm a password reset
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordConfirm'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordConfirm'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordConfirm'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid/expired link or weak password
   /api/v1/devices/:
     get:
       operationId: api_v1_devices_list
@@ -3102,6 +3162,20 @@ components:
       required:
       - code
       - detail
+    ForgotPassword:
+      type: object
+      description: |-
+        Body of POST /auth/forgot-password/. Anti-leak: the view always returns
+        200 regardless of whether the email matches a user.
+      properties:
+        email:
+          type: string
+          format: email
+        turnstile_token:
+          type: string
+          writeOnly: true
+      required:
+      - email
     HealthError:
       type: object
       properties:
@@ -4029,20 +4103,16 @@ components:
           type: string
           format: email
           maxLength: 254
-        username:
-          type: string
-          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
-            only.
-          pattern: ^[\w.@+-]+$
-          maxLength: 150
         password:
           type: string
           writeOnly: true
           minLength: 8
+        turnstile_token:
+          type: string
+          writeOnly: true
       required:
       - email
       - password
-      - username
     RegisterValidationErrorResponse:
       type: object
       properties:
@@ -4063,10 +4133,6 @@ components:
           type: array
           items:
             type: string
-        username:
-          type: array
-          items:
-            type: string
         password:
           type: array
           items:
@@ -4075,6 +4141,25 @@ components:
           type: array
           items:
             type: string
+    ResetPasswordConfirm:
+      type: object
+      description: |-
+        Body of POST /auth/reset-password/. `uid` + `token` come from the emailed
+        link; `password` is the new password (validated against Django's validators
+        in the service layer).
+      properties:
+        uid:
+          type: string
+        token:
+          type: string
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - password
+      - token
+      - uid
     StatusEnum:
       enum:
       - draft
@@ -4147,12 +4232,6 @@ components:
           type: string
           format: email
           maxLength: 254
-        username:
-          type: string
-          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
-            only.
-          pattern: ^[\w.@+-]+$
-          maxLength: 150
         userkey:
           type: string
           maxLength: 16
@@ -4166,4 +4245,3 @@ components:
       required:
       - email
       - id
-      - username

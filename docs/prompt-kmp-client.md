@@ -21,7 +21,7 @@ Base URL: `http://127.0.0.1:8000/api/v1/`
 
 ### Authentication (JWT)
 
-- `POST /auth/register/` — `{"email", "username", "password"}` → `201` with user profile
+- `POST /auth/register/` — `{"email", "password"}` → `201` with user profile
 - `POST /auth/login/` — `{"email", "password"}` → `200` with `{"access", "refresh", "user"}`
 - `POST /auth/refresh/` — `{"refresh"}` → `200` with `{"access"}`
 - `POST /auth/logout/` — `{"refresh"}` → `204`

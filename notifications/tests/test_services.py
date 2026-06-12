@@ -20,7 +20,7 @@ VALID_TOKEN_2 = "token_22222222222222222222"
 
 @pytest.mark.django_db
 def test_get_devices_for_app():
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device1 = Device.objects.create(push_token=VALID_TOKEN_1, push_token_status=DeviceTokenStatus.ACTIVE)
@@ -43,7 +43,7 @@ def test_send_notification_success(mock_send):
     reset_metrics()
     mock_send.return_value = "provider-123"
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device1 = Device.objects.create(
@@ -90,7 +90,7 @@ def test_send_notification_success(mock_send):
 def test_send_notification_uses_precreated_target_deliveries_only(mock_send):
     mock_send.return_value = "provider-123"
 
-    user = User.objects.create_user(username="u-targeted", password="1234")
+    user = User.objects.create_user(email="u-targeted@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device1 = Device.objects.create(
@@ -138,7 +138,7 @@ def test_send_notification_partial_failure(mock_send):
 
     mock_send.side_effect = fake_send
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device1 = Device.objects.create(
@@ -183,7 +183,7 @@ def test_send_notification_partial_failure(mock_send):
 @pytest.mark.django_db
 @patch("notifications.services.send_push_to_device")
 def test_send_notification_without_devices(mock_send):
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     notification = Notification.objects.create(
@@ -211,7 +211,7 @@ def test_send_notification_without_devices(mock_send):
 def test_send_notification_is_idempotent_for_already_sent_deliveries(mock_send):
     mock_send.return_value = "provider-123"
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device = Device.objects.create(
@@ -253,7 +253,7 @@ def test_send_notification_is_idempotent_for_already_sent_deliveries(mock_send):
 def test_failed_delivery_is_scheduled_for_retry(mock_send):
     mock_send.side_effect = RuntimeError("Temporary provider error")
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     device = Device.objects.create(
         push_token="token_11111111111111111111",
@@ -282,7 +282,7 @@ def test_failed_delivery_is_scheduled_for_retry(mock_send):
 def test_invalid_push_token_invalidates_device(mock_send):
     mock_send.side_effect = InvalidPushTokenError("Token invalid or unregistered")
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device = Device.objects.create(
@@ -326,7 +326,7 @@ def test_invalid_push_token_invalidates_device(mock_send):
 def test_temporary_provider_error_does_not_invalidate_device(mock_send):
     mock_send.side_effect = TemporaryPushProviderError("Temporary provider error")
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
 
     device = Device.objects.create(
@@ -369,7 +369,7 @@ def test_temporary_provider_error_does_not_invalidate_device(mock_send):
 @pytest.mark.django_db
 @patch("notifications.services.send_push_to_device")
 def test_send_notification_is_deferred_during_quiet_period(mock_send):
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     quiet_end = timezone.now() + timedelta(hours=2)
     ApplicationQuietPeriod.objects.create(
@@ -399,7 +399,7 @@ def test_send_notification_is_deferred_during_quiet_period(mock_send):
 @pytest.mark.django_db
 @patch("notifications.services.send_push_to_device")
 def test_send_notification_is_deferred_during_recurring_quiet_period(mock_send):
-    user = User.objects.create_user(username="u2", password="1234")
+    user = User.objects.create_user(email="u2@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     local_now = timezone.localtime()
     local_start = local_now - timedelta(minutes=30)
@@ -437,7 +437,7 @@ def test_send_notification_is_deferred_during_recurring_quiet_period(mock_send):
 def test_device_quiet_period_defers_only_impacted_device(mock_send):
     mock_send.return_value = "provider-123"
 
-    user = User.objects.create_user(username="u3", password="1234")
+    user = User.objects.create_user(email="u3@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     device_blocked = Device.objects.create(
         push_token="token_33333333333333333333",

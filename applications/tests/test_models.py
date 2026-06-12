@@ -7,7 +7,6 @@ from applications.models import Application
 @pytest.mark.django_db
 def test_application_has_generated_app_token():
     user = User.objects.create_user(
-        username="renaud",
         email="renaud@example.com",
         password="secret123"
     )
@@ -24,7 +23,7 @@ def test_application_has_generated_app_token():
 
 @pytest.mark.django_db
 def test_app_token_is_unique():
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
 
     app1 = Application.objects.create(owner=user, name="App1")
     app2 = Application.objects.create(owner=user, name="App2")
@@ -35,7 +34,7 @@ def test_app_token_is_unique():
 
 @pytest.mark.django_db
 def test_inbound_email_alias_remains_stable_when_regenerating_app_token():
-    user = User.objects.create_user(username="u2", password="1234")
+    user = User.objects.create_user(email="u2@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     original_alias = app.inbound_email_alias
 

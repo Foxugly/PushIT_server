@@ -12,7 +12,6 @@ def test_register_success():
 
     response = client.post("/api/v1/auth/register/", {
         "email": "renaud@example.com",
-        "username": "renaud",
         "password": "MotDePasseTresSolide123!",
     }, format="json")
 
@@ -45,7 +44,6 @@ def test_register_without_turnstile_secret_skips_captcha():
     client = APIClient()
     response = client.post("/api/v1/auth/register/", {
         "email": "nocaptcha@example.com",
-        "username": "nocaptcha",
         "password": "MotDePasseTresSolide123!",
     }, format="json")
     assert response.status_code == 201
@@ -62,7 +60,6 @@ def test_register_with_turnstile_enabled_and_valid_token(settings, monkeypatch):
     client = APIClient()
     response = client.post("/api/v1/auth/register/", {
         "email": "ok@example.com",
-        "username": "okuser",
         "password": "MotDePasseTresSolide123!",
         "turnstile_token": "tok",
     }, format="json")
@@ -81,7 +78,6 @@ def test_register_with_turnstile_enabled_invalid_token_returns_400(settings, mon
     client = APIClient()
     response = client.post("/api/v1/auth/register/", {
         "email": "blocked@example.com",
-        "username": "blocked",
         "password": "MotDePasseTresSolide123!",
         "turnstile_token": "bad",
     }, format="json")
@@ -102,7 +98,6 @@ def test_register_with_turnstile_enabled_missing_token_returns_400(settings, mon
     client = APIClient()
     response = client.post("/api/v1/auth/register/", {
         "email": "notoken@example.com",
-        "username": "notoken",
         "password": "MotDePasseTresSolide123!",
     }, format="json")
     assert response.status_code == 400
@@ -129,7 +124,7 @@ def test_forgot_password_unknown_email_returns_200_antileak():
 @pytest.mark.django_db
 def test_forgot_password_known_email_returns_200():
     User.objects.create_user(
-        email="renaud@example.com", username="renaud", password="MotDePasseTresSolide123!"
+        email="renaud@example.com", password="MotDePasseTresSolide123!"
     )
     client = APIClient()
     response = client.post(FORGOT_URL, {"email": "renaud@example.com"}, format="json")
@@ -153,7 +148,7 @@ def test_forgot_password_with_turnstile_invalid_token_returns_400(settings, monk
 @pytest.mark.django_db
 def test_reset_password_confirm_success_changes_password():
     user = User.objects.create_user(
-        email="renaud@example.com", username="renaud", password="OldPassword123!"
+        email="renaud@example.com", password="OldPassword123!"
     )
     uid, token = _reset_tokens(user)
     client = APIClient()
@@ -168,7 +163,7 @@ def test_reset_password_confirm_success_changes_password():
 @pytest.mark.django_db
 def test_reset_password_confirm_invalid_token_returns_400():
     user = User.objects.create_user(
-        email="renaud@example.com", username="renaud", password="OldPassword123!"
+        email="renaud@example.com", password="OldPassword123!"
     )
     uid, _ = _reset_tokens(user)
     client = APIClient()
@@ -185,7 +180,7 @@ def test_reset_password_confirm_invalid_token_returns_400():
 @pytest.mark.django_db
 def test_reset_password_confirm_weak_password_returns_400():
     user = User.objects.create_user(
-        email="renaud@example.com", username="renaud", password="OldPassword123!"
+        email="renaud@example.com", password="OldPassword123!"
     )
     uid, token = _reset_tokens(user)
     client = APIClient()
@@ -201,7 +196,6 @@ def test_login_success():
     client = APIClient()
     User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
 
@@ -222,7 +216,6 @@ def test_login_fails_with_bad_password():
     client = APIClient()
     User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
 
@@ -248,7 +241,6 @@ def test_me_returns_current_user():
     client = APIClient()
     user = User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
 
@@ -273,7 +265,6 @@ def test_me_patch_updates_language():
     client = APIClient()
     User.objects.create_user(
         email="renaud@example.com",
-        username="renaud",
         password="MotDePasseTresSolide123!",
     )
 

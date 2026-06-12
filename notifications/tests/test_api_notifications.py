@@ -28,7 +28,6 @@ def _create_linked_device(app: Application, token: str) -> Device:
 def test_create_notification_with_device_list_creates_target_deliveries():
     user = User.objects.create_user(
         email="notify@example.com",
-        username="notify",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Notify App")
@@ -59,7 +58,6 @@ def test_create_notification_with_device_list_creates_target_deliveries():
 def test_create_notification_rejects_device_outside_selected_application():
     user = User.objects.create_user(
         email="notify-invalid@example.com",
-        username="notify-invalid",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Notify App")

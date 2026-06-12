@@ -28,12 +28,10 @@ def test_poll_inbound_mailbox_creates_notification_for_matching_owner(
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
-        username="owner",
         password="MotDePasseTresSolide123!",
     )
     other_user = User.objects.create_user(
         email="other@example.com",
-        username="other",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=owner, name="Inbound App")
@@ -110,7 +108,6 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
-        username="owner",
         password="MotDePasseTresSolide123!",
     )
     Application.objects.create(owner=owner, name="My App")
@@ -151,12 +148,10 @@ def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
-        username="owner",
         password="MotDePasseTresSolide123!",
     )
     other = User.objects.create_user(
         email="other@example.com",
-        username="other",
         password="MotDePasseTresSolide123!",
     )
     other_app = Application.objects.create(owner=other, name="Other App")
@@ -215,7 +210,6 @@ def test_poll_does_not_send_reply_for_unknown_sender(
 def test_build_unknown_address_reply_lists_user_apps():
     owner = User.objects.create_user(
         email="owner@example.com",
-        username="owner",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=owner, name="My App")

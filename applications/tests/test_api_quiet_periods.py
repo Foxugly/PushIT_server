@@ -14,7 +14,6 @@ def test_create_list_update_and_delete_quiet_period():
     client = APIClient()
     user = User.objects.create_user(
         email="quiet@example.com",
-        username="quiet",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Quiet App")
@@ -64,7 +63,6 @@ def test_quiet_period_validation_rejects_end_before_start():
     client = APIClient()
     user = User.objects.create_user(
         email="quiet2@example.com",
-        username="quiet2",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Quiet App")
@@ -95,7 +93,6 @@ def test_create_and_update_recurring_quiet_period():
     client = APIClient()
     user = User.objects.create_user(
         email="quiet3@example.com",
-        username="quiet3",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Quiet App")
@@ -139,7 +136,6 @@ def test_recurring_quiet_period_validation_requires_days_and_times():
     client = APIClient()
     user = User.objects.create_user(
         email="quiet4@example.com",
-        username="quiet4",
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Quiet App")

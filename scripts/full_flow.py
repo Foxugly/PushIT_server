@@ -141,7 +141,6 @@ def main() -> None:
         f"{BASE_URL}/auth/register/",
         {
             "email": EMAIL,
-            "username": USERNAME,
             "password": PASSWORD,
         },
     )

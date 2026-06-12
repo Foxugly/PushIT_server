@@ -6,7 +6,6 @@ from applications.models import Application
 @pytest.mark.django_db
 def test_application_has_generated_app_token():
     user = User.objects.create_user(
-        username="renaud",
         email="renaud@example.com",
         password="secret123"
     )

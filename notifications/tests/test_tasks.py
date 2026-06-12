@@ -21,7 +21,7 @@ def test_send_notification_task(mock_send, settings):
 
     mock_send.return_value = "provider-123"
 
-    user = User.objects.create_user(username="u1", password="1234")
+    user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     device = Device.objects.create(push_token=VALID_PUSH_TOKEN, push_token_status=DeviceTokenStatus.ACTIVE)
     DeviceApplicationLink.objects.create(device=device, application=app)
@@ -42,7 +42,7 @@ def test_send_notification_task(mock_send, settings):
 @pytest.mark.django_db
 @patch("notifications.tasks.send_notification_task.delay")
 def test_dispatch_scheduled_notifications_task(mock_delay):
-    user = User.objects.create_user(username="u2", password="1234")
+    user = User.objects.create_user(email="u2@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
     notification = Notification.objects.create(
         application=app,
