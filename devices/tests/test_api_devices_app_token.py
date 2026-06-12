@@ -209,3 +209,77 @@ def test_link_device_reactivates_existing_inactive_link():
 
     assert Device.objects.count() == 1
     assert DeviceApplicationLink.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_unlink_deactivates_the_active_link():
+    user = User.objects.create_user(email="renaud@example.com", password="MotDePasseTresSolide123!")
+    app = Application.objects.create(owner=user, name="Mon App")
+    raw_token = app.set_new_app_token()
+    app.save()
+    device = Device.objects.create(
+        user=user, device_name="Samsung", platform="android",
+        push_token="token_12345678901234567890", push_token_status="active",
+    )
+    link = DeviceApplicationLink.objects.create(device=device, application=app, is_active=True)
+    client = _auth_client_for(user)
+
+    response = client.post(
+        "/api/v1/devices/unlink/",
+        {"app_token": raw_token, "push_token": "token_12345678901234567890"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["unlinked"] is True
+    assert response.data["device_id"] == device.id
+    assert response.data["application_id"] == app.id
+
+    link.refresh_from_db()
+    assert link.is_active is False
+    # Soft-deactivated, not deleted (mirrors the link model).
+    assert DeviceApplicationLink.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_unlink_is_idempotent_when_no_active_link():
+    user = User.objects.create_user(email="renaud@example.com", password="MotDePasseTresSolide123!")
+    app = Application.objects.create(owner=user, name="Mon App")
+    raw_token = app.set_new_app_token()
+    app.save()
+    device = Device.objects.create(
+        user=user, device_name="Samsung", platform="android",
+        push_token="token_12345678901234567890", push_token_status="active",
+    )
+    DeviceApplicationLink.objects.create(device=device, application=app, is_active=False)
+    client = _auth_client_for(user)
+
+    response = client.post(
+        "/api/v1/devices/unlink/",
+        {"app_token": raw_token, "push_token": "token_12345678901234567890"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["unlinked"] is False
+    assert response.data["device_id"] == device.id
+
+
+@pytest.mark.django_db
+def test_unlink_unknown_device_returns_unlinked_false():
+    user = User.objects.create_user(email="renaud@example.com", password="MotDePasseTresSolide123!")
+    app = Application.objects.create(owner=user, name="Mon App")
+    raw_token = app.set_new_app_token()
+    app.save()
+    client = _auth_client_for(user)
+
+    response = client.post(
+        "/api/v1/devices/unlink/",
+        {"app_token": raw_token, "push_token": "token_unknown_0000000000000"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["unlinked"] is False
+    assert response.data["device_id"] is None
+    assert response.data["application_id"] == app.id

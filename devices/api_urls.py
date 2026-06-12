@@ -5,7 +5,11 @@ from .api_views import (
     DeviceQuietPeriodDetailApiView,
     DeviceQuietPeriodListCreateApiView,
 )
-from .api_views_app_token import DeviceIdentifyApiView, DeviceLinkWithAppTokenApiView
+from .api_views_app_token import (
+    DeviceIdentifyApiView,
+    DeviceLinkWithAppTokenApiView,
+    DeviceUnlinkWithAppTokenApiView,
+)
 
 urlpatterns = [
     path("", DeviceListApiView.as_view(), name="device-list"),
@@ -14,5 +18,5 @@ urlpatterns = [
     path("<int:device_id>/quiet-periods/<int:quiet_period_id>/", DeviceQuietPeriodDetailApiView.as_view(), name="device-quiet-period-detail"),
     path("identify/", DeviceIdentifyApiView.as_view(), name="device-identify"),
     path("link/", DeviceLinkWithAppTokenApiView.as_view(), name="device-link"),
-
+    path("unlink/", DeviceUnlinkWithAppTokenApiView.as_view(), name="device-unlink"),
 ]

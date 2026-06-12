@@ -1433,6 +1433,55 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Access denied
+  /api/v1/devices/unlink/:
+    post:
+      operationId: api_v1_devices_unlink_create
+      description: 'Deactivates the link between the authenticated user''s device
+        (identified by its push token) and the application identified by the submitted
+        app token. Idempotent: returns unlinked=false when there was no active link
+        (or the user has no device with that push token).'
+      summary: Unlink an authenticated device from an application
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUnlinkWithAppToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceUnlinkWithAppToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceUnlinkWithAppToken'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceUnlinkWithAppTokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceUnlinkWithAppTokenValidationErrorResponse'
+          description: Invalid data
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid or missing app token
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Access denied
   /api/v1/notifications/:
     get:
       operationId: api_v1_notifications_list
@@ -3110,6 +3159,64 @@ components:
       - application_ids
       - created_at
       - id
+    DeviceUnlinkWithAppToken:
+      type: object
+      properties:
+        app_token:
+          type: string
+          writeOnly: true
+        push_token:
+          type: string
+          maxLength: 512
+          minLength: 20
+      required:
+      - app_token
+      - push_token
+    DeviceUnlinkWithAppTokenResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        device_id:
+          type: integer
+          nullable: true
+        application_id:
+          type: integer
+        unlinked:
+          type: boolean
+      required:
+      - application_id
+      - device_id
+      - status
+      - unlinked
+    DeviceUnlinkWithAppTokenValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/DeviceUnlinkWithAppTokenValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    DeviceUnlinkWithAppTokenValidationErrorResponseFields:
+      type: object
+      properties:
+        app_token:
+          type: array
+          items:
+            type: string
+        push_token:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     DeviceUpdate:
       type: object
       properties:

@@ -14,6 +14,9 @@ from .serializers import (
     DeviceLinkWithAppTokenResponseSerializer,
     DeviceLinkWithAppTokenSerializer,
     DeviceLinkWithAppTokenValidationErrorResponseSerializer,
+    DeviceUnlinkWithAppTokenResponseSerializer,
+    DeviceUnlinkWithAppTokenSerializer,
+    DeviceUnlinkWithAppTokenValidationErrorResponseSerializer,
 )
 
 
@@ -154,6 +157,63 @@ class DeviceLinkWithAppTokenApiView(APIView):
                 "device_created": created,
                 "link_created": link_created,
                 "application_id": application.id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Unlink an authenticated device from an application",
+        description=(
+            "Deactivates the link between the authenticated user's device (identified "
+            "by its push token) and the application identified by the submitted app "
+            "token. Idempotent: returns unlinked=false when there was no active link "
+            "(or the user has no device with that push token)."
+        ),
+        tags=["Devices"],
+        auth=[{"BearerAuth": []}],
+        request=DeviceUnlinkWithAppTokenSerializer,
+        responses={
+            200: DeviceUnlinkWithAppTokenResponseSerializer,
+            400: OpenApiResponse(
+                response=DeviceUnlinkWithAppTokenValidationErrorResponseSerializer,
+                description="Invalid data",
+            ),
+            401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
+            403: OpenApiResponse(response=DetailResponseSerializer, description="Access denied"),
+        },
+    )
+)
+class DeviceUnlinkWithAppTokenApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = DeviceUnlinkWithAppTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        application = get_application_for_raw_app_token(data.get("app_token"))
+
+        device = Device.objects.filter(
+            push_token=data["push_token"], user=request.user
+        ).first()
+
+        unlinked = False
+        if device is not None:
+            link = device.application_links.filter(
+                application=application, is_active=True
+            ).first()
+            if link is not None:
+                link.is_active = False
+                link.save(update_fields=["is_active"])
+                unlinked = True
+
+        return Response(
+            {
+                "status": "ok",
+                "device_id": device.id if device is not None else None,
+                "application_id": application.id,
+                "unlinked": unlinked,
             },
             status=status.HTTP_200_OK,
         )

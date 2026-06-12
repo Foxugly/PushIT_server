@@ -33,6 +33,18 @@ DeviceLinkWithAppTokenResponseSerializer = inline_serializer(
     },
 )
 
+DeviceUnlinkWithAppTokenResponseSerializer = inline_serializer(
+    name="DeviceUnlinkWithAppTokenResponse",
+    fields={
+        "status": serializers.CharField(),
+        # null when the authenticated user has no device with that push token.
+        "device_id": serializers.IntegerField(allow_null=True),
+        "application_id": serializers.IntegerField(),
+        # False when there was no active link to deactivate (idempotent unlink).
+        "unlinked": serializers.BooleanField(),
+    },
+)
+
 DeviceUpdateValidationErrorResponseSerializer = build_validation_error_serializer(
     "DeviceUpdateValidationErrorResponse",
     ["device_name", "platform", "push_token_status"],
@@ -41,6 +53,11 @@ DeviceUpdateValidationErrorResponseSerializer = build_validation_error_serialize
 DeviceLinkWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
     "DeviceLinkWithAppTokenValidationErrorResponse",
     ["app_token", "device_name", "platform", "push_token"],
+)
+
+DeviceUnlinkWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
+    "DeviceUnlinkWithAppTokenValidationErrorResponse",
+    ["app_token", "push_token"],
 )
 
 DeviceIdentifyValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -93,6 +110,13 @@ class DeviceLinkWithAppTokenSerializer(serializers.Serializer):
     app_token = serializers.CharField(write_only=True, required=False, allow_blank=True, trim_whitespace=True)
     device_name = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True,)
     platform = serializers.ChoiceField(choices=DevicePlatform.choices, default=DevicePlatform.ANDROID)
+    push_token = serializers.CharField(min_length=20, max_length=512, trim_whitespace=True)
+
+
+class DeviceUnlinkWithAppTokenSerializer(serializers.Serializer):
+    # app_token is required (and non-blank) here: unlink must know WHICH application
+    # to detach the device from.
+    app_token = serializers.CharField(write_only=True, allow_blank=False, trim_whitespace=True)
     push_token = serializers.CharField(min_length=20, max_length=512, trim_whitespace=True)
 
 
