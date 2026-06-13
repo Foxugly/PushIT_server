@@ -48,7 +48,7 @@ def _raise_quiet_period_not_found():
         auth=[{"BearerAuth": []}],
         request=ApplicationCreateSerializer,
         responses={
-            201: ApplicationReadSerializer,
+            201: ApplicationCreateSerializer,
             400: OpenApiResponse(
                 response=ApplicationCreateValidationErrorResponseSerializer,
                 description="Invalid data",
@@ -77,12 +77,11 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        instance = serializer.save()
-        response_serializer = ApplicationReadSerializer(
-            instance,
-            context=self.get_serializer_context(),
-        )
-        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        serializer.save()
+        # Return the create serializer's representation — it carries the one-time
+        # raw `app_token` (via _raw_app_token) the client needs to save / show its
+        # QR for device linking. The read serializer would drop it (prefix only).
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema_view(

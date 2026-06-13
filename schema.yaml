@@ -47,7 +47,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApplicationRead'
+                $ref: '#/components/schemas/ApplicationCreate'
           description: ''
         '400':
           content:
