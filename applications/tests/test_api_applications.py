@@ -1,4 +1,5 @@
 import pytest
+from django.conf import settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -25,7 +26,7 @@ def test_get_patch_and_delete_application():
     assert get_response.status_code == 200
     assert get_response.data["name"] == "PushIT"
     assert get_response.data["inbound_email_alias"] == app.inbound_email_alias
-    assert get_response.data["inbound_email_address"].endswith("@pushit.com")
+    assert get_response.data["inbound_email_address"].endswith(f"@{settings.INBOUND_EMAIL_DOMAIN}")
 
     patch_response = client.patch(
         f"/api/v1/apps/{app.id}/",

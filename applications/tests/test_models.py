@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.test import TestCase
 import pytest
 from accounts.models import User
@@ -19,7 +20,8 @@ def test_application_has_generated_app_token():
     assert len(app.app_token_prefix) > 4
     assert len(app.app_token_hash) == 64
     assert app.inbound_email_alias == "mon-app"
-    assert app.inbound_email_address == "mon-app@pushit.com"
+    # Domain is env-configured (SSM in prod), so assert against the setting, not a literal.
+    assert app.inbound_email_address == f"mon-app@{settings.INBOUND_EMAIL_DOMAIN}"
 
 @pytest.mark.django_db
 def test_app_token_is_unique():
