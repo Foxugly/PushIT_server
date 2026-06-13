@@ -16,9 +16,12 @@ def test_register_success():
     }, format="json")
 
     assert response.status_code == 201
+    # Registration no longer returns a profile/tokens — it's pending email confirmation.
+    assert response.data["code"] == "registration_pending_verification"
+    assert response.data["email"] == "renaud@example.com"
     assert User.objects.count() == 1
     user = User.objects.first()
-    assert response.data["language"] == "FR"
+    assert user.email_confirmed is False
 
 
 def test_register_preflight_allows_local_frontend_origin():
@@ -197,6 +200,7 @@ def test_login_success():
     User.objects.create_user(
         email="renaud@example.com",
         password="MotDePasseTresSolide123!",
+        email_confirmed=True,
     )
 
     response = client.post("/api/v1/auth/login/", {
@@ -217,6 +221,7 @@ def test_login_fails_with_bad_password():
     User.objects.create_user(
         email="renaud@example.com",
         password="MotDePasseTresSolide123!",
+        email_confirmed=True,
     )
 
     response = client.post("/api/v1/auth/login/", {
@@ -242,6 +247,7 @@ def test_me_returns_current_user():
     user = User.objects.create_user(
         email="renaud@example.com",
         password="MotDePasseTresSolide123!",
+        email_confirmed=True,
     )
 
     login_response = client.post("/api/v1/auth/login/", {
@@ -266,6 +272,7 @@ def test_me_patch_updates_language():
     User.objects.create_user(
         email="renaud@example.com",
         password="MotDePasseTresSolide123!",
+        email_confirmed=True,
     )
 
     login_response = client.post("/api/v1/auth/login/", {
@@ -283,3 +290,92 @@ def test_me_patch_updates_language():
     assert response.status_code == 200
     assert response.data["language"] == "EN"
     assert User.objects.get(email="renaud@example.com").language == "EN"
+
+
+# --- Email confirmation ---------------------------------------------------
+CONFIRM_URL = "/api/v1/auth/email/confirm/"
+RESEND_URL = "/api/v1/auth/email/resend/"
+
+
+def _confirm_tokens(user):
+    return urlsafe_base64_encode(force_bytes(user.pk)), default_token_generator.make_token(user)
+
+
+@pytest.mark.django_db
+def test_register_sends_confirmation_email_and_creates_unconfirmed(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(
+        "accounts.email_confirmation.send_email",
+        lambda to, subject, body: sent.update(to=to, body=body),
+    )
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "new@example.com", "password": "MotDePasseTresSolide123!",
+    }, format="json")
+
+    assert response.status_code == 201
+    user = User.objects.get(email="new@example.com")
+    assert user.email_confirmed is False
+    assert sent["to"] == "new@example.com"
+    assert "/auth/confirm-email/" in sent["body"]
+
+
+@pytest.mark.django_db
+def test_login_blocked_until_email_confirmed():
+    User.objects.create_user(email="pending@example.com", password="MotDePasseTresSolide123!")
+    client = APIClient()
+    response = client.post("/api/v1/auth/login/", {
+        "email": "pending@example.com", "password": "MotDePasseTresSolide123!",
+    }, format="json")
+
+    assert response.status_code == 403
+    assert response.data["code"] == "email_not_verified"
+
+
+@pytest.mark.django_db
+def test_confirm_email_flips_flag_and_returns_tokens():
+    user = User.objects.create_user(email="pending@example.com", password="MotDePasseTresSolide123!")
+    uid, token = _confirm_tokens(user)
+    client = APIClient()
+    response = client.post(CONFIRM_URL, {"uid": uid, "token": token}, format="json")
+
+    assert response.status_code == 200
+    assert "access" in response.data and "refresh" in response.data
+    assert response.data["user"]["email_confirmed"] is True
+    user.refresh_from_db()
+    assert user.email_confirmed is True
+
+
+@pytest.mark.django_db
+def test_confirm_email_invalid_token_returns_400():
+    user = User.objects.create_user(email="pending@example.com", password="MotDePasseTresSolide123!")
+    uid, _ = _confirm_tokens(user)
+    client = APIClient()
+    response = client.post(CONFIRM_URL, {"uid": uid, "token": "not-a-valid-token"}, format="json")
+
+    assert response.status_code == 400
+    assert response.data["code"] == "confirmation_link_invalid"
+    user.refresh_from_db()
+    assert user.email_confirmed is False
+
+
+@pytest.mark.django_db
+def test_resend_confirmation_is_antileak_for_unknown_email():
+    client = APIClient()
+    response = client.post(RESEND_URL, {"email": "nobody@example.com"}, format="json")
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_resend_confirmation_emails_unconfirmed_user(monkeypatch):
+    User.objects.create_user(email="pending@example.com", password="MotDePasseTresSolide123!")
+    sent = {}
+    monkeypatch.setattr(
+        "accounts.email_confirmation.send_email",
+        lambda to, subject, body: sent.update(to=to),
+    )
+    client = APIClient()
+    response = client.post(RESEND_URL, {"email": "pending@example.com"}, format="json")
+
+    assert response.status_code == 200
+    assert sent.get("to") == "pending@example.com"

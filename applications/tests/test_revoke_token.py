@@ -12,6 +12,7 @@ def test_revoke_token_endpoint():
     user = User.objects.create_user(
         email="u1@example.com",
         password="1234Test!!",
+        email_confirmed=True,
     )
 
     login_response = client.post("/api/v1/auth/login/", {

@@ -128,6 +128,22 @@ def ensure_status(response: requests.Response, allowed_statuses: tuple[int, ...]
     sys.exit(1)
 
 
+def _email_confirmation_tokens(email: str) -> tuple[str, str]:
+    """Build the (uid, token) the confirmation email would carry, by reading the
+    user from the same DB the server uses. Used only by this end-to-end smoke flow."""
+    import django
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+    django.setup()
+    from django.contrib.auth import get_user_model
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+
+    user = get_user_model().objects.get(email=email)
+    return urlsafe_base64_encode(force_bytes(user.pk)), default_token_generator.make_token(user)
+
+
 def main() -> None:
     now = datetime.now(UTC)
     quiet_start = now + timedelta(days=1, hours=2)
@@ -151,6 +167,16 @@ def main() -> None:
     else:
         print("Account already exists")
     dump_response(register_response)
+
+    print("\n=== 1b. Confirm email ===")
+    # Registration is now pending email confirmation; there's no email delivery in
+    # this smoke flow, so derive the uid+token from the DB (shared sqlite with the
+    # server) and POST them to the confirm endpoint, exactly as the emailed link would.
+    uid, token = _email_confirmation_tokens(EMAIL)
+    confirm_response = post(f"{BASE_URL}/auth/email/confirm/", {"uid": uid, "token": token})
+    ensure_status(confirm_response, (200,), "confirm email")
+    print("Email confirmed")
+    dump_response(confirm_response)
 
     print("\n=== 2. Login ===")
     login_response = post(

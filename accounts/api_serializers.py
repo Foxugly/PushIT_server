@@ -35,6 +35,16 @@ LanguageUpdateValidationErrorResponseSerializer = build_validation_error_seriali
     ["language"],
 )
 
+EmailConfirmValidationErrorResponseSerializer = build_validation_error_serializer(
+    "EmailConfirmValidationErrorResponse",
+    ["uid", "token"],
+)
+
+EmailResendValidationErrorResponseSerializer = build_validation_error_serializer(
+    "EmailResendValidationErrorResponse",
+    ["email"],
+)
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -107,10 +117,24 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=8)
 
 
+class EmailConfirmSerializer(serializers.Serializer):
+    """Body of POST /auth/email/confirm/. `uid` + `token` come from the emailed
+    link `{FRONTEND_BASE_URL}/auth/confirm-email/{uid}/{token}`."""
+
+    uid = serializers.CharField()
+    token = serializers.CharField()
+
+
+class EmailResendSerializer(serializers.Serializer):
+    """Body of POST /auth/email/resend/. Anti-leak: the view always returns 200."""
+
+    email = serializers.EmailField()
+
+
 class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "userkey", "is_active", "language"]
+        fields = ["id", "email", "userkey", "is_active", "email_confirmed", "language"]
 
 
 class UserLanguageUpdateSerializer(serializers.ModelSerializer):

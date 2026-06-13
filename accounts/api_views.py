@@ -7,10 +7,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from config.api_errors import error_response
+from .email_confirmation import confirm_email, resend_confirmation_email, send_confirmation_email
 from .password_reset import confirm_password_reset, request_password_reset
 from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
 from .api_serializers import (
     DetailResponseSerializer,
+    EmailConfirmSerializer,
+    EmailConfirmValidationErrorResponseSerializer,
+    EmailResendSerializer,
+    EmailResendValidationErrorResponseSerializer,
     ForgotPasswordSerializer,
     LanguageUpdateValidationErrorResponseSerializer,
     LoginResponseSerializer,
@@ -27,18 +32,27 @@ from .api_serializers import (
     UserMeSerializer,
     build_token_response_for_user,
 )
-from .throttles import LoginRateThrottle, PasswordResetRateThrottle, RegisterRateThrottle
+from .throttles import (
+    LoginRateThrottle,
+    PasswordResetRateThrottle,
+    RegisterRateThrottle,
+    ResendEmailRateThrottle,
+)
 
 
 @extend_schema_view(
     post=extend_schema(
         summary="Create an account",
-        description="Creates a new user account and returns the created profile.",
+        description=(
+            "Creates a new (unconfirmed) account and emails a confirmation link. "
+            "Returns 201 with code `registration_pending_verification` — NO tokens; "
+            "the user must confirm their email before they can log in."
+        ),
         tags=["Accounts"],
         auth=[],
         request=RegisterSerializer,
         responses={
-            201: UserMeSerializer,
+            201: DetailResponseSerializer,
             400: OpenApiResponse(
                 response=RegisterValidationErrorResponseSerializer,
                 description="Invalid data",
@@ -72,8 +86,89 @@ class RegisterApiView(APIView):
                     http_status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        user = serializer.save()
-        return Response(UserMeSerializer(user).data, status=status.HTTP_201_CREATED)
+        user = serializer.save()  # email_confirmed defaults to False
+        send_confirmation_email(user)
+        return Response(
+            {
+                "code": "registration_pending_verification",
+                "detail": "Account created. Check your inbox to confirm your email before signing in.",
+                "email": user.email,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Confirm an email address",
+        description=(
+            "Confirms the account from the uid + token in the emailed link, then "
+            "returns JWT tokens (auto-login). Idempotent for an already-confirmed user."
+        ),
+        tags=["Accounts"],
+        auth=[],
+        request=EmailConfirmSerializer,
+        responses={
+            200: LoginResponseSerializer,
+            400: OpenApiResponse(
+                response=EmailConfirmValidationErrorResponseSerializer,
+                description="Invalid/expired confirmation link",
+            ),
+        },
+    )
+)
+class ConfirmEmailApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = EmailConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        user = confirm_email(data["uid"], data["token"])
+        if user is None:
+            return error_response(
+                code="confirmation_link_invalid",
+                detail="This confirmation link is invalid or has expired. Request a new one.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(build_token_response_for_user(user), status=status.HTTP_200_OK)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Resend the confirmation email",
+        description=(
+            "Re-sends the confirmation link if the email matches an unconfirmed "
+            "active account. Always returns 200 with the same body (anti-leak)."
+        ),
+        tags=["Accounts"],
+        auth=[],
+        request=EmailResendSerializer,
+        responses={
+            200: DetailResponseSerializer,
+            400: OpenApiResponse(
+                response=EmailResendValidationErrorResponseSerializer,
+                description="Invalid data",
+            ),
+        },
+    )
+)
+class ResendConfirmationApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [ResendEmailRateThrottle]
+
+    def post(self, request):
+        serializer = EmailResendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        resend_confirmation_email(serializer.validated_data["email"])
+        # Anti-leak: identical response whether or not the email matched.
+        return Response(
+            {"code": "ok", "detail": "If that email needs confirmation, a new link has been sent."},
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(
@@ -193,6 +288,14 @@ class LoginApiView(APIView):
         serializer = self.serializer_class(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
+        # Gate: credentials are valid, but the email must be confirmed first. The
+        # `email_not_verified` code lets the SPA offer a "resend confirmation" CTA.
+        if not user.email_confirmed:
+            return error_response(
+                code="email_not_verified",
+                detail="Please confirm your email address before signing in.",
+                http_status=status.HTTP_403_FORBIDDEN,
+            )
         return Response(build_token_response_for_user(user), status=status.HTTP_200_OK)
 
 

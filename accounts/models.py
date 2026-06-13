@@ -49,6 +49,10 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     userkey = models.CharField(max_length=16, unique=True, default=generate_userkey, db_index=True)
     language = models.CharField(max_length=2, choices=UserLanguage.choices, default=UserLanguage.FR)
+    # Email ownership gate: registration creates the user with this False and
+    # sends a confirmation link; login is refused until it is confirmed. Existing
+    # accounts are backfilled to True by the data migration so they aren't locked out.
+    email_confirmed = models.BooleanField(default=False)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
