@@ -58,6 +58,10 @@ def _raise_quiet_period_not_found():
 )
 class ApplicationListCreateApiView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    # The web SPA reads this list as a bare array (owner-scoped, no pagination
+    # UI); the global PageNumberPagination would wrap it in {count,results} and
+    # break the client. ListAPIView returns a plain array when pagination is off.
+    pagination_class = None
 
     def get_queryset(self):
         return Application.objects.filter(owner=self.request.user).order_by("-id")
@@ -382,6 +386,8 @@ class UserOwnedApplicationMixin:
 )
 class ApplicationQuietPeriodListCreateApiView(UserOwnedApplicationMixin, generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    # SPA reads this as a bare array — disable global pagination (see /apps/).
+    pagination_class = None
 
     def get_queryset(self):
         application = self.get_application()

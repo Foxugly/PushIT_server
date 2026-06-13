@@ -252,6 +252,10 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
 )
 class NotificationListCreateApiView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    # The web SPA reads this list as a bare array (no pagination UI). Disable
+    # the global PageNumberPagination so list() returns a plain array. NOTE:
+    # the mobile app uses the SEPARATE app-token endpoint, which stays paginated.
+    pagination_class = None
 
     def get_queryset(self):
         return (
@@ -460,6 +464,8 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
 class NotificationFutureListApiView(generics.ListAPIView):
     serializer_class = NotificationReadSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # SPA reads this as a bare array — disable global pagination (see /notifications/).
+    pagination_class = None
 
     def get_queryset(self):
         return (

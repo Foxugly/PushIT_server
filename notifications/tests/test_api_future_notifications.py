@@ -64,8 +64,8 @@ def test_create_and_list_future_notifications():
 
     list_response = client.get("/api/v1/notifications/future/")
     assert list_response.status_code == 200
-    assert list_response.data["count"] == 1
-    assert list_response.data["results"][0]["title"] == "Planifiée"
+    assert len(list_response.data) == 1
+    assert list_response.data[0]["title"] == "Planifiée"
 
 
 @pytest.mark.django_db
@@ -336,7 +336,7 @@ def test_list_future_notifications_can_filter_by_effective_scheduled_range():
     )
 
     assert response.status_code == 200
-    results = response.data["results"]
+    results = response.data
     assert [item["id"] for item in results] == [shifted_notification.id]
     assert results[0]["effective_scheduled_for"] == base_time + timedelta(hours=4)
     assert direct_notification.id not in [item["id"] for item in results]
@@ -384,7 +384,7 @@ def test_list_future_notifications_can_order_by_effective_scheduled_for_desc():
     )
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.data["results"]] == [later_effective.id, earlier_effective.id]
+    assert [item["id"] for item in response.data] == [later_effective.id, earlier_effective.id]
 
 
 @pytest.mark.django_db
@@ -433,10 +433,10 @@ def test_list_future_notifications_can_filter_on_quiet_period_shift_flag():
     )
 
     assert shifted_response.status_code == 200
-    shifted_results = shifted_response.data["results"]
+    shifted_results = shifted_response.data
     assert [item["id"] for item in shifted_results] == [shifted_notification.id]
     assert direct_response.status_code == 200
-    direct_results = direct_response.data["results"]
+    direct_results = direct_response.data
     assert direct_notification.id in [item["id"] for item in direct_results]
     assert shifted_notification.id not in [item["id"] for item in direct_results]
 
@@ -517,6 +517,6 @@ def test_list_notifications_can_filter_by_application_status_and_shift_flag():
     )
 
     assert response.status_code == 200
-    results = response.data["results"]
+    results = response.data
     assert [item["id"] for item in results] == [shifted_notification.id]
     assert other_notification.id not in [item["id"] for item in results]

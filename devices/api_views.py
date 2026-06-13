@@ -29,6 +29,8 @@ from .serializers import (
 class DeviceListApiView(generics.ListAPIView):
     serializer_class = DeviceReadSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # SPA reads this as a bare array — disable global pagination (see /apps/).
+    pagination_class = None
 
     def get_queryset(self):
         return (
@@ -191,6 +193,8 @@ class UserOwnedDeviceMixin:
 )
 class DeviceQuietPeriodListCreateApiView(UserOwnedDeviceMixin, generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    # SPA reads this as a bare array — disable global pagination (see /apps/).
+    pagination_class = None
 
     def get_queryset(self):
         device = self.get_device()
