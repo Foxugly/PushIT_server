@@ -49,12 +49,19 @@ def _upsert_authenticated_device(*, user, data):
     return device, created
 
 
-def _serialize_linked_applications(device):
+def _serialize_linked_applications(device, request=None):
     links = (
         device.application_links.select_related("application")
         .filter(is_active=True, application__is_active=True)
         .order_by("application__name", "application_id")
     )
+
+    def logo_url(application):
+        if not application.logo:
+            return None
+        url = application.logo.url
+        return request.build_absolute_uri(url) if request is not None else url
+
     return [
         {
             "id": link.application.id,
@@ -62,6 +69,7 @@ def _serialize_linked_applications(device):
             "description": link.application.description,
             "is_active": link.application.is_active,
             "linked_at": link.linked_at,
+            "logo": logo_url(link.application),
         }
         for link in links
     ]
@@ -102,7 +110,7 @@ class DeviceIdentifyApiView(APIView):
                 "status": "ok",
                 "device_id": device.id,
                 "device_created": created,
-                "linked_applications": _serialize_linked_applications(device),
+                "linked_applications": _serialize_linked_applications(device, request),
             },
             status=status.HTTP_200_OK,
         )

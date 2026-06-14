@@ -14,6 +14,9 @@ class DeviceLinkedApplicationSerializer(serializers.Serializer):
     description = serializers.CharField()
     is_active = serializers.BooleanField()
     linked_at = serializers.DateTimeField()
+    # Absolute logo URL (or null) so the recipient inbox can show a folder's
+    # logo even before any notification has been delivered for that app.
+    logo = serializers.CharField(allow_null=True, required=False)
 
 
 class DeviceIdentifyResponseSerializer(serializers.Serializer):

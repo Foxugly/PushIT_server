@@ -87,12 +87,57 @@ def test_identify_known_device_returns_linked_applications_for_authenticated_use
             "description": "Primary app",
             "is_active": True,
             "linked_at": response.data["linked_applications"][0]["linked_at"],
+            "logo": None,
         }
     ]
 
     device.refresh_from_db()
     assert device.user == user
     assert device.device_name == "New name"
+
+
+@pytest.mark.django_db
+def test_identify_returns_absolute_logo_url_for_linked_application(tmp_path, settings):
+    settings.MEDIA_ROOT = str(tmp_path)
+    import io
+
+    from PIL import Image
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    user = User.objects.create_user(
+        email="renaud@example.com",
+        password="MotDePasseTresSolide123!",
+    )
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), "green").save(buf, format="PNG")
+    app = Application.objects.create(owner=user, name="Logo App")
+    app.logo = SimpleUploadedFile("logo.png", buf.getvalue(), content_type="image/png")
+    app.save(update_fields=["logo"])
+    device = Device.objects.create(
+        user=user,
+        device_name="Phone",
+        platform="android",
+        push_token="token_12345678901234567890",
+        push_token_status="active",
+    )
+    DeviceApplicationLink.objects.create(device=device, application=app, is_active=True)
+
+    client = _auth_client_for(user)
+    response = client.post(
+        "/api/v1/devices/identify/",
+        {
+            "device_name": "Phone",
+            "platform": "android",
+            "push_token": "token_12345678901234567890",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    logo = response.data["linked_applications"][0]["logo"]
+    assert logo is not None
+    assert logo.startswith("http")
+    assert "/media/" in logo
 
 
 @pytest.mark.django_db

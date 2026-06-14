@@ -3127,6 +3127,9 @@ components:
         linked_at:
           type: string
           format: date-time
+        logo:
+          type: string
+          nullable: true
       required:
       - description
       - id
