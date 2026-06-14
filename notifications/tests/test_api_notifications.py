@@ -80,3 +80,28 @@ def test_create_notification_rejects_device_outside_selected_application():
     assert response.status_code == 400
     assert response.data["code"] == "validation_error"
     assert "device_ids" in response.data["errors"]
+
+
+@pytest.mark.django_db
+def test_notification_detail_includes_per_device_deliveries():
+    from notifications.models import DeliveryStatus, Notification, NotificationStatus
+
+    user = User.objects.create_user(
+        email="detail@example.com",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=user, name="Detail App")
+    device1 = _create_linked_device(app, "token_detail_11111111111111111111")
+    device2 = _create_linked_device(app, "token_detail_22222222222222222222")
+    notif = Notification.objects.create(
+        application=app, title="T", message="M", status=NotificationStatus.PARTIAL
+    )
+    NotificationDelivery.objects.create(notification=notif, device=device1, status=DeliveryStatus.SENT)
+    NotificationDelivery.objects.create(notification=notif, device=device2, status=DeliveryStatus.FAILED)
+
+    client = _auth_client_for(user)
+    response = client.get(f"/api/v1/notifications/{notif.id}/")
+
+    assert response.status_code == 200
+    deliveries = {d["device_id"]: d["status"] for d in response.data["deliveries"]}
+    assert deliveries == {device1.id: DeliveryStatus.SENT, device2.id: DeliveryStatus.FAILED}

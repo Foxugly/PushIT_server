@@ -142,6 +142,33 @@ class NotificationReadSerializer(serializers.ModelSerializer):
         ]
 
 
+class NotificationDeliverySerializer(serializers.ModelSerializer):
+    device_id = serializers.IntegerField(read_only=True)
+    device_name = serializers.CharField(source="device.device_name", read_only=True)
+
+    class Meta:
+        model = NotificationDelivery
+        fields = ["device_id", "device_name", "status", "sent_at", "attempt_count"]
+
+
+class NotificationDetailSerializer(NotificationReadSerializer):
+    """Single-notification view: adds the per-device delivery breakdown so the
+    console can show whether each targeted device received it."""
+
+    deliveries = serializers.SerializerMethodField()
+
+    @extend_schema_field(NotificationDeliverySerializer(many=True))
+    def get_deliveries(self, obj):
+        deliveries = getattr(obj, "_prefetched_objects_cache", {}).get("deliveries")
+        if deliveries is None:
+            deliveries = obj.deliveries.select_related("device").all()
+        ordered = sorted(deliveries, key=lambda d: d.device_id)
+        return NotificationDeliverySerializer(ordered, many=True).data
+
+    class Meta(NotificationReadSerializer.Meta):
+        fields = NotificationReadSerializer.Meta.fields + ["deliveries"]
+
+
 class DeviceNotificationSerializer(serializers.ModelSerializer):
     """A notification as seen from one device: notification fields plus that
     device's delivery outcome. The device's delivery is provided via a filtered

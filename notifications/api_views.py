@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.db import OperationalError, transaction
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.http import Http404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.api_errors import error_response
-from .models import Notification, NotificationStatus
+from .models import Notification, NotificationDelivery, NotificationStatus
 from .utils import (
     apply_effective_schedule_filters,
     notification_filter_needs_effective,
@@ -34,6 +34,7 @@ from .serializers import (
     NotificationListFilterValidationErrorResponseSerializer,
     NotificationFutureUpdateSerializer,
     NotificationFutureUpdateValidationErrorResponseSerializer,
+    NotificationDetailSerializer,
     NotificationQueuedResponseSerializer,
     NotificationReadSerializer,
     NotificationStatsSerializer,
@@ -316,20 +317,23 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         responses={
-            200: NotificationReadSerializer,
+            200: NotificationDetailSerializer,
             404: OpenApiResponse(response=DetailResponseSerializer, description="Notification not found"),
         },
     ),
 )
 class NotificationDetailApiView(generics.RetrieveAPIView):
-    serializer_class = NotificationReadSerializer
+    serializer_class = NotificationDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return (
             Notification.objects.filter(application__owner=self.request.user)
             .select_related("application")
-            .prefetch_related("application__quiet_periods", "deliveries")
+            .prefetch_related(
+                "application__quiet_periods",
+                Prefetch("deliveries", queryset=NotificationDelivery.objects.select_related("device")),
+            )
         )
 
     def get_object(self):

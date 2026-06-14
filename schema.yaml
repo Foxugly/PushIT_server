@@ -1929,7 +1929,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotificationRead'
+                $ref: '#/components/schemas/NotificationDetail'
           description: ''
         '404':
           content:
@@ -3223,7 +3223,7 @@ components:
         message:
           type: string
         status:
-          $ref: '#/components/schemas/StatusEnum'
+          $ref: '#/components/schemas/Status537Enum'
         created_at:
           type: string
           format: date-time
@@ -3873,7 +3873,7 @@ components:
           writeOnly: true
         status:
           allOf:
-          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/Status537Enum'
           readOnly: true
         created_at:
           type: string
@@ -3956,7 +3956,7 @@ components:
           writeOnly: true
         status:
           allOf:
-          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/Status537Enum'
           readOnly: true
         created_at:
           type: string
@@ -4008,6 +4008,96 @@ components:
           type: array
           items:
             type: string
+    NotificationDelivery:
+      type: object
+      properties:
+        device_id:
+          type: integer
+          readOnly: true
+        device_name:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/Status5bbEnum'
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        attempt_count:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - device_id
+      - device_name
+    NotificationDetail:
+      type: object
+      description: |-
+        Single-notification view: adds the per-device delivery breakdown so the
+        console can show whether each targeted device received it.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        application_id:
+          type: integer
+          readOnly: true
+        application_name:
+          type: string
+          readOnly: true
+        application_logo:
+          type: string
+          format: uri
+          readOnly: true
+        device_ids:
+          type: array
+          items:
+            type: integer
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        status:
+          $ref: '#/components/schemas/Status537Enum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+        effective_scheduled_for:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+          description: Effective send date computed from `scheduled_for` and currently
+            configured quiet periods. This value may change if quiet periods change,
+            even without modifying `scheduled_for`.
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationDelivery'
+          readOnly: true
+      required:
+      - application_id
+      - application_logo
+      - application_name
+      - created_at
+      - deliveries
+      - device_ids
+      - effective_scheduled_for
+      - id
+      - message
+      - title
     NotificationFutureFilterValidationErrorResponse:
       type: object
       properties:
@@ -4160,7 +4250,7 @@ components:
         message:
           type: string
         status:
-          $ref: '#/components/schemas/StatusEnum'
+          $ref: '#/components/schemas/Status537Enum'
         created_at:
           type: string
           format: date-time
@@ -4497,7 +4587,7 @@ components:
           nullable: true
         status:
           allOf:
-          - $ref: '#/components/schemas/StatusEnum'
+          - $ref: '#/components/schemas/Status537Enum'
           readOnly: true
         created_at:
           type: string
@@ -4617,7 +4707,7 @@ components:
       - password
       - token
       - uid
-    StatusEnum:
+    Status537Enum:
       enum:
       - draft
       - scheduled
@@ -4637,6 +4727,16 @@ components:
         * `failed` - Failed
         * `partial` - Partial
         * `no_target` - No target
+    Status5bbEnum:
+      enum:
+      - pending
+      - sent
+      - failed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `sent` - Sent
+        * `failed` - Failed
     TokenRefresh:
       type: object
       properties:
