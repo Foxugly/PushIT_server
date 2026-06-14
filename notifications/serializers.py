@@ -149,7 +149,15 @@ class NotificationDeliverySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NotificationDelivery
-        fields = ["device_id", "device_name", "status", "sent_at", "attempt_count"]
+        fields = [
+            "device_id",
+            "device_name",
+            "status",
+            "sent_at",
+            "delivered_at",
+            "opened_at",
+            "attempt_count",
+        ]
 
 
 class NotificationDetailSerializer(NotificationReadSerializer):

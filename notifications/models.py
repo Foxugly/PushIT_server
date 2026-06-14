@@ -109,6 +109,12 @@ class NotificationDelivery(models.Model):
     provider_message_id = models.CharField(max_length=255, blank=True)
     error_message = models.TextField(blank=True)
     sent_at = models.DateTimeField(blank=True, null=True)
+    # Recipient-side receipts (distinct from send-side `status`/`sent_at`):
+    # delivered_at = the device confirmed the push reached the OS (best-effort);
+    # opened_at = the user actually opened the message in the app (reliable).
+    # Both null until the device reports them; opening implies delivery.
+    delivered_at = models.DateTimeField(blank=True, null=True)
+    opened_at = models.DateTimeField(blank=True, null=True)
     attempt_count = models.PositiveIntegerField(default=0)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     next_retry_at = models.DateTimeField(null=True, blank=True)

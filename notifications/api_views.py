@@ -926,3 +926,82 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
                 )
             queryset = queryset.filter(sent_at__gte=sent_since)
         return queryset
+
+
+class NotificationOpenedReceiptApiView(APIView):
+    """Recipient receipt: the user opened this notification in the app."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Mark a notification as opened on the caller's device",
+        description=(
+            "Records that the authenticated user opened this notification in the app "
+            "on the device identified by `push_token`. Sets `opened_at`, and "
+            "`delivered_at` too if not already set (opening implies the push arrived). "
+            "Idempotent — repeated calls keep the first timestamps. The notification "
+            "must have been delivered to a device owned by the caller."
+        ),
+        tags=["Notifications"],
+        auth=[{"BearerAuth": []}],
+        request=inline_serializer(
+            name="NotificationOpenedReceiptRequest",
+            fields={"push_token": serializers.CharField()},
+        ),
+        responses={
+            200: inline_serializer(
+                name="NotificationOpenedReceiptResponse",
+                fields={
+                    "status": serializers.CharField(),
+                    "opened_at": serializers.DateTimeField(),
+                },
+            ),
+            400: OpenApiResponse(response=DetailResponseSerializer, description="Missing push_token"),
+            404: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Unknown device or notification not delivered to it",
+            ),
+        },
+    )
+    def post(self, request, pk):
+        from devices.models import Device
+
+        push_token = (request.data.get("push_token") or "").strip()
+        if not push_token:
+            return error_response(
+                code="validation_error",
+                detail="push_token is required.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        device = Device.objects.filter(user=request.user, push_token=push_token).first()
+        if device is None:
+            return error_response(
+                code="device_not_found",
+                detail="No device found for this push token.",
+                http_status=status.HTTP_404_NOT_FOUND,
+            )
+        delivery = NotificationDelivery.objects.filter(
+            notification_id=pk, device=device
+        ).first()
+        if delivery is None:
+            return error_response(
+                code="delivery_not_found",
+                detail="This notification was not delivered to this device.",
+                http_status=status.HTTP_404_NOT_FOUND,
+            )
+
+        now = timezone.now()
+        update_fields = []
+        if delivery.opened_at is None:
+            delivery.opened_at = now
+            update_fields.append("opened_at")
+        if delivery.delivered_at is None:
+            delivery.delivered_at = now
+            update_fields.append("delivered_at")
+        if update_fields:
+            delivery.save(update_fields=update_fields)
+
+        return Response(
+            {"status": "ok", "opened_at": delivery.opened_at},
+            status=status.HTTP_200_OK,
+        )

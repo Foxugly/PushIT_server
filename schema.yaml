@@ -1977,6 +1977,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Notification not found
+  /api/v1/notifications/{id}/opened/:
+    post:
+      operationId: api_v1_notifications_opened_create
+      description: Records that the authenticated user opened this notification in
+        the app on the device identified by `push_token`. Sets `opened_at`, and `delivered_at`
+        too if not already set (opening implies the push arrived). Idempotent — repeated
+        calls keep the first timestamps. The notification must have been delivered
+        to a device owned by the caller.
+      summary: Mark a notification as opened on the caller's device
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationOpenedReceiptRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationOpenedReceiptRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationOpenedReceiptRequestRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationOpenedReceiptResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Missing push_token
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Unknown device or notification not delivered to it
   /api/v1/notifications/app/:
     get:
       operationId: api_v1_notifications_app_list
@@ -4041,6 +4091,14 @@ components:
           type: string
           format: date-time
           nullable: true
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        opened_at:
+          type: string
+          format: date-time
+          nullable: true
         attempt_count:
           type: integer
           maximum: 9223372036854775807
@@ -4228,6 +4286,25 @@ components:
           type: array
           items:
             type: string
+    NotificationOpenedReceiptRequestRequest:
+      type: object
+      properties:
+        push_token:
+          type: string
+          minLength: 1
+      required:
+      - push_token
+    NotificationOpenedReceiptResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+      required:
+      - opened_at
+      - status
     NotificationQueuedResponse:
       type: object
       properties:
