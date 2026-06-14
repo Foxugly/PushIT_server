@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from applications.authentication import get_application_for_raw_app_token
-from .models import Device, DeviceApplicationLink, DeviceTokenStatus
+from .models import Device, DeviceApplicationLink, DeviceTokenStatus, UnlinkSource
 from .serializers import (
     DetailResponseSerializer,
     DeviceIdentifyResponseSerializer,
@@ -28,7 +28,11 @@ def _upsert_authenticated_device(*, user, data):
     if created:
         device = Device(push_token=data["push_token"])
     elif device.user_id is not None and device.user_id != user.id:
-        device.application_links.filter(is_active=True).update(is_active=False)
+        device.application_links.filter(is_active=True).update(
+            is_active=False,
+            unlinked_at=timezone.now(),
+            unlink_source=UnlinkSource.TAKEOVER,
+        )
 
     device.user = user
     device.device_name = data.get("device_name", "")
@@ -157,8 +161,12 @@ class DeviceLinkWithAppTokenApiView(APIView):
         )
 
         if not link_created and not link.is_active:
+            # Reactivation: clear the previous unlink audit so an active link never
+            # carries stale unlinked_at / unlink_source.
             link.is_active = True
-            link.save(update_fields=["is_active"])
+            link.unlinked_at = None
+            link.unlink_source = ""
+            link.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
 
         return Response(
             {
@@ -215,7 +223,9 @@ class DeviceUnlinkWithAppTokenApiView(APIView):
             ).first()
             if link is not None:
                 link.is_active = False
-                link.save(update_fields=["is_active"])
+                link.unlinked_at = timezone.now()
+                link.unlink_source = UnlinkSource.DEVICE_BUTTON
+                link.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
                 unlinked = True
 
         return Response(
@@ -269,7 +279,9 @@ class DeviceUnlinkByApplicationApiView(APIView):
             ).first()
             if link is not None:
                 link.is_active = False
-                link.save(update_fields=["is_active"])
+                link.unlinked_at = timezone.now()
+                link.unlink_source = UnlinkSource.INBOX
+                link.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
                 unlinked = True
 
         return Response(

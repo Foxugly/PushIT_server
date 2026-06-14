@@ -51,12 +51,24 @@ class DeviceQuietPeriod(AbstractQuietPeriod):
             return self.name or f"device-quiet:{self.device_id}:{self.start_at.isoformat()}"
         return self.name or f"device-quiet:{self.device_id}:{self.period_type.lower()}"
 
+class UnlinkSource(models.TextChoices):
+    DEVICE_BUTTON = "device_button", "Device button"   # Settings "unlink this device"
+    INBOX = "inbox", "Inbox per-app unlink"
+    TAKEOVER = "takeover", "Push-token takeover by another user"
+
+
 class DeviceApplicationLink(models.Model):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="application_links")
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="device_links")
     is_active = models.BooleanField(default=True)
     linked_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Audit of the current deactivation (both null/blank while the link is active;
+    # set when is_active flips to False, cleared on reactivation). `updated_at` is
+    # useless for this because every toggle saves update_fields=["is_active"],
+    # which skips the auto_now field.
+    unlinked_at = models.DateTimeField(null=True, blank=True)
+    unlink_source = models.CharField(max_length=20, choices=UnlinkSource.choices, blank=True)
 
     class Meta:
         constraints = [
