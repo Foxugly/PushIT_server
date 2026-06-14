@@ -858,7 +858,7 @@ class NotificationStatsApiView(APIView):
                 description="FCM push token identifying the caller's device.",
             ),
             OpenApiParameter(
-                name="start_datetime",
+                name="sent_since",
                 type=OpenApiTypes.DATETIME,
                 location=OpenApiParameter.QUERY,
                 required=False,
@@ -898,12 +898,12 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
         )
         # Optional lower bound on the send date — lets the app load a recent
         # window by default and reload the full history on demand ("load older").
-        start_raw = (self.request.query_params.get("start_datetime") or "").strip()
-        if start_raw:
-            start_dt = parse_datetime(start_raw)
-            if start_dt is None:
+        sent_since_raw = (self.request.query_params.get("sent_since") or "").strip()
+        if sent_since_raw:
+            sent_since = parse_datetime(sent_since_raw)
+            if sent_since is None:
                 raise serializers.ValidationError(
-                    {"start_datetime": "Invalid datetime; expected ISO 8601."}
+                    {"sent_since": "Invalid datetime; expected ISO 8601."}
                 )
-            queryset = queryset.filter(sent_at__gte=start_dt)
+            queryset = queryset.filter(sent_at__gte=sent_since)
         return queryset

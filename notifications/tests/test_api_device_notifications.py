@@ -44,7 +44,7 @@ def test_device_inbox_returns_notifications_delivered_to_the_device():
 
 
 @pytest.mark.django_db
-def test_device_inbox_filters_by_start_datetime_on_send_date():
+def test_device_inbox_filters_by_sent_since_on_send_date():
     from datetime import datetime, timezone as dt_timezone
 
     client = APIClient()
@@ -70,7 +70,7 @@ def test_device_inbox_filters_by_start_datetime_on_send_date():
     _auth(client, recipient)
 
     # Bounded window: only the recent one.
-    resp = client.get(URL, {"push_token": "fcm_window", "start_datetime": "2026-03-01T00:00:00Z"})
+    resp = client.get(URL, {"push_token": "fcm_window", "sent_since": "2026-03-01T00:00:00Z"})
     assert resp.status_code == 200
     assert [n["title"] for n in resp.data] == ["Recent"]
 
@@ -80,16 +80,16 @@ def test_device_inbox_filters_by_start_datetime_on_send_date():
 
 
 @pytest.mark.django_db
-def test_device_inbox_rejects_invalid_start_datetime():
+def test_device_inbox_rejects_invalid_sent_since():
     client = APIClient()
     user = User.objects.create_user(email="u-bad@example.com", password="MotDePasseTresSolide123!")
     device = Device.objects.create(
         user=user, push_token="fcm_bad", push_token_status=DeviceTokenStatus.ACTIVE
     )
     _auth(client, user)
-    resp = client.get(URL, {"push_token": "fcm_bad", "start_datetime": "not-a-date"})
+    resp = client.get(URL, {"push_token": "fcm_bad", "sent_since": "not-a-date"})
     assert resp.status_code == 400
-    assert "start_datetime" in resp.data["errors"]
+    assert "sent_since" in resp.data["errors"]
 
 
 @pytest.mark.django_db
