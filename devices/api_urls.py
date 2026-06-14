@@ -8,6 +8,7 @@ from .api_views import (
 from .api_views_app_token import (
     DeviceIdentifyApiView,
     DeviceLinkWithAppTokenApiView,
+    DeviceUnlinkByApplicationApiView,
     DeviceUnlinkWithAppTokenApiView,
 )
 
@@ -19,4 +20,5 @@ urlpatterns = [
     path("identify/", DeviceIdentifyApiView.as_view(), name="device-identify"),
     path("link/", DeviceLinkWithAppTokenApiView.as_view(), name="device-link"),
     path("unlink/", DeviceUnlinkWithAppTokenApiView.as_view(), name="device-unlink"),
+    path("unlink-app/", DeviceUnlinkByApplicationApiView.as_view(), name="device-unlink-app"),
 ]

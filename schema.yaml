@@ -1533,6 +1533,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Access denied
+  /api/v1/devices/unlink-app/:
+    post:
+      operationId: api_v1_devices_unlink_app_create
+      description: 'Deactivates the link between the authenticated user''s device
+        (identified by its push token) and the application identified by `application_id`
+        — no app token required. Powers the mobile inbox''s per-app unlink. Idempotent:
+        returns unlinked=false when there was no active link.'
+      summary: Unlink a device from an application by id
+      tags:
+      - Devices
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUnlinkByApplication'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceUnlinkByApplication'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceUnlinkByApplication'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceUnlinkWithAppTokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceUnlinkByApplicationValidationErrorResponse'
+          description: Invalid data
   /api/v1/notifications/:
     get:
       operationId: api_v1_notifications_list
@@ -3214,6 +3251,47 @@ components:
       - application_ids
       - created_at
       - id
+    DeviceUnlinkByApplication:
+      type: object
+      description: |-
+        Unlink a device from an application by id (no app token needed) — for the
+        mobile recipient inbox's per-app 'unlink' action.
+      properties:
+        push_token:
+          type: string
+        application_id:
+          type: integer
+      required:
+      - application_id
+      - push_token
+    DeviceUnlinkByApplicationValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/DeviceUnlinkByApplicationValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    DeviceUnlinkByApplicationValidationErrorResponseFields:
+      type: object
+      properties:
+        push_token:
+          type: array
+          items:
+            type: string
+        application_id:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     DeviceUnlinkWithAppToken:
       type: object
       properties:

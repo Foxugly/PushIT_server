@@ -60,6 +60,20 @@ DeviceUnlinkWithAppTokenValidationErrorResponseSerializer = build_validation_err
     ["app_token", "push_token"],
 )
 
+
+class DeviceUnlinkByApplicationSerializer(serializers.Serializer):
+    """Unlink a device from an application by id (no app token needed) — for the
+    mobile recipient inbox's per-app 'unlink' action."""
+
+    push_token = serializers.CharField()
+    application_id = serializers.IntegerField()
+
+
+DeviceUnlinkByApplicationValidationErrorResponseSerializer = build_validation_error_serializer(
+    "DeviceUnlinkByApplicationValidationErrorResponse",
+    ["push_token", "application_id"],
+)
+
 DeviceIdentifyValidationErrorResponseSerializer = build_validation_error_serializer(
     "DeviceIdentifyValidationErrorResponse",
     ["device_name", "platform", "push_token"],
