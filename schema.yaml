@@ -1114,6 +1114,49 @@ paths:
                 items:
                   $ref: '#/components/schemas/DeviceRead'
           description: ''
+  /api/v1/devices/{device_id}/notifications/:
+    get:
+      operationId: api_v1_devices_notifications_list
+      description: Paginated list of notifications delivered to the given device,
+        restricted to applications owned by the authenticated user, with this device's
+        delivery outcome (`delivery_status`, `delivery_sent_at`). Optionally filtered
+        by `application_id`.
+      summary: Notifications delivered to a device
+      parameters:
+      - in: query
+        name: application_id
+        schema:
+          type: integer
+        description: Only notifications of this application (must be owned by the
+          caller).
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - Devices
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDeviceNotificationList'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Device not found
   /api/v1/devices/{device_id}/quiet-periods/:
     get:
       operationId: api_v1_devices_quiet_periods_list
@@ -2981,6 +3024,16 @@ components:
             type: integer
       required:
       - notification_ids
+    DeliveryStatusEnum:
+      enum:
+      - pending
+      - sent
+      - failed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `sent` - Sent
+        * `failed` - Failed
     DeviceIdentify:
       type: object
       properties:
@@ -3144,6 +3197,66 @@ components:
       - is_active
       - linked_at
       - name
+    DeviceNotification:
+      type: object
+      description: |-
+        A notification as seen from one device: notification fields plus that
+        device's delivery outcome. The device's delivery is provided via a filtered
+        prefetch (`device_deliveries`), with `device_id` in the serializer context.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        application_id:
+          type: integer
+          readOnly: true
+        application_name:
+          type: string
+          readOnly: true
+        application_logo:
+          type: string
+          format: uri
+          readOnly: true
+        title:
+          type: string
+          maxLength: 255
+        message:
+          type: string
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        delivery_status:
+          nullable: true
+          readOnly: true
+          oneOf:
+          - $ref: '#/components/schemas/DeliveryStatusEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        delivery_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+        delivery_attempt_count:
+          type: integer
+          readOnly: true
+      required:
+      - application_id
+      - application_logo
+      - application_name
+      - created_at
+      - delivery_attempt_count
+      - delivery_sent_at
+      - delivery_status
+      - id
+      - message
+      - title
     DevicePlatformEnum:
       enum:
       - android
@@ -4183,6 +4296,32 @@ components:
       - name
       - title_template
       - updated_at
+    NullEnum:
+      enum:
+      - null
+    PaginatedDeviceNotificationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceNotification'
     PaginatedNotificationReadList:
       type: object
       required:

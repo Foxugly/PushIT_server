@@ -1,9 +1,19 @@
 from django.http import Http404
-from django.db.models import Q
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
-from rest_framework import generics, permissions, status
+from django.db.models import Prefetch, Q
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+)
+from rest_framework import generics, permissions, serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
+
+from notifications.models import Notification, NotificationDelivery
+from notifications.serializers import DeviceNotificationSerializer
 
 from .models import Device, DeviceQuietPeriod
 from .serializers import (
@@ -136,6 +146,85 @@ class UserOwnedDeviceMixin:
             .distinct()
             .first()
         )
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="Notifications delivered to a device",
+        description=(
+            "Paginated list of notifications delivered to the given device, "
+            "restricted to applications owned by the authenticated user, with this "
+            "device's delivery outcome (`delivery_status`, `delivery_sent_at`). "
+            "Optionally filtered by `application_id`."
+        ),
+        tags=["Devices"],
+        auth=[{"BearerAuth": []}],
+        parameters=[
+            OpenApiParameter(
+                name="application_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Only notifications of this application (must be owned by the caller).",
+            ),
+        ],
+        responses={
+            200: DeviceNotificationSerializer(many=True),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Device not found"),
+        },
+    ),
+)
+class DeviceNotificationsApiView(UserOwnedDeviceMixin, generics.ListAPIView):
+    """Owner-facing reverse view: every notification of the caller's apps that was
+    delivered to this device. Paginated (default PageNumberPagination)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = DeviceNotificationSerializer
+
+    def get_device(self):
+        # Cache so list()/get_queryset()/get_serializer_context() don't re-query.
+        if not hasattr(self, "_device_cache"):
+            self._device_cache = super().get_device()
+        return self._device_cache
+
+    def get_queryset(self):
+        device = self.get_device()
+        if device is None:
+            return Notification.objects.none()
+        queryset = (
+            Notification.objects.filter(
+                application__owner=self.request.user,
+                deliveries__device=device,
+            )
+            .select_related("application")
+            .prefetch_related(
+                Prefetch(
+                    "deliveries",
+                    queryset=NotificationDelivery.objects.filter(device=device),
+                    to_attr="device_deliveries",
+                )
+            )
+            .distinct()
+            .order_by("-id")
+        )
+        application_id = self.request.query_params.get("application_id")
+        if application_id:
+            try:
+                queryset = queryset.filter(application_id=int(application_id))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({"application_id": "Must be an integer."})
+        return queryset
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        device = self.get_device()
+        context["device_id"] = device.id if device else None
+        return context
+
+    def list(self, request, *args, **kwargs):
+        if self.get_device() is None:
+            raise NotFound("Device not found.", code="device_not_found")
+        return super().list(request, *args, **kwargs)
 
 
 @extend_schema_view(

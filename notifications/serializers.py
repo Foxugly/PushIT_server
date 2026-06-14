@@ -142,6 +142,58 @@ class NotificationReadSerializer(serializers.ModelSerializer):
         ]
 
 
+class DeviceNotificationSerializer(serializers.ModelSerializer):
+    """A notification as seen from one device: notification fields plus that
+    device's delivery outcome. The device's delivery is provided via a filtered
+    prefetch (`device_deliveries`), with `device_id` in the serializer context."""
+
+    application_id = serializers.IntegerField(source="application.id", read_only=True)
+    application_name = serializers.CharField(source="application.name", read_only=True)
+    application_logo = serializers.ImageField(source="application.logo", read_only=True, use_url=True)
+    delivery_status = serializers.SerializerMethodField()
+    delivery_sent_at = serializers.SerializerMethodField()
+    delivery_attempt_count = serializers.SerializerMethodField()
+
+    def _delivery(self, obj):
+        device_deliveries = getattr(obj, "device_deliveries", None)
+        if device_deliveries is not None:
+            return device_deliveries[0] if device_deliveries else None
+        device_id = self.context.get("device_id")
+        return obj.deliveries.filter(device_id=device_id).first()
+
+    @extend_schema_field(serializers.ChoiceField(choices=DeliveryStatus.choices, allow_null=True))
+    def get_delivery_status(self, obj):
+        delivery = self._delivery(obj)
+        return delivery.status if delivery else None
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_delivery_sent_at(self, obj):
+        delivery = self._delivery(obj)
+        return delivery.sent_at if delivery else None
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_delivery_attempt_count(self, obj):
+        delivery = self._delivery(obj)
+        return delivery.attempt_count if delivery else 0
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "application_id",
+            "application_name",
+            "application_logo",
+            "title",
+            "message",
+            "status",
+            "created_at",
+            "sent_at",
+            "delivery_status",
+            "delivery_sent_at",
+            "delivery_attempt_count",
+        ]
+
+
 class BaseNotificationWriteSerializer(serializers.ModelSerializer):
     title = serializers.CharField(max_length=255, trim_whitespace=True, required=False)
     message = serializers.CharField(trim_whitespace=True, required=False)
