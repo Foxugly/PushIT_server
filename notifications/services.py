@@ -348,6 +348,8 @@ def send_notification(notification_id: int) -> dict:
                 push_token=device.push_token,
                 title=notification.title,
                 message=notification.message,
+                # Deep-link target: the mobile app opens this message on tap.
+                data={"notification_id": notification.id},
             )
             _mark_delivery_as_sent(delivery, provider_message_id)
 

@@ -51,13 +51,16 @@ def _ensure_fcm_initialized():
     logger.info("fcm_initialized", extra={"service_account": settings.FCM_SERVICE_ACCOUNT_PATH})
 
 
-def _send_fcm(push_token: str, title: str, message: str) -> str:
+def _send_fcm(push_token: str, title: str, message: str, data: dict | None = None) -> str:
     _ensure_fcm_initialized()
     from firebase_admin import messaging
     from firebase_admin.exceptions import InvalidArgumentError, UnavailableError
 
     fcm_message = messaging.Message(
         notification=messaging.Notification(title=title, body=message),
+        # FCM data values must be strings. Carries the notification id so the
+        # mobile app can deep-link to the message when the push is tapped.
+        data={k: str(v) for k, v in (data or {}).items()},
         token=push_token,
     )
 
@@ -71,11 +74,11 @@ def _send_fcm(push_token: str, title: str, message: str) -> str:
         raise PushProviderError(str(exc)) from exc
 
 
-def _send_mock(push_token: str, title: str, message: str) -> str:
+def _send_mock(push_token: str, title: str, message: str, data: dict | None = None) -> str:
     return f"mock-msg-{push_token[-6:]}"
 
 
-def send_push_to_device(push_token: str, title: str, message: str) -> str:
+def send_push_to_device(push_token: str, title: str, message: str, data: dict | None = None) -> str:
     provider = "fcm" if _is_fcm_configured() else "mock"
     log_extra = {
         "push_provider": provider,
@@ -90,9 +93,9 @@ def send_push_to_device(push_token: str, title: str, message: str) -> str:
 
     try:
         if provider == "fcm":
-            provider_message_id = _send_fcm(push_token, title, message)
+            provider_message_id = _send_fcm(push_token, title, message, data)
         else:
-            provider_message_id = _send_mock(push_token, title, message)
+            provider_message_id = _send_mock(push_token, title, message, data)
 
         logger.info(
             "push_send_succeeded",
