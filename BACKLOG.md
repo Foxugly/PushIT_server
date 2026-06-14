@@ -23,6 +23,17 @@ Le travail coché est commité/poussé sur `Foxugly/PushIT_server` (`main`, CI v
 
 ## À faire
 
+- [x] **Accusés de réception (Pushover-style) — Phase 1 « ouvert/vu » LIVE (2026-06-14)** :
+  `NotificationDelivery` + `delivered_at`/`opened_at` (migration `0004`), endpoint idempotent
+  `POST /notifications/{id}/opened/` (JWT + `push_token`, auth = inbox device), exposés au
+  serializer de delivery. Mobile confirme à l'ouverture du détail ; la console web affiche la
+  colonne « Ouvert le ». Les 3 repos déployés. Voir [[pushit-inbox-feature-decisions]].
+- [ ] **Accusés de réception — Phase 2 « livré OS » best-effort — DIFFÉRÉE (feu vert Renaud requis)** :
+  passer `notifications/push.py` de FCM **notification+data hybride** à **data-only priorité haute**
+  pour que l'Android `onMessageReceived` se déclenche en arrière-plan (aujourd'hui foreground-only →
+  accusé « livré » trompeur). ⚠️ change le format des pushes de **toute la flotte** + **casse
+  l'affichage iOS** du stub ; caveats incompressibles (force-stop/Doze/iOS). Endpoint `/{id}/delivered/`
+  pas encore construit. À ne lancer qu'avec validation prod.
 - [x] **P3 — `deploy/nginx/pushit-api.conf` vs live** → **accepté (won't-fix), 2026-06-14**. Le déploiement
   backend est volontairement **django-only** (pas d'étape root dans le workflow) ; nginx est root/hors-bande
   par le modèle de flotte (OPERATIONS.md). Ajouter une étape root d'install nginx au pipeline de la **prod
