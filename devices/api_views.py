@@ -54,7 +54,7 @@ class DeviceListApiView(generics.ListAPIView):
                 )
             )
             .distinct()
-            .prefetch_related("application_links")
+            .prefetch_related("application_links__application")
             .order_by("-id")
         )
 
@@ -118,7 +118,7 @@ class DeviceDetailApiView(generics.RetrieveUpdateDestroyAPIView):
                 )
             )
             .distinct()
-            .prefetch_related("application_links")
+            .prefetch_related("application_links__application")
             .order_by("-id")
         )
 

@@ -82,6 +82,27 @@ def test_takeover_by_another_user_records_source_takeover():
 
 
 @pytest.mark.django_db
+def test_device_detail_surfaces_unlinked_applications():
+    user, app, device, _link = _setup()
+    client = _auth(user)
+    client.post(
+        "/api/v1/devices/unlink-app/",
+        {"push_token": PUSH, "application_id": app.id},
+        format="json",
+    )
+
+    resp = client.get(f"/api/v1/devices/{device.id}/")
+    assert resp.status_code == 200
+    assert resp.data["application_ids"] == []
+    unlinked = resp.data["unlinked_applications"]
+    assert len(unlinked) == 1
+    assert unlinked[0]["application_id"] == app.id
+    assert unlinked[0]["application_name"] == "Mon App"
+    assert unlinked[0]["unlink_source"] == UnlinkSource.INBOX
+    assert unlinked[0]["unlinked_at"] is not None
+
+
+@pytest.mark.django_db
 def test_relink_clears_the_unlink_audit():
     user, app, _device, link = _setup()
     raw_token = app.set_new_app_token()

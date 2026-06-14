@@ -88,8 +88,18 @@ DeviceQuietPeriodValidationErrorResponseSerializer = build_validation_error_seri
     ["name", "period_type", "start_at", "end_at", "recurrence_days", "start_time", "end_time"],
 )
 
+class DeviceUnlinkedApplicationSerializer(serializers.Serializer):
+    """A past (deactivated) device↔application link, with its unlink audit."""
+
+    application_id = serializers.IntegerField()
+    application_name = serializers.CharField()
+    unlinked_at = serializers.DateTimeField(allow_null=True)
+    unlink_source = serializers.CharField(allow_blank=True)
+
+
 class DeviceReadSerializer(serializers.ModelSerializer):
     application_ids = serializers.SerializerMethodField()
+    unlinked_applications = serializers.SerializerMethodField()
 
     class Meta:
         model = Device
@@ -101,6 +111,7 @@ class DeviceReadSerializer(serializers.ModelSerializer):
             "last_seen_at",
             "created_at",
             "application_ids",
+            "unlinked_applications",
         ]
 
     @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
@@ -112,6 +123,23 @@ class DeviceReadSerializer(serializers.ModelSerializer):
             link.application_id
             for link in obj.application_links.all()
             if link.is_active
+        ]
+
+    @extend_schema_field(DeviceUnlinkedApplicationSerializer(many=True))
+    def get_unlinked_applications(self, obj) -> list[dict]:
+        # Past links (is_active=False), so the console can explain a device that
+        # received notifications from an app it's no longer linked to. The view
+        # prefetches application_links__application, so .application is N+1-free.
+        links = [link for link in obj.application_links.all() if not link.is_active]
+        links.sort(key=lambda link: link.application.name.lower())
+        return [
+            {
+                "application_id": link.application_id,
+                "application_name": link.application.name,
+                "unlinked_at": link.unlinked_at,
+                "unlink_source": link.unlink_source,
+            }
+            for link in links
         ]
 
 

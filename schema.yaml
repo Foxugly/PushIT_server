@@ -3544,10 +3544,16 @@ components:
           items:
             type: integer
           readOnly: true
+        unlinked_applications:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceUnlinkedApplication'
+          readOnly: true
       required:
       - application_ids
       - created_at
       - id
+      - unlinked_applications
     DeviceUnlinkByApplicationRequest:
       type: object
       description: |-
@@ -3649,6 +3655,25 @@ components:
           type: array
           items:
             type: string
+    DeviceUnlinkedApplication:
+      type: object
+      description: A past (deactivated) device↔application link, with its unlink audit.
+      properties:
+        application_id:
+          type: integer
+        application_name:
+          type: string
+        unlinked_at:
+          type: string
+          format: date-time
+          nullable: true
+        unlink_source:
+          type: string
+      required:
+      - application_id
+      - application_name
+      - unlink_source
+      - unlinked_at
     DeviceUpdateRequest:
       type: object
       properties:
