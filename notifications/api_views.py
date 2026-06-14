@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.api_errors import error_response
+from config.pagination import OptionalPageNumberPagination
 from .models import Notification, NotificationDelivery, NotificationStatus
 from .utils import (
     apply_effective_schedule_filters,
@@ -254,10 +255,9 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
 )
 class NotificationListCreateApiView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    # The web SPA reads this list as a bare array (no pagination UI). Disable
-    # the global PageNumberPagination so list() returns a plain array. NOTE:
-    # the mobile app uses the SEPARATE app-token endpoint, which stays paginated.
-    pagination_class = None
+    # Bare array by default (SPA + mobile contract); paginates only when the
+    # caller passes ?page / ?page_size (the SPA's lazy table + cheap counts).
+    pagination_class = OptionalPageNumberPagination
 
     def get_queryset(self):
         return (
@@ -469,8 +469,8 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
 class NotificationFutureListApiView(generics.ListAPIView):
     serializer_class = NotificationReadSerializer
     permission_classes = [permissions.IsAuthenticated]
-    # SPA reads this as a bare array — disable global pagination (see /notifications/).
-    pagination_class = None
+    # Bare array by default; paginates only on ?page / ?page_size (see /notifications/).
+    pagination_class = OptionalPageNumberPagination
 
     def get_queryset(self):
         return (

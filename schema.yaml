@@ -1101,6 +1101,19 @@ paths:
       operationId: api_v1_devices_list
       description: Returns the list of devices owned by the authenticated user.
       summary: List devices
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Devices
       security:
@@ -1110,9 +1123,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DeviceRead'
+                $ref: '#/components/schemas/PaginatedDeviceReadList'
           description: ''
   /api/v1/devices/{device_id}/notifications/:
     get:
@@ -1712,6 +1723,18 @@ paths:
           - -effective_scheduled_for
           - effective_scheduled_for
         description: Optional ordering by effective send date.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       - in: query
         name: status
         schema:
@@ -1735,45 +1758,51 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NotificationRead'
+                $ref: '#/components/schemas/PaginatedNotificationReadList'
               examples:
                 ShiftedScheduledNotificationsForOneApplication:
                   value:
-                  - - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Evening reminder
-                      message: Opens at 8pm.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Shifted scheduled notifications for one application
                 NotificationsOrderedByEffectiveScheduleDesc:
                   value:
-                  - - id: 43
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Late announcement
-                      message: Sending at 11pm.
-                      status: scheduled
-                      created_at: '2026-03-27T10:05:00Z'
-                      scheduled_for: '2026-03-27T23:00:00Z'
-                      effective_scheduled_for: '2026-03-28T09:00:00Z'
-                      sent_at: null
-                    - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Evening reminder
-                      message: Opens at 8pm.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 43
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Late announcement
+                        message: Sending at 11pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:05:00Z'
+                        scheduled_for: '2026-03-27T23:00:00Z'
+                        effective_scheduled_for: '2026-03-28T09:00:00Z'
+                        sent_at: null
+                      - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Notifications ordered by effective schedule desc
           description: List of notifications
         '400':
@@ -2315,6 +2344,18 @@ paths:
           - -effective_scheduled_for
           - effective_scheduled_for
         description: Optional ordering by effective send date.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Notifications
       security:
@@ -2324,45 +2365,51 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/NotificationRead'
+                $ref: '#/components/schemas/PaginatedNotificationReadList'
               examples:
                 FutureNotificationsShiftedByQuietPeriod:
                   value:
-                  - - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Evening reminder
-                      message: Opens at 8pm.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Future notifications shifted by quiet period
                 FutureNotificationsOrderedByEffectiveScheduleDesc:
                   value:
-                  - - id: 43
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Late announcement
-                      message: Sending at 11pm.
-                      status: scheduled
-                      created_at: '2026-03-27T10:05:00Z'
-                      scheduled_for: '2026-03-27T23:00:00Z'
-                      effective_scheduled_for: '2026-03-28T09:00:00Z'
-                      sent_at: null
-                    - id: 42
-                      application_id: 12
-                      application_name: Demo Push App
-                      title: Evening reminder
-                      message: Opens at 8pm.
-                      status: scheduled
-                      created_at: '2026-03-27T10:00:00Z'
-                      scheduled_for: '2026-03-27T22:30:00Z'
-                      effective_scheduled_for: '2026-03-28T08:00:00Z'
-                      sent_at: null
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 43
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Late announcement
+                        message: Sending at 11pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:05:00Z'
+                        scheduled_for: '2026-03-27T23:00:00Z'
+                        effective_scheduled_for: '2026-03-28T09:00:00Z'
+                        sent_at: null
+                      - id: 42
+                        application_id: 12
+                        application_name: Demo Push App
+                        title: Evening reminder
+                        message: Opens at 8pm.
+                        status: scheduled
+                        created_at: '2026-03-27T10:00:00Z'
+                        scheduled_for: '2026-03-27T22:30:00Z'
+                        effective_scheduled_for: '2026-03-28T08:00:00Z'
+                        sent_at: null
                   summary: Future notifications ordered by effective schedule desc
           description: List of future notifications
         '400':
@@ -4412,6 +4459,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DeviceNotification'
+    PaginatedDeviceReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceRead'
     PaginatedNotificationReadList:
       type: object
       required:

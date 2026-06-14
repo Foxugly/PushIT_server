@@ -105,3 +105,31 @@ def test_notification_detail_includes_per_device_deliveries():
     assert response.status_code == 200
     deliveries = {d["device_id"]: d["status"] for d in response.data["deliveries"]}
     assert deliveries == {device1.id: DeliveryStatus.SENT, device2.id: DeliveryStatus.FAILED}
+
+
+@pytest.mark.django_db
+def test_notifications_list_is_bare_array_by_default_and_paginates_on_demand():
+    from notifications.models import Notification, NotificationStatus
+
+    user = User.objects.create_user(
+        email="page@example.com", password="MotDePasseTresSolide123!"
+    )
+    app = Application.objects.create(owner=user, name="Page App")
+    for i in range(3):
+        Notification.objects.create(
+            application=app, title=f"n{i}", message="m", status=NotificationStatus.DRAFT
+        )
+    client = _auth_client_for(user)
+
+    # Default: bare array (backward compatible with SPA + mobile).
+    bare = client.get("/api/v1/notifications/")
+    assert bare.status_code == 200
+    assert isinstance(bare.data, list)
+    assert len(bare.data) == 3
+
+    # Opt-in pagination via ?page → envelope.
+    paged = client.get("/api/v1/notifications/", {"page": 1, "page_size": 2})
+    assert paged.status_code == 200
+    assert paged.data["count"] == 3
+    assert len(paged.data["results"]) == 2
+    assert paged.data["next"] is not None

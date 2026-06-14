@@ -12,6 +12,7 @@ from rest_framework import generics, permissions, serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from config.pagination import OptionalPageNumberPagination
 from notifications.models import Notification, NotificationDelivery
 from notifications.serializers import DeviceNotificationSerializer
 
@@ -39,8 +40,9 @@ from .serializers import (
 class DeviceListApiView(generics.ListAPIView):
     serializer_class = DeviceReadSerializer
     permission_classes = [permissions.IsAuthenticated]
-    # SPA reads this as a bare array — disable global pagination (see /apps/).
-    pagination_class = None
+    # Bare array by default; paginates only on ?page / ?page_size (cheap counts +
+    # lazy tables). Linked recipient devices can grow unbounded.
+    pagination_class = OptionalPageNumberPagination
 
     def get_queryset(self):
         return (
