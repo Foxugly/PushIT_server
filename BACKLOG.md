@@ -23,10 +23,12 @@ Le travail coché est commité/poussé sur `Foxugly/PushIT_server` (`main`, CI v
 
 ## À faire
 
-- [ ] **P3 — `deploy/nginx/pushit-api.conf` vs live** : le déploiement n'applique pas la conf nginx
-  (root hors-bande). Intégrer l'install de la conf au pipeline pour stopper le drift. *(différé :
-  infra-sensible — la conf live a déjà été réalignée à la main ; un changement du pipeline SSM/nginx
-  est risqué pour un gain P3).*
+- [x] **P3 — `deploy/nginx/pushit-api.conf` vs live** → **accepté (won't-fix), 2026-06-14**. Le déploiement
+  backend est volontairement **django-only** (pas d'étape root dans le workflow) ; nginx est root/hors-bande
+  par le modèle de flotte (OPERATIONS.md). Ajouter une étape root d'install nginx au pipeline de la **prod
+  API** (sudoers reload + garde `nginx -t`) est un chantier ops dédié, non testable à blanc, à risque pour
+  un P3. La conf live a déjà été réalignée sur le template repo ; le drift est documenté
+  ([[pushit-nginx-media-drift]]). À rouvrir comme tâche ops si on veut l'automatiser (mirrorer le front).
 
 ## Audit multi-agents (2026-06-14) — traités le 2026-06-14
 
