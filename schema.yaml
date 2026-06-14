@@ -2103,6 +2103,34 @@ paths:
       responses:
         '200':
           description: Bulk send result with queued and errors
+  /api/v1/notifications/device/:
+    get:
+      operationId: api_v1_notifications_device_list
+      description: 'The recipient inbox: notifications delivered to the caller''s
+        own device (resolved by the `push_token` query param), across every application
+        the device is linked to — regardless of who owns the application. Returns
+        a bare array, newest first.'
+      summary: Notifications delivered to a device
+      parameters:
+      - in: query
+        name: push_token
+        schema:
+          type: string
+        description: FCM push token identifying the caller's device.
+        required: true
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationRead'
+          description: ''
   /api/v1/notifications/future/:
     get:
       operationId: api_v1_notifications_future_list

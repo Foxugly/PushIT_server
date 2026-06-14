@@ -835,3 +835,52 @@ class NotificationStatsApiView(APIView):
             .order_by("status")
         )
         return Response(NotificationStatsSerializer(stats, many=True).data)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="Notifications delivered to a device",
+        description=(
+            "The recipient inbox: notifications delivered to the caller's own device "
+            "(resolved by the `push_token` query param), across every application the "
+            "device is linked to — regardless of who owns the application. Returns a "
+            "bare array, newest first."
+        ),
+        tags=["Notifications"],
+        auth=[{"BearerAuth": []}],
+        parameters=[
+            OpenApiParameter(
+                name="push_token",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="FCM push token identifying the caller's device.",
+            ),
+        ],
+        responses={200: NotificationReadSerializer(many=True)},
+    ),
+)
+class NotificationsForDeviceApiView(generics.ListAPIView):
+    """Notifications delivered to the authenticated user's device (recipient inbox)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = NotificationReadSerializer
+    # Bare array (mobile consumes a List, like the other SPA list endpoints).
+    pagination_class = None
+
+    def get_queryset(self):
+        from devices.models import Device
+
+        push_token = (self.request.query_params.get("push_token") or "").strip()
+        if not push_token:
+            return Notification.objects.none()
+        device = Device.objects.filter(user=self.request.user, push_token=push_token).first()
+        if device is None:
+            return Notification.objects.none()
+        return (
+            Notification.objects.filter(deliveries__device=device)
+            .select_related("application")
+            .prefetch_related("application__quiet_periods", "deliveries")
+            .distinct()
+            .order_by("-id")
+        )
