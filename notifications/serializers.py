@@ -98,6 +98,7 @@ class NotificationListFilterSerializer(NotificationFutureFilterSerializer):
 class NotificationReadSerializer(serializers.ModelSerializer):
     application_id = serializers.IntegerField(source="application.id", read_only=True)
     application_name = serializers.CharField(source="application.name", read_only=True)
+    application_logo = serializers.ImageField(source="application.logo", read_only=True, use_url=True)
     device_ids = serializers.SerializerMethodField()
     effective_scheduled_for = serializers.SerializerMethodField(
         help_text=(
@@ -129,6 +130,7 @@ class NotificationReadSerializer(serializers.ModelSerializer):
             "id",
             "application_id",
             "application_name",
+            "application_logo",
             "device_ids",
             "title",
             "message",

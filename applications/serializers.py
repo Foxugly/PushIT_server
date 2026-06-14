@@ -51,6 +51,7 @@ ApplicationQuietPeriodValidationErrorResponseSerializer = build_validation_error
 
 class ApplicationReadSerializer(serializers.ModelSerializer):
     inbound_email_address = serializers.CharField(read_only=True)
+    logo = serializers.ImageField(read_only=True, use_url=True)
 
     class Meta:
         model = Application
@@ -62,6 +63,7 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
             "inbound_email_alias",
             "inbound_email_address",
             "webhook_url",
+            "logo",
             "is_active",
             "revoked_at",
             "last_used_at",
@@ -69,9 +71,16 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
         ]
 
 
+class ApplicationLogoUploadSerializer(serializers.Serializer):
+    """Multipart upload of an application logo image."""
+
+    logo = serializers.ImageField()
+
+
 class ApplicationCreateSerializer(serializers.ModelSerializer):
     app_token = serializers.CharField(read_only=True)
     inbound_email_address = serializers.CharField(read_only=True)
+    logo = serializers.ImageField(read_only=True, use_url=True)
 
     class Meta:
         model = Application
@@ -84,6 +93,7 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
             "inbound_email_alias",
             "inbound_email_address",
             "app_token",
+            "logo",
             "is_active",
             "revoked_at",
             "last_used_at",
@@ -95,6 +105,7 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
             "inbound_email_alias",
             "inbound_email_address",
             "app_token",
+            "logo",
             "is_active",
             "revoked_at",
             "last_used_at",

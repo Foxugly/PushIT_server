@@ -4,7 +4,8 @@ from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -13,6 +14,7 @@ from .serializers import (
     ApplicationActivationResponseSerializer,
     ApplicationCreateSerializer,
     ApplicationCreateValidationErrorResponseSerializer,
+    ApplicationLogoUploadSerializer,
     ApplicationQuietPeriodReadSerializer,
     ApplicationQuietPeriodValidationErrorResponseSerializer,
     ApplicationQuietPeriodWriteSerializer,
@@ -291,6 +293,49 @@ class ApplicationQrCodeApiView(APIView):
         buffer.seek(0)
 
         return HttpResponse(buffer.getvalue(), content_type="image/png")
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Upload an application logo",
+        description="Sets the application's logo (multipart `logo` image). Returns the updated application.",
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        request=ApplicationLogoUploadSerializer,
+        responses={
+            200: ApplicationReadSerializer,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    ),
+    delete=extend_schema(
+        summary="Remove an application logo",
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        responses={
+            204: None,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    ),
+)
+class ApplicationLogoApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, app_id):
+        app = _get_app_or_404(app_id, request.user)
+        serializer = ApplicationLogoUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        app.logo = serializer.validated_data["logo"]
+        app.save(update_fields=["logo"])
+        return Response(ApplicationReadSerializer(app, context={"request": request}).data)
+
+    def delete(self, request, app_id):
+        app = _get_app_or_404(app_id, request.user)
+        if app.logo:
+            app.logo.delete(save=False)
+            app.logo = None
+            app.save(update_fields=["logo"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class UserOwnedApplicationMixin:

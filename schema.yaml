@@ -207,6 +207,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found
+  /api/v1/apps/{app_id}/logo/:
+    post:
+      operationId: api_v1_apps_logo_create
+      description: Sets the application's logo (multipart `logo` image). Returns the
+        updated application.
+      summary: Upload an application logo
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ApplicationLogoUpload'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ApplicationLogoUpload'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRead'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
+    delete:
+      operationId: api_v1_apps_logo_destroy
+      summary: Remove an application logo
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
   /api/v1/apps/{app_id}/qrcode/:
     post:
       operationId: api_v1_apps_qrcode_create
@@ -2563,6 +2623,10 @@ components:
         app_token:
           type: string
           readOnly: true
+        logo:
+          type: string
+          format: uri
+          readOnly: true
         is_active:
           type: boolean
           readOnly: true
@@ -2589,6 +2653,7 @@ components:
       - inbound_email_alias
       - is_active
       - last_used_at
+      - logo
       - name
       - revoked_at
     ApplicationCreateValidationErrorResponse:
@@ -2619,6 +2684,15 @@ components:
           type: array
           items:
             type: string
+    ApplicationLogoUpload:
+      type: object
+      description: Multipart upload of an application logo image.
+      properties:
+        logo:
+          type: string
+          format: uri
+      required:
+      - logo
     ApplicationQuietPeriodRead:
       type: object
       properties:
@@ -2802,6 +2876,10 @@ components:
           type: string
           format: uri
           maxLength: 500
+        logo:
+          type: string
+          format: uri
+          readOnly: true
         is_active:
           type: boolean
         revoked_at:
@@ -2822,6 +2900,7 @@ components:
       - id
       - inbound_email_address
       - inbound_email_alias
+      - logo
       - name
     ApplicationRevokeTokenResponse:
       type: object
@@ -3942,6 +4021,10 @@ components:
         application_name:
           type: string
           readOnly: true
+        application_logo:
+          type: string
+          format: uri
+          readOnly: true
         device_ids:
           type: array
           items:
@@ -3976,6 +4059,7 @@ components:
           nullable: true
       required:
       - application_id
+      - application_logo
       - application_name
       - created_at
       - device_ids
