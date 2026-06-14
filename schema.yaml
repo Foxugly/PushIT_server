@@ -2215,6 +2215,14 @@ paths:
           type: string
         description: FCM push token identifying the caller's device.
         required: true
+      - in: query
+        name: start_datetime
+        schema:
+          type: string
+          format: date-time
+        description: Optional ISO 8601 lower bound on the notification send date (`sent_at`).
+          When omitted, the full history is returned; the app passes a recent window
+          by default and drops it to load older.
       tags:
       - Notifications
       security:

@@ -3,6 +3,7 @@ from django.db import OperationalError, transaction
 from django.db.models import Count
 from django.http import Http404
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -856,6 +857,17 @@ class NotificationStatsApiView(APIView):
                 required=True,
                 description="FCM push token identifying the caller's device.",
             ),
+            OpenApiParameter(
+                name="start_datetime",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Optional ISO 8601 lower bound on the notification send date "
+                    "(`sent_at`). When omitted, the full history is returned; the "
+                    "app passes a recent window by default and drops it to load older."
+                ),
+            ),
         ],
         responses={200: NotificationReadSerializer(many=True)},
     ),
@@ -877,10 +889,21 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
         device = Device.objects.filter(user=self.request.user, push_token=push_token).first()
         if device is None:
             return Notification.objects.none()
-        return (
+        queryset = (
             Notification.objects.filter(deliveries__device=device)
             .select_related("application")
             .prefetch_related("application__quiet_periods", "deliveries")
             .distinct()
             .order_by("-id")
         )
+        # Optional lower bound on the send date — lets the app load a recent
+        # window by default and reload the full history on demand ("load older").
+        start_raw = (self.request.query_params.get("start_datetime") or "").strip()
+        if start_raw:
+            start_dt = parse_datetime(start_raw)
+            if start_dt is None:
+                raise serializers.ValidationError(
+                    {"start_datetime": "Invalid datetime; expected ISO 8601."}
+                )
+            queryset = queryset.filter(sent_at__gte=start_dt)
+        return queryset

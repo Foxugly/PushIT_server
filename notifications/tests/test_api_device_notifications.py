@@ -44,6 +44,55 @@ def test_device_inbox_returns_notifications_delivered_to_the_device():
 
 
 @pytest.mark.django_db
+def test_device_inbox_filters_by_start_datetime_on_send_date():
+    from datetime import datetime, timezone as dt_timezone
+
+    client = APIClient()
+    recipient = User.objects.create_user(email="rcpt2@example.com", password="MotDePasseTresSolide123!")
+    owner = User.objects.create_user(email="owner3@example.com", password="MotDePasseTresSolide123!")
+    app = Application.objects.create(owner=owner, name="Acme3")
+    device = Device.objects.create(
+        user=recipient, push_token="fcm_window", push_token_status=DeviceTokenStatus.ACTIVE
+    )
+    DeviceApplicationLink.objects.create(device=device, application=app)
+
+    old = Notification.objects.create(
+        application=app, title="Old", message="m", status=NotificationStatus.SENT,
+        sent_at=datetime(2026, 1, 1, tzinfo=dt_timezone.utc),
+    )
+    recent = Notification.objects.create(
+        application=app, title="Recent", message="m", status=NotificationStatus.SENT,
+        sent_at=datetime(2026, 6, 1, tzinfo=dt_timezone.utc),
+    )
+    NotificationDelivery.objects.create(notification=old, device=device)
+    NotificationDelivery.objects.create(notification=recent, device=device)
+
+    _auth(client, recipient)
+
+    # Bounded window: only the recent one.
+    resp = client.get(URL, {"push_token": "fcm_window", "start_datetime": "2026-03-01T00:00:00Z"})
+    assert resp.status_code == 200
+    assert [n["title"] for n in resp.data] == ["Recent"]
+
+    # No bound: full history.
+    resp_all = client.get(URL, {"push_token": "fcm_window"})
+    assert {n["title"] for n in resp_all.data} == {"Old", "Recent"}
+
+
+@pytest.mark.django_db
+def test_device_inbox_rejects_invalid_start_datetime():
+    client = APIClient()
+    user = User.objects.create_user(email="u-bad@example.com", password="MotDePasseTresSolide123!")
+    device = Device.objects.create(
+        user=user, push_token="fcm_bad", push_token_status=DeviceTokenStatus.ACTIVE
+    )
+    _auth(client, user)
+    resp = client.get(URL, {"push_token": "fcm_bad", "start_datetime": "not-a-date"})
+    assert resp.status_code == 400
+    assert "start_datetime" in resp.data["errors"]
+
+
+@pytest.mark.django_db
 def test_device_inbox_is_empty_for_unknown_or_missing_push_token():
     client = APIClient()
     user = User.objects.create_user(email="u@example.com", password="MotDePasseTresSolide123!")
