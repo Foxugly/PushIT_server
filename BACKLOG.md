@@ -23,28 +23,26 @@ Le travail coché est commité/poussé sur `Foxugly/PushIT_server` (`main`, CI v
 
 ## À faire
 
-- [ ] **P2 — Cohérence pagination** : la plupart des list endpoints JWT sont en tableau nu
-  (`pagination_class=None`, lu ainsi par le SPA), seuls `/devices/<id>/notifications/` et quelques
-  autres paginent. Décider d'une stratégie cohérente et la documenter ; surtout, **`/notifications/`
-  charge tout l'historique** — risque à volume élevé (le front le lit aussi sans pagination).
 - [ ] **P3 — `deploy/nginx/pushit-api.conf` vs live** : le déploiement n'applique pas la conf nginx
-  (root hors-bande). Envisager d'intégrer l'install de la conf au pipeline pour stopper le drift.
+  (root hors-bande). Intégrer l'install de la conf au pipeline pour stopper le drift. *(différé :
+  infra-sensible — la conf live a déjà été réalignée à la main ; un changement du pipeline SSM/nginx
+  est risqué pour un gain P3).*
 
-## Audit multi-agents (2026-06-14) — constats confirmés
+## Audit multi-agents (2026-06-14) — traités le 2026-06-14
 
-- [ ] **P2 — Exactitude du schéma OpenAPI (lot)** : `drf-spectacular` marque des champs `readOnly`
-  comme `required` dans les schémas *Create (requête) — `last_used_at` (ApplicationCreate),
-  `sent_at` (NotificationCreate), `id`/`created_at`/`updated_at` (DeviceQuietPeriodWrite,
-  ApplicationQuietPeriodWrite) — et `effective_scheduled_for` est `required` **et** `nullable` sur
-  NotificationRead. Contradiction OpenAPI (les clients tolèrent aujourd'hui). *Fix probable unique :*
-  activer `COMPONENT_SPLIT_REQUEST` (schémas requête/réponse séparés) puis régénérer `schema.yaml`.
-  *(l'audit les notait P1 ; requalifiés P2 — cosmétique, pas de bug runtime).*
-- [ ] **P2 — `DeviceLinkedApplication` contrat** : `logo` absent du `required` du schéma ; `description`
-  non-null côté serializer (`CharField()` sans `allow_null`) alors que le modèle peut être vide et que
-  les clients (Angular/Kotlin) l'attendent nullable. Durcir le serializer (`allow_null=True`) + régénérer.
-- [ ] **P2 — `ApplicationRead.webhook_url`** : présent non-nullable mais absent du `required` → ambigu.
-  Clarifier (nullable ou requis).
-- [ ] **P2 — Race sur le statut de notification** : `_try_queue_notification()`
-  (`notifications/api_views.py:625-693`) check-then-update sans `select_for_update()` quand appelé hors
-  transaction (et bulk-send sans lock). Envelopper dans `transaction.atomic()` + `select_for_update()`
-  systématiquement (cf. `_fetch_notification` qui a déjà le pattern), ou verrou optimiste (champ version).
+- [x] **P2 — Exactitude du schéma OpenAPI (lot)** — `COMPONENT_SPLIT_REQUEST` activé : les schémas
+  *Request (create/write) n'incluent plus les champs `readOnly` dans `required`. Schéma régénéré.
+  *(N.B. `effective_scheduled_for` `required`+`nullable` était un faux positif : valide en OpenAPI —
+  `required` = clé présente, `nullable` = valeur peut être null ; orthogonaux.)*
+- [x] **P2 — `DeviceLinkedApplication` contrat** — `logo` désormais `required` + nullable (drop
+  `required=False`). `description` reste non-null (contrat backend correct ; c'est le modèle Kotlin
+  qui s'aligne, cf. backlog mobile).
+- [x] **P2 — `ApplicationRead.webhook_url`** — déclaré read-only → `required` + non-nullable
+  (toujours présent, chaîne vide si non configuré).
+- [x] **P2 — Cohérence pagination** — `OptionalPageNumberPagination` (opt-in `?page`/`?page_size`,
+  tableau nu par défaut) désormais sur `/notifications`, `/notifications/future`, `/devices`, `/apps`.
+- [x] **P2 — Race sur le statut de notification** — **vérifié sûr, pas de changement de logique** :
+  l'`UPDATE ... WHERE status=previous` conditionnel est le garde atomique (exactement un appel concurrent
+  passe, l'autre obtient 409) ; le `.delay()` Celery part après le commit (autocommit) donc le worker ne
+  voit jamais un QUEUED non-committé. Étendre le `select_for_update` casserait le `task_id` synchrone dans
+  la réponse pour un gain nul. Documenté dans la docstring de `_try_queue_notification`.
