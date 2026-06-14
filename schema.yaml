@@ -9,6 +9,19 @@ paths:
       operationId: api_v1_apps_list
       description: Returns the list of applications owned by the authenticated user.
       summary: List applications
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
       tags:
       - Applications
       security:
@@ -18,9 +31,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ApplicationRead'
+                $ref: '#/components/schemas/PaginatedApplicationReadList'
           description: ''
     post:
       operationId: api_v1_apps_create
@@ -32,13 +43,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ApplicationCreate'
+              $ref: '#/components/schemas/ApplicationCreateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ApplicationCreate'
+              $ref: '#/components/schemas/ApplicationCreateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ApplicationCreate'
+              $ref: '#/components/schemas/ApplicationCreateRequest'
         required: true
       security:
       - BearerAuth: []
@@ -100,13 +111,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedApplicationUpdate'
+              $ref: '#/components/schemas/PatchedApplicationUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedApplicationUpdate'
+              $ref: '#/components/schemas/PatchedApplicationUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedApplicationUpdate'
+              $ref: '#/components/schemas/PatchedApplicationUpdateRequest'
       security:
       - BearerAuth: []
       responses:
@@ -225,10 +236,10 @@ paths:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ApplicationLogoUpload'
+              $ref: '#/components/schemas/ApplicationLogoUploadRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ApplicationLogoUpload'
+              $ref: '#/components/schemas/ApplicationLogoUploadRequest'
         required: true
       security:
       - BearerAuth: []
@@ -347,7 +358,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
+              $ref: '#/components/schemas/ApplicationQuietPeriodWriteRequest'
             examples:
               One-timeQuietPeriodRequest:
                 value:
@@ -378,10 +389,10 @@ paths:
                 summary: Recurring quiet period request
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
+              $ref: '#/components/schemas/ApplicationQuietPeriodWriteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ApplicationQuietPeriodWrite'
+              $ref: '#/components/schemas/ApplicationQuietPeriodWriteRequest'
       security:
       - BearerAuth: []
       responses:
@@ -466,13 +477,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWrite'
+              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWriteRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWrite'
+              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWriteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWrite'
+              $ref: '#/components/schemas/PatchedApplicationQuietPeriodWriteRequest'
       security:
       - BearerAuth: []
       responses:
@@ -641,7 +652,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NotificationTemplateWrite'
+              $ref: '#/components/schemas/NotificationTemplateWriteRequest'
             examples:
               WelcomeTemplate:
                 value:
@@ -651,10 +662,10 @@ paths:
                 summary: Welcome template
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/NotificationTemplateWrite'
+              $ref: '#/components/schemas/NotificationTemplateWriteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/NotificationTemplateWrite'
+              $ref: '#/components/schemas/NotificationTemplateWriteRequest'
         required: true
       security:
       - BearerAuth: []
@@ -731,13 +742,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedNotificationTemplateWrite'
+              $ref: '#/components/schemas/PatchedNotificationTemplateWriteRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedNotificationTemplateWrite'
+              $ref: '#/components/schemas/PatchedNotificationTemplateWriteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedNotificationTemplateWrite'
+              $ref: '#/components/schemas/PatchedNotificationTemplateWriteRequest'
       security:
       - BearerAuth: []
       responses:
@@ -800,13 +811,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmailConfirm'
+              $ref: '#/components/schemas/EmailConfirmRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/EmailConfirm'
+              $ref: '#/components/schemas/EmailConfirmRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/EmailConfirm'
+              $ref: '#/components/schemas/EmailConfirmRequest'
         required: true
       responses:
         '200':
@@ -833,13 +844,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmailResend'
+              $ref: '#/components/schemas/EmailResendRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/EmailResend'
+              $ref: '#/components/schemas/EmailResendRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/EmailResend'
+              $ref: '#/components/schemas/EmailResendRequest'
         required: true
       responses:
         '200':
@@ -867,13 +878,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ForgotPassword'
+              $ref: '#/components/schemas/ForgotPasswordRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ForgotPassword'
+              $ref: '#/components/schemas/ForgotPasswordRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ForgotPassword'
+              $ref: '#/components/schemas/ForgotPasswordRequest'
         required: true
       responses:
         '200':
@@ -893,13 +904,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Login'
+              $ref: '#/components/schemas/LoginRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/Login'
+              $ref: '#/components/schemas/LoginRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Login'
+              $ref: '#/components/schemas/LoginRequest'
         required: true
       responses:
         '200':
@@ -925,13 +936,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Logout'
+              $ref: '#/components/schemas/LogoutRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/Logout'
+              $ref: '#/components/schemas/LogoutRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Logout'
+              $ref: '#/components/schemas/LogoutRequest'
         required: true
       security:
       - BearerAuth: []
@@ -970,13 +981,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedUserLanguageUpdate'
+              $ref: '#/components/schemas/PatchedUserLanguageUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedUserLanguageUpdate'
+              $ref: '#/components/schemas/PatchedUserLanguageUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedUserLanguageUpdate'
+              $ref: '#/components/schemas/PatchedUserLanguageUpdateRequest'
       security:
       - BearerAuth: []
       responses:
@@ -1003,13 +1014,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TokenRefresh'
+              $ref: '#/components/schemas/TokenRefreshRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/TokenRefresh'
+              $ref: '#/components/schemas/TokenRefreshRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/TokenRefresh'
+              $ref: '#/components/schemas/TokenRefreshRequest'
         required: true
       responses:
         '200':
@@ -1037,13 +1048,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Register'
+              $ref: '#/components/schemas/RegisterRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/Register'
+              $ref: '#/components/schemas/RegisterRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Register'
+              $ref: '#/components/schemas/RegisterRequest'
         required: true
       responses:
         '201':
@@ -1075,13 +1086,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ResetPasswordConfirm'
+              $ref: '#/components/schemas/ResetPasswordConfirmRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/ResetPasswordConfirm'
+              $ref: '#/components/schemas/ResetPasswordConfirmRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/ResetPasswordConfirm'
+              $ref: '#/components/schemas/ResetPasswordConfirmRequest'
         required: true
       responses:
         '200':
@@ -1210,7 +1221,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceQuietPeriodWrite'
+              $ref: '#/components/schemas/DeviceQuietPeriodWriteRequest'
             examples:
               One-timeDeviceQuietPeriod:
                 value:
@@ -1236,10 +1247,10 @@ paths:
                 summary: Recurring device quiet period
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/DeviceQuietPeriodWrite'
+              $ref: '#/components/schemas/DeviceQuietPeriodWriteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/DeviceQuietPeriodWrite'
+              $ref: '#/components/schemas/DeviceQuietPeriodWriteRequest'
       security:
       - BearerAuth: []
       responses:
@@ -1315,13 +1326,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWrite'
+              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWriteRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWrite'
+              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWriteRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWrite'
+              $ref: '#/components/schemas/PatchedDeviceQuietPeriodWriteRequest'
       security:
       - BearerAuth: []
       responses:
@@ -1415,13 +1426,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceUpdate'
+              $ref: '#/components/schemas/DeviceUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/DeviceUpdate'
+              $ref: '#/components/schemas/DeviceUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/DeviceUpdate'
+              $ref: '#/components/schemas/DeviceUpdateRequest'
       security:
       - BearerAuth: []
       responses:
@@ -1459,13 +1470,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedDeviceUpdate'
+              $ref: '#/components/schemas/PatchedDeviceUpdateRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedDeviceUpdate'
+              $ref: '#/components/schemas/PatchedDeviceUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedDeviceUpdate'
+              $ref: '#/components/schemas/PatchedDeviceUpdateRequest'
       security:
       - BearerAuth: []
       responses:
@@ -1522,13 +1533,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceIdentify'
+              $ref: '#/components/schemas/DeviceIdentifyRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/DeviceIdentify'
+              $ref: '#/components/schemas/DeviceIdentifyRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/DeviceIdentify'
+              $ref: '#/components/schemas/DeviceIdentifyRequest'
         required: true
       security:
       - BearerAuth: []
@@ -1563,13 +1574,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceLinkWithAppToken'
+              $ref: '#/components/schemas/DeviceLinkWithAppTokenRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/DeviceLinkWithAppToken'
+              $ref: '#/components/schemas/DeviceLinkWithAppTokenRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/DeviceLinkWithAppToken'
+              $ref: '#/components/schemas/DeviceLinkWithAppTokenRequest'
         required: true
       security:
       - BearerAuth: []
@@ -1612,13 +1623,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceUnlinkWithAppToken'
+              $ref: '#/components/schemas/DeviceUnlinkWithAppTokenRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/DeviceUnlinkWithAppToken'
+              $ref: '#/components/schemas/DeviceUnlinkWithAppTokenRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/DeviceUnlinkWithAppToken'
+              $ref: '#/components/schemas/DeviceUnlinkWithAppTokenRequest'
         required: true
       security:
       - BearerAuth: []
@@ -1661,13 +1672,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/DeviceUnlinkByApplication'
+              $ref: '#/components/schemas/DeviceUnlinkByApplicationRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/DeviceUnlinkByApplication'
+              $ref: '#/components/schemas/DeviceUnlinkByApplicationRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/DeviceUnlinkByApplication'
+              $ref: '#/components/schemas/DeviceUnlinkByApplicationRequest'
         required: true
       security:
       - BearerAuth: []
@@ -1826,7 +1837,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NotificationCreate'
+              $ref: '#/components/schemas/NotificationCreateRequest'
             examples:
               ImmediateNotification:
                 value:
@@ -1849,10 +1860,10 @@ paths:
                 summary: Scheduled notification
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/NotificationCreate'
+              $ref: '#/components/schemas/NotificationCreateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/NotificationCreate'
+              $ref: '#/components/schemas/NotificationCreateRequest'
         required: true
       security:
       - BearerAuth: []
@@ -2108,13 +2119,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BulkSendAppTokenRequest'
+              $ref: '#/components/schemas/BulkSendAppTokenRequestRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/BulkSendAppTokenRequest'
+              $ref: '#/components/schemas/BulkSendAppTokenRequestRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/BulkSendAppTokenRequest'
+              $ref: '#/components/schemas/BulkSendAppTokenRequestRequest'
         required: true
       security:
       - AppTokenAuth: []
@@ -2150,7 +2161,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NotificationCreateWithAppToken'
+              $ref: '#/components/schemas/NotificationCreateWithAppTokenRequest'
             examples:
               ScheduledApp-tokenNotification:
                 value:
@@ -2160,10 +2171,10 @@ paths:
                 summary: Scheduled app-token notification
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/NotificationCreateWithAppToken'
+              $ref: '#/components/schemas/NotificationCreateWithAppTokenRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/NotificationCreateWithAppToken'
+              $ref: '#/components/schemas/NotificationCreateWithAppTokenRequest'
       security:
       - AppTokenAuth: []
       responses:
@@ -2259,13 +2270,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BulkSendRequest'
+              $ref: '#/components/schemas/BulkSendRequestRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/BulkSendRequest'
+              $ref: '#/components/schemas/BulkSendRequestRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/BulkSendRequest'
+              $ref: '#/components/schemas/BulkSendRequestRequest'
         required: true
       security:
       - BearerAuth: []
@@ -2491,7 +2502,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedNotificationFutureUpdate'
+              $ref: '#/components/schemas/PatchedNotificationFutureUpdateRequest'
             examples:
               RescheduleFutureNotification:
                 value:
@@ -2500,10 +2511,10 @@ paths:
                 summary: Reschedule future notification
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedNotificationFutureUpdate'
+              $ref: '#/components/schemas/PatchedNotificationFutureUpdateRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedNotificationFutureUpdate'
+              $ref: '#/components/schemas/PatchedNotificationFutureUpdateRequest'
       security:
       - BearerAuth: []
       responses:
@@ -2754,6 +2765,21 @@ components:
       - logo
       - name
       - revoked_at
+    ApplicationCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+        webhook_url:
+          type: string
+          format: uri
+          maxLength: 500
+      required:
+      - name
     ApplicationCreateValidationErrorResponse:
       type: object
       properties:
@@ -2782,13 +2808,13 @@ components:
           type: array
           items:
             type: string
-    ApplicationLogoUpload:
+    ApplicationLogoUploadRequest:
       type: object
       description: Multipart upload of an application logo image.
       properties:
         logo:
           type: string
-          format: uri
+          format: binary
       required:
       - logo
     ApplicationQuietPeriodRead:
@@ -2901,14 +2927,11 @@ components:
           type: array
           items:
             type: string
-    ApplicationQuietPeriodWrite:
+    ApplicationQuietPeriodWriteRequest:
       type: object
       description: Shared validation, normalization, and update logic for quiet period
         serializers.
       properties:
-        id:
-          type: integer
-          readOnly: true
         name:
           type: string
           maxLength: 120
@@ -2938,18 +2961,6 @@ components:
           nullable: true
         is_active:
           type: boolean
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-      - created_at
-      - id
-      - updated_at
     ApplicationRead:
       type: object
       properties:
@@ -2972,8 +2983,7 @@ components:
           readOnly: true
         webhook_url:
           type: string
-          format: uri
-          maxLength: 500
+          readOnly: true
         logo:
           type: string
           format: uri
@@ -3000,6 +3010,7 @@ components:
       - inbound_email_alias
       - logo
       - name
+      - webhook_url
     ApplicationRevokeTokenResponse:
       type: object
       properties:
@@ -3053,7 +3064,7 @@ components:
           type: array
           items:
             type: string
-    BulkSendAppTokenRequest:
+    BulkSendAppTokenRequestRequest:
       type: object
       properties:
         notification_ids:
@@ -3062,7 +3073,7 @@ components:
             type: integer
       required:
       - notification_ids
-    BulkSendRequest:
+    BulkSendRequestRequest:
       type: object
       properties:
         notification_ids:
@@ -3081,7 +3092,7 @@ components:
         * `pending` - Pending
         * `sent` - Sent
         * `failed` - Failed
-    DeviceIdentify:
+    DeviceIdentifyRequest:
       type: object
       properties:
         device_name:
@@ -3093,8 +3104,8 @@ components:
           default: android
         push_token:
           type: string
-          maxLength: 512
           minLength: 20
+          maxLength: 512
       required:
       - push_token
     DeviceIdentifyResponse:
@@ -3147,7 +3158,7 @@ components:
           type: array
           items:
             type: string
-    DeviceLinkWithAppToken:
+    DeviceLinkWithAppTokenRequest:
       type: object
       properties:
         app_token:
@@ -3162,8 +3173,8 @@ components:
           default: android
         push_token:
           type: string
-          maxLength: 512
           minLength: 20
+          maxLength: 512
       required:
       - push_token
     DeviceLinkWithAppTokenResponse:
@@ -3243,6 +3254,7 @@ components:
       - id
       - is_active
       - linked_at
+      - logo
       - name
     DeviceNotification:
       type: object
@@ -3422,14 +3434,11 @@ components:
           type: array
           items:
             type: string
-    DeviceQuietPeriodWrite:
+    DeviceQuietPeriodWriteRequest:
       type: object
       description: Shared validation, normalization, and update logic for quiet period
         serializers.
       properties:
-        id:
-          type: integer
-          readOnly: true
         name:
           type: string
           maxLength: 120
@@ -3459,18 +3468,6 @@ components:
           nullable: true
         is_active:
           type: boolean
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-      - created_at
-      - id
-      - updated_at
     DeviceRead:
       type: object
       properties:
@@ -3501,7 +3498,7 @@ components:
       - application_ids
       - created_at
       - id
-    DeviceUnlinkByApplication:
+    DeviceUnlinkByApplicationRequest:
       type: object
       description: |-
         Unlink a device from an application by id (no app token needed) — for the
@@ -3509,6 +3506,7 @@ components:
       properties:
         push_token:
           type: string
+          minLength: 1
         application_id:
           type: integer
       required:
@@ -3542,16 +3540,17 @@ components:
           type: array
           items:
             type: string
-    DeviceUnlinkWithAppToken:
+    DeviceUnlinkWithAppTokenRequest:
       type: object
       properties:
         app_token:
           type: string
           writeOnly: true
+          minLength: 1
         push_token:
           type: string
-          maxLength: 512
           minLength: 20
+          maxLength: 512
       required:
       - app_token
       - push_token
@@ -3600,7 +3599,7 @@ components:
           type: array
           items:
             type: string
-    DeviceUpdate:
+    DeviceUpdateRequest:
       type: object
       properties:
         device_name:
@@ -3642,7 +3641,7 @@ components:
           type: array
           items:
             type: string
-    EmailConfirm:
+    EmailConfirmRequest:
       type: object
       description: |-
         Body of POST /auth/email/confirm/. `uid` + `token` come from the emailed
@@ -3650,8 +3649,10 @@ components:
       properties:
         uid:
           type: string
+          minLength: 1
         token:
           type: string
+          minLength: 1
       required:
       - token
       - uid
@@ -3683,7 +3684,7 @@ components:
           type: array
           items:
             type: string
-    EmailResend:
+    EmailResendRequest:
       type: object
       description: 'Body of POST /auth/email/resend/. Anti-leak: the view always returns
         200.'
@@ -3691,6 +3692,7 @@ components:
         email:
           type: string
           format: email
+          minLength: 1
       required:
       - email
     EmailResendValidationErrorResponse:
@@ -3727,7 +3729,7 @@ components:
       required:
       - code
       - detail
-    ForgotPassword:
+    ForgotPasswordRequest:
       type: object
       description: |-
         Body of POST /auth/forgot-password/. Anti-leak: the view always returns
@@ -3736,6 +3738,7 @@ components:
         email:
           type: string
           format: email
+          minLength: 1
         turnstile_token:
           type: string
           writeOnly: true
@@ -3804,15 +3807,17 @@ components:
           type: array
           items:
             type: string
-    Login:
+    LoginRequest:
       type: object
       properties:
         email:
           type: string
           format: email
+          minLength: 1
         password:
           type: string
           writeOnly: true
+          minLength: 1
       required:
       - email
       - password
@@ -3857,12 +3862,13 @@ components:
           type: array
           items:
             type: string
-    Logout:
+    LogoutRequest:
       type: object
       properties:
         refresh:
           type: string
           writeOnly: true
+          minLength: 1
           description: Refresh token to invalidate
       required:
       - refresh
@@ -3890,12 +3896,9 @@ components:
           type: array
           items:
             type: string
-    NotificationCreate:
+    NotificationCreateRequest:
       type: object
       properties:
-        id:
-          type: integer
-          readOnly: true
         application_id:
           type: integer
           writeOnly: true
@@ -3907,9 +3910,11 @@ components:
           writeOnly: true
         title:
           type: string
+          minLength: 1
           maxLength: 255
         message:
           type: string
+          minLength: 1
         template_id:
           type: integer
           writeOnly: true
@@ -3917,31 +3922,15 @@ components:
           type: object
           additionalProperties:
             type: string
+            minLength: 1
           writeOnly: true
-        status:
-          allOf:
-          - $ref: '#/components/schemas/Status537Enum'
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
         scheduled_for:
           type: string
           format: date-time
           nullable: true
-        sent_at:
-          type: string
-          format: date-time
-          readOnly: true
-          nullable: true
       required:
       - application_id
-      - created_at
       - device_ids
-      - id
-      - sent_at
-      - status
     NotificationCreateValidationErrorResponse:
       type: object
       properties:
@@ -3982,17 +3971,16 @@ components:
           type: array
           items:
             type: string
-    NotificationCreateWithAppToken:
+    NotificationCreateWithAppTokenRequest:
       type: object
       properties:
-        id:
-          type: integer
-          readOnly: true
         title:
           type: string
+          minLength: 1
           maxLength: 255
         message:
           type: string
+          minLength: 1
         template_id:
           type: integer
           writeOnly: true
@@ -4000,29 +3988,12 @@ components:
           type: object
           additionalProperties:
             type: string
+            minLength: 1
           writeOnly: true
-        status:
-          allOf:
-          - $ref: '#/components/schemas/Status537Enum'
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
         scheduled_for:
           type: string
           format: date-time
           nullable: true
-        sent_at:
-          type: string
-          format: date-time
-          readOnly: true
-          nullable: true
-      required:
-      - created_at
-      - id
-      - sent_at
-      - status
     NotificationCreateWithAppTokenValidationErrorResponse:
       type: object
       properties:
@@ -4404,38 +4375,50 @@ components:
           type: array
           items:
             type: string
-    NotificationTemplateWrite:
+    NotificationTemplateWriteRequest:
       type: object
       properties:
-        id:
-          type: integer
-          readOnly: true
         name:
           type: string
+          minLength: 1
           maxLength: 120
         title_template:
           type: string
+          minLength: 1
           maxLength: 255
         message_template:
           type: string
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
+          minLength: 1
       required:
-      - created_at
-      - id
       - message_template
       - name
       - title_template
-      - updated_at
     NullEnum:
       enum:
       - null
+    PaginatedApplicationReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationRead'
     PaginatedDeviceNotificationList:
       type: object
       required:
@@ -4528,14 +4511,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotificationTemplateRead'
-    PatchedApplicationQuietPeriodWrite:
+    PatchedApplicationQuietPeriodWriteRequest:
       type: object
       description: Shared validation, normalization, and update logic for quiet period
         serializers.
       properties:
-        id:
-          type: integer
-          readOnly: true
         name:
           type: string
           maxLength: 120
@@ -4565,19 +4545,12 @@ components:
           nullable: true
         is_active:
           type: boolean
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-    PatchedApplicationUpdate:
+    PatchedApplicationUpdateRequest:
       type: object
       properties:
         name:
           type: string
+          minLength: 1
           maxLength: 120
         description:
           type: string
@@ -4585,14 +4558,11 @@ components:
           type: string
           format: uri
           maxLength: 500
-    PatchedDeviceQuietPeriodWrite:
+    PatchedDeviceQuietPeriodWriteRequest:
       type: object
       description: Shared validation, normalization, and update logic for quiet period
         serializers.
       properties:
-        id:
-          type: integer
-          readOnly: true
         name:
           type: string
           maxLength: 120
@@ -4622,15 +4592,7 @@ components:
           nullable: true
         is_active:
           type: boolean
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-    PatchedDeviceUpdate:
+    PatchedDeviceUpdateRequest:
       type: object
       properties:
         device_name:
@@ -4640,57 +4602,35 @@ components:
           $ref: '#/components/schemas/DevicePlatformEnum'
         push_token_status:
           $ref: '#/components/schemas/PushTokenStatusEnum'
-    PatchedNotificationFutureUpdate:
+    PatchedNotificationFutureUpdateRequest:
       type: object
       properties:
-        id:
-          type: integer
-          readOnly: true
         title:
           type: string
+          minLength: 1
           maxLength: 255
         message:
           type: string
+          minLength: 1
         scheduled_for:
           type: string
           format: date-time
           nullable: true
-        status:
-          allOf:
-          - $ref: '#/components/schemas/Status537Enum'
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        sent_at:
-          type: string
-          format: date-time
-          readOnly: true
-          nullable: true
-    PatchedNotificationTemplateWrite:
+    PatchedNotificationTemplateWriteRequest:
       type: object
       properties:
-        id:
-          type: integer
-          readOnly: true
         name:
           type: string
+          minLength: 1
           maxLength: 120
         title_template:
           type: string
+          minLength: 1
           maxLength: 255
         message_template:
           type: string
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-    PatchedUserLanguageUpdate:
+          minLength: 1
+    PatchedUserLanguageUpdateRequest:
       type: object
       properties:
         language:
@@ -4713,12 +4653,13 @@ components:
         * `active` - Active
         * `invalid` - Invalid
         * `revoked` - Revoked
-    Register:
+    RegisterRequest:
       type: object
       properties:
         email:
           type: string
           format: email
+          minLength: 1
           maxLength: 254
         password:
           type: string
@@ -4758,7 +4699,7 @@ components:
           type: array
           items:
             type: string
-    ResetPasswordConfirm:
+    ResetPasswordConfirmRequest:
       type: object
       description: |-
         Body of POST /auth/reset-password/. `uid` + `token` come from the emailed
@@ -4767,8 +4708,10 @@ components:
       properties:
         uid:
           type: string
+          minLength: 1
         token:
           type: string
+          minLength: 1
         password:
           type: string
           writeOnly: true
@@ -4807,16 +4750,13 @@ components:
         * `pending` - Pending
         * `sent` - Sent
         * `failed` - Failed
-    TokenRefresh:
+    TokenRefreshRequest:
       type: object
       properties:
-        access:
-          type: string
-          readOnly: true
         refresh:
           type: string
+          minLength: 1
       required:
-      - access
       - refresh
     TokenRefreshResponse:
       type: object

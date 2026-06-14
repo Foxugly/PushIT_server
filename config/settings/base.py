@@ -269,6 +269,10 @@ SPECTACULAR_SETTINGS = {
         "DevicePlatformEnum": "devices.models.DevicePlatform",
     },
     "SERVE_INCLUDE_SCHEMA": False,
+    # Generate separate request/response components so read-only fields aren't
+    # listed as `required` on the *Request (create/write) schemas — those fields
+    # can never be supplied by a client.
+    "COMPONENT_SPLIT_REQUEST": True,
     "COMPONENTS": {
         "securitySchemes": {
             "BearerAuth": {

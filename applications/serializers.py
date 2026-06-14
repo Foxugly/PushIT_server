@@ -52,6 +52,9 @@ ApplicationQuietPeriodValidationErrorResponseSerializer = build_validation_error
 class ApplicationReadSerializer(serializers.ModelSerializer):
     inbound_email_address = serializers.CharField(read_only=True)
     logo = serializers.ImageField(read_only=True, use_url=True)
+    # Always serialized (empty string when unset, never null) — declare it
+    # read-only so the schema marks it required + non-nullable, matching reality.
+    webhook_url = serializers.CharField(read_only=True, allow_blank=True)
 
     class Meta:
         model = Application

@@ -627,7 +627,18 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
 
 
 def _try_queue_notification(notification, owner_filter=None):
-    """Attempt to queue a single notification. Returns (success, result_dict)."""
+    """Attempt to queue a single notification. Returns (success, result_dict).
+
+    Concurrency: the in-memory status check below is advisory; correctness rests
+    on the *conditional* UPDATE (`filter(status=previous_status).update(QUEUED)`),
+    which is atomic at the DB level. Two concurrent callers that both pass the
+    in-memory check race on that UPDATE — exactly one affects a row (and queues),
+    the other gets `queued == 0` and a 409. The Celery dispatch happens only
+    after that UPDATE has committed (autocommit), so the worker never sees an
+    uncommitted QUEUED status. Holding select_for_update across the whole block
+    would only save wasted work, not fix a correctness bug — and would conflict
+    with returning the task id synchronously, so it's intentionally not done.
+    """
     if (
         notification.status == NotificationStatus.SCHEDULED
         and notification.scheduled_for is not None

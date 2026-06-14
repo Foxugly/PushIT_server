@@ -9,6 +9,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.pagination import OptionalPageNumberPagination
 from .models import Application
 from .serializers import (
     ApplicationActivationResponseSerializer,
@@ -60,10 +61,10 @@ def _raise_quiet_period_not_found():
 )
 class ApplicationListCreateApiView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    # The web SPA reads this list as a bare array (owner-scoped, no pagination
-    # UI); the global PageNumberPagination would wrap it in {count,results} and
-    # break the client. ListAPIView returns a plain array when pagination is off.
-    pagination_class = None
+    # Bare array by default (owner-scoped; the SPA reads a plain array and the
+    # nav needs the full set), paginated only when the caller opts in via
+    # ?page / ?page_size — consistent with the other list endpoints.
+    pagination_class = OptionalPageNumberPagination
 
     def get_queryset(self):
         return Application.objects.filter(owner=self.request.user).order_by("-id")
