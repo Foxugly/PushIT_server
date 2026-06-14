@@ -279,9 +279,13 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
 
         queryset = self.get_queryset()
         application_id = notification_filter.get("application_id")
+        device_id = notification_filter.get("device_id")
         status_filter = notification_filter.get("status")
         if application_id is not None:
             queryset = queryset.filter(application_id=application_id)
+        if device_id is not None:
+            # Notifications delivered to a specific device (owner-scoped queryset).
+            queryset = queryset.filter(deliveries__device_id=device_id).distinct()
         if status_filter is not None:
             queryset = queryset.filter(status=status_filter)
 

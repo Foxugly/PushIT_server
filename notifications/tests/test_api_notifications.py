@@ -133,3 +133,23 @@ def test_notifications_list_is_bare_array_by_default_and_paginates_on_demand():
     assert paged.data["count"] == 3
     assert len(paged.data["results"]) == 2
     assert paged.data["next"] is not None
+
+
+@pytest.mark.django_db
+def test_notifications_list_filters_by_device_id():
+    from notifications.models import DeliveryStatus, Notification, NotificationStatus
+
+    user = User.objects.create_user(email="devfilter@example.com", password="MotDePasseTresSolide123!")
+    app = Application.objects.create(owner=user, name="DevFilter App")
+    device1 = _create_linked_device(app, "token_devfilter_1111111111111111111")
+    device2 = _create_linked_device(app, "token_devfilter_2222222222222222222")
+    n1 = Notification.objects.create(application=app, title="to-d1", message="m", status=NotificationStatus.SENT)
+    n2 = Notification.objects.create(application=app, title="to-d2", message="m", status=NotificationStatus.SENT)
+    NotificationDelivery.objects.create(notification=n1, device=device1, status=DeliveryStatus.SENT)
+    NotificationDelivery.objects.create(notification=n2, device=device2, status=DeliveryStatus.SENT)
+
+    client = _auth_client_for(user)
+    resp = client.get("/api/v1/notifications/", {"device_id": device1.id})
+
+    assert resp.status_code == 200
+    assert [n["title"] for n in resp.data] == ["to-d1"]

@@ -89,6 +89,7 @@ NotificationListFilterValidationErrorResponseSerializer = build_validation_error
 
 class NotificationListFilterSerializer(NotificationFutureFilterSerializer):
     application_id = serializers.IntegerField(required=False)
+    device_id = serializers.IntegerField(required=False)
     status = serializers.ChoiceField(
         required=False,
         choices=[choice for choice, _ in NotificationStatus.choices],
