@@ -30,4 +30,21 @@ Le travail coché est commité/poussé sur `Foxugly/PushIT_server` (`main`, CI v
 - [ ] **P3 — `deploy/nginx/pushit-api.conf` vs live** : le déploiement n'applique pas la conf nginx
   (root hors-bande). Envisager d'intégrer l'install de la conf au pipeline pour stopper le drift.
 
-> Les constats de l'audit multi-agents (2026-06-14) seront ajoutés ici après vérification.
+## Audit multi-agents (2026-06-14) — constats confirmés
+
+- [ ] **P2 — Exactitude du schéma OpenAPI (lot)** : `drf-spectacular` marque des champs `readOnly`
+  comme `required` dans les schémas *Create (requête) — `last_used_at` (ApplicationCreate),
+  `sent_at` (NotificationCreate), `id`/`created_at`/`updated_at` (DeviceQuietPeriodWrite,
+  ApplicationQuietPeriodWrite) — et `effective_scheduled_for` est `required` **et** `nullable` sur
+  NotificationRead. Contradiction OpenAPI (les clients tolèrent aujourd'hui). *Fix probable unique :*
+  activer `COMPONENT_SPLIT_REQUEST` (schémas requête/réponse séparés) puis régénérer `schema.yaml`.
+  *(l'audit les notait P1 ; requalifiés P2 — cosmétique, pas de bug runtime).*
+- [ ] **P2 — `DeviceLinkedApplication` contrat** : `logo` absent du `required` du schéma ; `description`
+  non-null côté serializer (`CharField()` sans `allow_null`) alors que le modèle peut être vide et que
+  les clients (Angular/Kotlin) l'attendent nullable. Durcir le serializer (`allow_null=True`) + régénérer.
+- [ ] **P2 — `ApplicationRead.webhook_url`** : présent non-nullable mais absent du `required` → ambigu.
+  Clarifier (nullable ou requis).
+- [ ] **P2 — Race sur le statut de notification** : `_try_queue_notification()`
+  (`notifications/api_views.py:625-693`) check-then-update sans `select_for_update()` quand appelé hors
+  transaction (et bulk-send sans lock). Envelopper dans `transaction.atomic()` + `select_for_update()`
+  systématiquement (cf. `_fetch_notification` qui a déjà le pattern), ou verrou optimiste (champ version).
