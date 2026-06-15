@@ -27,6 +27,30 @@ def test_application_has_generated_app_token():
     assert app.inbound_email_address == f"{app.inbound_email_alias}@{settings.INBOUND_EMAIL_DOMAIN}"
 
 @pytest.mark.django_db
+def test_inbound_alias_suffix_is_unique_across_apps():
+    from unittest.mock import patch
+
+    user = User.objects.create_user(email="sfx@example.com", password="secret123")
+    # First app's suffix is forced to "deadbeef".
+    app1 = Application.objects.create(owner=user, name="A")
+    Application.objects.filter(id=app1.id).update(inbound_email_alias="app_a_deadbeef")
+
+    # Second app: generation first proposes the SAME suffix (collision), then a
+    # fresh one — the save loop must skip the duplicate and keep the unique one.
+    with patch.object(
+        Application,
+        "generate_inbound_email_alias",
+        side_effect=["app_b_deadbeef", "app_b_cafe1234"],
+    ):
+        app2 = Application.objects.create(owner=user, name="B")
+
+    assert app2.inbound_email_alias == "app_b_cafe1234"
+    s1 = "app_a_deadbeef".rsplit("_", 1)[-1]
+    s2 = app2.inbound_email_alias.rsplit("_", 1)[-1]
+    assert s1 != s2, "suffixes must be globally unique"
+
+
+@pytest.mark.django_db
 def test_app_token_is_unique():
     user = User.objects.create_user(email="u1@example.com", password="1234")
 

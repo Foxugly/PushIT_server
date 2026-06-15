@@ -32,7 +32,7 @@ class Command(BaseCommand):
         for app in legacy:
             old = app.inbound_email_alias
             new = app.generate_inbound_email_alias(app.name)
-            while Application.objects.filter(inbound_email_alias=new).exists():
+            while Application._suffix_taken(new):
                 new = app.generate_inbound_email_alias(app.name)
             self.stdout.write(f"app {app.id} '{app.name}': {old} -> {new}")
             if dry:

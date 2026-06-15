@@ -63,6 +63,15 @@ class Application(models.Model):
         base = base[: 120 - 1 - len(suffix)].strip("_") or Application.ALIAS_PREFIX.rstrip("_")
         return f"{base}_{suffix}"
 
+    @classmethod
+    def _suffix_taken(cls, alias: str) -> bool:
+        """True when another application already uses this alias's random suffix.
+        Enforcing suffix-uniqueness (not just full-alias) means the suffix alone
+        never repeats across apps; the fixed-length 8-hex suffix is always the
+        final `_`-segment, so the endswith match is exact."""
+        suffix = alias.rsplit("_", 1)[-1]
+        return cls.objects.filter(inbound_email_alias__endswith=f"_{suffix}").exists()
+
     def check_app_token(self, raw_token: str) -> bool:
         return self.app_token_hash == self.hash_app_token(raw_token)
 
@@ -89,10 +98,10 @@ class Application(models.Model):
             self.set_new_app_token()
         is_new_alias = not self.inbound_email_alias
         if is_new_alias:
-            # The random suffix makes a collision astronomically unlikely; if one
-            # ever happens, just regenerate (new random suffix) until unique.
+            # Regenerate until the random SUFFIX is unique across all apps (which
+            # also makes the full alias unique). Collisions are astronomically rare.
             candidate = self.generate_inbound_email_alias(self.name)
-            while type(self).objects.filter(inbound_email_alias=candidate).exists():
+            while type(self)._suffix_taken(candidate):
                 candidate = self.generate_inbound_email_alias(self.name)
             self.inbound_email_alias = candidate
         super().save(*args, **kwargs)
