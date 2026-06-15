@@ -46,14 +46,22 @@ class Application(models.Model):
     def generate_raw_app_token() -> str:
         return f"apt_{secrets.token_hex(24)}"
 
+    # Inbound-alias format: "app_<name-slug>_<random>", e.g. app_my_resto_3f9a2c.
+    # The random suffix makes the address unique AND non-guessable (so the inbound
+    # endpoint can't be spammed by guessing app_<name>@domain). Underscore-separated
+    # to match the app_/apt_ token convention.
+    ALIAS_PREFIX = "app_"
+    ALIAS_SUFFIX_BYTES = 3  # -> 6 hex chars
+
     @staticmethod
     def generate_inbound_email_alias(name: str) -> str:
-        slug = slugify(name)
-        # Remove leading/trailing hyphens and collapse multiples
-        slug = re.sub(r'-+', '-', slug).strip('-')
-        if not slug:
-            slug = f"app-{secrets.token_hex(4)}"
-        return slug[:120]
+        slug = slugify(name).replace("-", "_")
+        slug = re.sub(r"_+", "_", slug).strip("_")
+        suffix = secrets.token_hex(Application.ALIAS_SUFFIX_BYTES)
+        base = f"{Application.ALIAS_PREFIX}{slug}" if slug else Application.ALIAS_PREFIX.rstrip("_")
+        # Keep the whole alias within the field's 120 chars (base + "_" + suffix).
+        base = base[: 120 - 1 - len(suffix)].strip("_") or Application.ALIAS_PREFIX.rstrip("_")
+        return f"{base}_{suffix}"
 
     def check_app_token(self, raw_token: str) -> bool:
         return self.app_token_hash == self.hash_app_token(raw_token)
@@ -81,13 +89,11 @@ class Application(models.Model):
             self.set_new_app_token()
         is_new_alias = not self.inbound_email_alias
         if is_new_alias:
-            base = self.generate_inbound_email_alias(self.name)
-            candidate = base
-            counter = 1
+            # The random suffix makes a collision astronomically unlikely; if one
+            # ever happens, just regenerate (new random suffix) until unique.
+            candidate = self.generate_inbound_email_alias(self.name)
             while type(self).objects.filter(inbound_email_alias=candidate).exists():
-                suffix = f"-{counter}"
-                candidate = f"{base[:120 - len(suffix)]}{suffix}"
-                counter += 1
+                candidate = self.generate_inbound_email_alias(self.name)
             self.inbound_email_alias = candidate
         super().save(*args, **kwargs)
         if is_new_alias:

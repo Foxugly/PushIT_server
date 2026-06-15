@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 from django.test import TestCase
 import pytest
@@ -19,9 +21,10 @@ def test_application_has_generated_app_token():
     assert app.app_token_prefix.startswith("apt_")
     assert len(app.app_token_prefix) > 4
     assert len(app.app_token_hash) == 64
-    assert app.inbound_email_alias == "mon-app"
+    # Format: app_<name-slug>_<6 hex>, e.g. app_mon_app_3f9a2c.
+    assert re.fullmatch(r"app_mon_app_[0-9a-f]{6}", app.inbound_email_alias), app.inbound_email_alias
     # Domain is env-configured (SSM in prod), so assert against the setting, not a literal.
-    assert app.inbound_email_address == f"mon-app@{settings.INBOUND_EMAIL_DOMAIN}"
+    assert app.inbound_email_address == f"{app.inbound_email_alias}@{settings.INBOUND_EMAIL_DOMAIN}"
 
 @pytest.mark.django_db
 def test_app_token_is_unique():
