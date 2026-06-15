@@ -202,6 +202,109 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
         )
 
 
+class NotificationSendWithAppTokenApiView(generics.GenericAPIView):
+    """Create AND dispatch a notification in one call, via app token — the
+    one-shot alternative to /app/create/ then /app/bulk-send/."""
+
+    authentication_classes = [AppTokenAuthentication]
+    permission_classes = [HasAppToken]
+    throttle_classes = [AppTokenRateThrottle]
+    serializer_class = NotificationCreateWithAppTokenSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["application"] = self.request.auth_application
+        return context
+
+    @extend_schema(
+        summary="Create and send a notification immediately via app token",
+        description=(
+            "Creates a notification for the application authenticated via `X-App-Token` "
+            "and dispatches it right away to the application's linked devices. One-call "
+            "alternative to /app/create/ followed by /app/bulk-send/. The "
+            "`Idempotency-Key` header is required; replaying it returns the existing "
+            "notification (200) without re-sending. To schedule, use /app/create/ "
+            "with `scheduled_for` instead (this endpoint rejects it)."
+        ),
+        tags=["Notifications"],
+        auth=[{"AppTokenAuth": []}],
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Required idempotency key to deduplicate sends on the application side.",
+            )
+        ],
+        request=NotificationCreateWithAppTokenSerializer,
+        responses={
+            201: OpenApiResponse(response=NotificationReadSerializer, description="Notification created and queued"),
+            200: OpenApiResponse(response=NotificationReadSerializer, description="Existing notification returned via idempotency"),
+            400: OpenApiResponse(
+                response=NotificationCreateWithAppTokenValidationErrorResponseSerializer,
+                description="Invalid data (or scheduled_for supplied — schedule via /app/create/)",
+            ),
+            401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
+            409: OpenApiResponse(response=DetailResponseSerializer, description="Idempotency key reused with a different payload"),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        from .api_views import _try_queue_notification
+
+        write_serializer = self.get_serializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        validated_data = write_serializer.validated_data
+        if validated_data.get("scheduled_for") is not None:
+            return error_response(
+                code="validation_error",
+                detail="This endpoint sends immediately; use /notifications/app/create/ with scheduled_for to schedule.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        idempotency_key = request.headers.get("Idempotency-Key", "").strip()
+        if not idempotency_key:
+            return error_response(
+                code="idempotency_key_missing",
+                detail="Missing Idempotency-Key header.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        application = request.auth_application
+        request_fingerprint = compute_request_fingerprint(validated_data)
+        outcome = create_notification_with_optional_idempotency(
+            application=application,
+            title=validated_data["title"],
+            message=validated_data["message"],
+            scheduled_for=None,
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+        )
+
+        if outcome.conflict:
+            return Response(
+                {
+                    "code": "idempotency_conflict",
+                    "detail": "This idempotency key has already been used with a different payload.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Dispatch only a freshly-created notification; a replayed idempotency key
+        # returns the existing one without re-sending.
+        if outcome.created:
+            _try_queue_notification(
+                outcome.notification,
+                owner_filter={"application": application} if not settings.DB_SUPPORTS_ROW_LOCKING else None,
+            )
+
+        read_serializer = NotificationReadSerializer(outcome.notification, context=self.get_serializer_context())
+        return Response(
+            read_serializer.data,
+            status=status.HTTP_201_CREATED if outcome.created else status.HTTP_200_OK,
+        )
+
+
 @extend_schema_view(
     get=extend_schema(
         summary="List notifications via app token",

@@ -1908,7 +1908,7 @@ paths:
           description: Invalid data
   /api/v1/notifications/{notification_id}/send/:
     post:
-      operationId: api_v1_notifications_send_create
+      operationId: api_v1_notifications_send_create_2
       description: Schedules asynchronous sending of a notification via Celery. Future
         notifications (`scheduled`) cannot be manually sent until `scheduled_for`
         is reached.
@@ -2308,6 +2308,70 @@ paths:
                       payload.
                   summary: Idempotency conflict
           description: Idempotency key already used with a different payload
+  /api/v1/notifications/app/send/:
+    post:
+      operationId: api_v1_notifications_app_send_create
+      description: Creates a notification for the application authenticated via `X-App-Token`
+        and dispatches it right away to the application's linked devices. One-call
+        alternative to /app/create/ followed by /app/bulk-send/. The `Idempotency-Key`
+        header is required; replaying it returns the existing notification (200) without
+        re-sending. To schedule, use /app/create/ with `scheduled_for` instead (this
+        endpoint rejects it).
+      summary: Create and send a notification immediately via app token
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: Required idempotency key to deduplicate sends on the application
+          side.
+        required: true
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateWithAppTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateWithAppTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateWithAppTokenRequest'
+      security:
+      - AppTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: Notification created and queued
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: Existing notification returned via idempotency
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationCreateWithAppTokenValidationErrorResponse'
+          description: Invalid data (or scheduled_for supplied — schedule via /app/create/)
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Invalid or missing app token
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Idempotency key reused with a different payload
   /api/v1/notifications/bulk-send/:
     post:
       operationId: api_v1_notifications_bulk_send_create
@@ -2618,6 +2682,51 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Future notification not found
+  /api/v1/notifications/send/:
+    post:
+      operationId: api_v1_notifications_send_create
+      description: Creates a notification for an application owned by the authenticated
+        user and an explicit list of target devices, then dispatches it right away.
+        One-call alternative to POST /notifications/ followed by POST /notifications/{id}/send/.
+        To schedule for later, use POST /notifications/ with `scheduled_for` instead
+        (this endpoint rejects it).
+      summary: Create and send a notification immediately
+      tags:
+      - Notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationCreateRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRead'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationCreateValidationErrorResponse'
+          description: Invalid data (or scheduled_for supplied — schedule via POST
+            /notifications/)
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Send queue unavailable
   /api/v1/notifications/stats/:
     get:
       operationId: api_v1_notifications_stats_list

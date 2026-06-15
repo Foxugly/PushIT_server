@@ -769,6 +769,61 @@ class NotificationSendApiView(APIView):
         return Response(result, status=status.HTTP_409_CONFLICT if result["code"] != "notification_queue_unavailable" else status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
+class NotificationSendNowApiView(APIView):
+    """Create a notification AND dispatch it immediately, in one call — the
+    one-shot alternative to POST /notifications/ then POST /{id}/send/. To send
+    later, use POST /notifications/ with `scheduled_for` (the scheduler dispatches)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Create and send a notification immediately",
+        description=(
+            "Creates a notification for an application owned by the authenticated "
+            "user and an explicit list of target devices, then dispatches it right "
+            "away. One-call alternative to POST /notifications/ followed by "
+            "POST /notifications/{id}/send/. To schedule for later, use "
+            "POST /notifications/ with `scheduled_for` instead (this endpoint rejects it)."
+        ),
+        tags=["Notifications"],
+        auth=[{"BearerAuth": []}],
+        request=NotificationCreateSerializer,
+        responses={
+            202: NotificationReadSerializer,
+            400: OpenApiResponse(
+                response=NotificationCreateValidationErrorResponseSerializer,
+                description="Invalid data (or scheduled_for supplied — schedule via POST /notifications/)",
+            ),
+            503: OpenApiResponse(response=DetailResponseSerializer, description="Send queue unavailable"),
+        },
+    )
+    def post(self, request):
+        serializer = NotificationCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        if serializer.validated_data.get("scheduled_for") is not None:
+            return error_response(
+                code="validation_error",
+                detail="This endpoint sends immediately; use POST /notifications/ with scheduled_for to schedule.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        instance = serializer.save()
+        success, result = _try_queue_notification(
+            instance,
+            owner_filter={"application__owner": request.user} if not settings.DB_SUPPORTS_ROW_LOCKING else None,
+        )
+        if not success:
+            http_status = (
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if result["code"] == "notification_queue_unavailable"
+                else status.HTTP_409_CONFLICT
+            )
+            return Response(result, status=http_status)
+
+        read = NotificationReadSerializer(instance, context={"request": request})
+        return Response(read.data, status=status.HTTP_202_ACCEPTED)
+
+
 class NotificationBulkSendApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

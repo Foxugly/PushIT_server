@@ -7,6 +7,7 @@ from .api_views import (
     NotificationFutureListApiView,
     NotificationOpenedReceiptApiView,
     NotificationSendApiView,
+    NotificationSendNowApiView,
     NotificationStatsApiView,
     NotificationsForDeviceApiView,
 )
@@ -14,10 +15,12 @@ from .api_views_app_token import (
     NotificationBulkSendWithAppTokenApiView,
     NotificationCreateWithAppTokenApiView,
     NotificationListWithAppTokenApiView,
+    NotificationSendWithAppTokenApiView,
 )
 
 urlpatterns = [
     path("", NotificationListCreateApiView.as_view(), name="notification-list-create"),
+    path("send/", NotificationSendNowApiView.as_view(), name="notification-send-now"),
     path("future/", NotificationFutureListApiView.as_view(), name="notification-future-list"),
     path("device/", NotificationsForDeviceApiView.as_view(), name="notification-list-device"),
     path("future/<int:pk>/", NotificationFutureDetailApiView.as_view(), name="notification-future-detail"),
@@ -28,5 +31,6 @@ urlpatterns = [
     path("app/", NotificationListWithAppTokenApiView.as_view(), name="notification-list-app-token"),
     path("stats/", NotificationStatsApiView.as_view(), name="notification-stats"),
     path("app/create/", NotificationCreateWithAppTokenApiView.as_view(), name="notification-create-app-token"),
+    path("app/send/", NotificationSendWithAppTokenApiView.as_view(), name="notification-send-app-token"),
     path("app/bulk-send/", NotificationBulkSendWithAppTokenApiView.as_view(), name="notification-bulk-send-app-token"),
 ]
