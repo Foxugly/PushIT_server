@@ -31,12 +31,15 @@ def test_inbound_alias_suffix_is_unique_across_apps():
     from unittest.mock import patch
 
     user = User.objects.create_user(email="sfx@example.com", password="secret123")
-    # First app's suffix is forced to "deadbeef".
+    # First app's suffix is forced to "deadbeef" (stored, DB-unique).
     app1 = Application.objects.create(owner=user, name="A")
-    Application.objects.filter(id=app1.id).update(inbound_email_alias="app_a_deadbeef")
+    Application.objects.filter(id=app1.id).update(
+        inbound_email_alias="app_a_deadbeef", inbound_email_suffix="deadbeef"
+    )
 
-    # Second app: generation first proposes the SAME suffix (collision), then a
-    # fresh one — the save loop must skip the duplicate and keep the unique one.
+    # Second app: generation first proposes the SAME suffix (collision → the DB
+    # UNIQUE constraint raises IntegrityError), then a fresh one — save() must
+    # retry and keep the unique one.
     with patch.object(
         Application,
         "generate_inbound_email_alias",

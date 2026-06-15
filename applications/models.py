@@ -3,7 +3,7 @@ import re
 import secrets
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -20,6 +20,9 @@ class Application(models.Model):
     app_token_prefix = models.CharField(max_length=24, db_index=True)
     app_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
     inbound_email_alias = models.CharField(max_length=120, unique=True, db_index=True)
+    # The random suffix of the alias, stored + DB-unique so it's race-proof and
+    # queryable (the alias is "app_<slug>_<suffix>"). Populated on save().
+    inbound_email_suffix = models.CharField(max_length=32, unique=True)
     webhook_url = models.URLField(max_length=500, blank=True)
 
     is_active = models.BooleanField(default=True)
@@ -63,14 +66,10 @@ class Application(models.Model):
         base = base[: 120 - 1 - len(suffix)].strip("_") or Application.ALIAS_PREFIX.rstrip("_")
         return f"{base}_{suffix}"
 
-    @classmethod
-    def _suffix_taken(cls, alias: str) -> bool:
-        """True when another application already uses this alias's random suffix.
-        Enforcing suffix-uniqueness (not just full-alias) means the suffix alone
-        never repeats across apps; the fixed-length 8-hex suffix is always the
-        final `_`-segment, so the endswith match is exact."""
-        suffix = alias.rsplit("_", 1)[-1]
-        return cls.objects.filter(inbound_email_alias__endswith=f"_{suffix}").exists()
+    @staticmethod
+    def _suffix_of(alias: str) -> str:
+        """The random suffix is always the final `_`-segment of the alias."""
+        return alias.rsplit("_", 1)[-1]
 
     def check_app_token(self, raw_token: str) -> bool:
         return self.app_token_hash == self.hash_app_token(raw_token)
@@ -96,17 +95,33 @@ class Application(models.Model):
     def save(self, *args, **kwargs):
         if not self.app_token_hash:
             self.set_new_app_token()
-        is_new_alias = not self.inbound_email_alias
-        if is_new_alias:
-            # Regenerate until the random SUFFIX is unique across all apps (which
-            # also makes the full alias unique). Collisions are astronomically rare.
-            candidate = self.generate_inbound_email_alias(self.name)
-            while type(self)._suffix_taken(candidate):
-                candidate = self.generate_inbound_email_alias(self.name)
-            self.inbound_email_alias = candidate
-        super().save(*args, **kwargs)
-        if is_new_alias:
+
+        if self.inbound_email_alias:
+            # Alias already assigned (update path): keep the stored suffix in sync.
+            if not self.inbound_email_suffix:
+                self.inbound_email_suffix = self._suffix_of(self.inbound_email_alias)
+            super().save(*args, **kwargs)
+            return
+
+        # New alias: allocate a unique one. The DB UNIQUE constraint on the suffix
+        # is the source of truth (race-proof); on the astronomically rare collision
+        # we just regenerate and retry — no app-level pre-check needed.
+        last_error: IntegrityError | None = None
+        for _ in range(12):
+            alias = self.generate_inbound_email_alias(self.name)
+            self.inbound_email_alias = alias
+            self.inbound_email_suffix = self._suffix_of(alias)
+            try:
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+            except IntegrityError as exc:
+                last_error = exc
+                self.inbound_email_alias = ""
+                self.inbound_email_suffix = ""
+                continue
             self._provision_exchange_alias()
+            return
+        raise last_error
 
     def delete(self, *args, **kwargs):
         alias = self.inbound_email_alias

@@ -30,19 +30,22 @@ class Command(BaseCommand):
             return
 
         for app in legacy:
-            old = app.inbound_email_alias
-            new = app.generate_inbound_email_alias(app.name)
-            while Application._suffix_taken(new):
-                new = app.generate_inbound_email_alias(app.name)
-            self.stdout.write(f"app {app.id} '{app.name}': {old} -> {new}")
+            old_local = app.inbound_email_alias
+            old_email = app.inbound_email_address
             if dry:
+                sample = app.generate_inbound_email_alias(app.name)
+                self.stdout.write(
+                    f"app {app.id} '{app.name}': {old_local} -> {sample} "
+                    "(sample; the real value is assigned on apply)"
+                )
                 continue
-            old_email = app.inbound_email_address  # old@domain, before the field changes
-            app.inbound_email_alias = new
-            app.save(update_fields=["inbound_email_alias"])
-            # Best-effort Exchange swap (no-op when unconfigured; never raises).
-            app._deprovision_exchange_alias(old)
-            app._provision_exchange_alias()
+            # Clear the alias so save() reallocates a unique alias+suffix (DB-enforced)
+            # and provisions the new Exchange alias; then drop the old Exchange alias.
+            app.inbound_email_alias = ""
+            app.inbound_email_suffix = ""
+            app.save()
+            app._deprovision_exchange_alias(old_local)
+            self.stdout.write(f"app {app.id} '{app.name}': {old_local} -> {app.inbound_email_alias}")
             self.stdout.write(f"  exchange: -{old_email}  +{app.inbound_email_address}")
 
         verb = "Would migrate" if dry else "Migrated"
