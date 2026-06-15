@@ -21,7 +21,7 @@ def test_regenerate_migrates_legacy_alias_to_new_format():
     call_command("regenerate_inbound_aliases", stdout=out)
 
     app.refresh_from_db()
-    assert re.fullmatch(r"app_mon_app_[0-9a-f]{6}", app.inbound_email_alias), app.inbound_email_alias
+    assert re.fullmatch(r"app_mon_app_[0-9a-f]{8}", app.inbound_email_alias), app.inbound_email_alias
     assert "mon-app ->" in out.getvalue()
 
 

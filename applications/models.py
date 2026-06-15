@@ -46,12 +46,12 @@ class Application(models.Model):
     def generate_raw_app_token() -> str:
         return f"apt_{secrets.token_hex(24)}"
 
-    # Inbound-alias format: "app_<name-slug>_<random>", e.g. app_my_resto_3f9a2c.
+    # Inbound-alias format: "app_<name-slug>_<random>", e.g. app_my_resto_3f9a2c1b.
     # The random suffix makes the address unique AND non-guessable (so the inbound
     # endpoint can't be spammed by guessing app_<name>@domain). Underscore-separated
     # to match the app_/apt_ token convention.
     ALIAS_PREFIX = "app_"
-    ALIAS_SUFFIX_BYTES = 3  # -> 6 hex chars
+    ALIAS_SUFFIX_BYTES = 4  # -> 8 hex chars
 
     @staticmethod
     def generate_inbound_email_alias(name: str) -> str:
