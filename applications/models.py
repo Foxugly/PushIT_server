@@ -123,6 +123,18 @@ class Application(models.Model):
             return
         raise last_error
 
+    def regenerate_inbound_email(self) -> None:
+        """Allocate a fresh inbound alias/suffix (a brand-new ingestion address)
+        and re-provision Exchange: clearing the alias makes save() reallocate a
+        unique alias+suffix and provision the new Exchange alias; the old alias is
+        then deprovisioned. The previous address stops working afterwards."""
+        old_local = self.inbound_email_alias
+        self.inbound_email_alias = ""
+        self.inbound_email_suffix = ""
+        self.save()
+        if old_local and old_local != self.inbound_email_alias:
+            self._deprovision_exchange_alias(old_local)
+
     def delete(self, *args, **kwargs):
         alias = self.inbound_email_alias
         result = super().delete(*args, **kwargs)

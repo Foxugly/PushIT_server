@@ -20,6 +20,7 @@ from .serializers import (
     ApplicationQuietPeriodValidationErrorResponseSerializer,
     ApplicationQuietPeriodWriteSerializer,
     ApplicationReadSerializer,
+    ApplicationRegenerateEmailResponseSerializer,
     ApplicationRevokeTokenResponseSerializer,
     ApplicationTokenRegenerateResponseSerializer,
     ApplicationUpdateSerializer,
@@ -155,6 +156,38 @@ def _get_app_or_404(app_id, user):
         return Application.objects.get(id=app_id, owner=user)
     except Application.DoesNotExist:
         _raise_app_not_found()
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Regenerate inbound email address",
+        description=(
+            "Allocates a new inbound email alias (a brand-new ingestion address) for an "
+            "application owned by the authenticated user. The previous address stops working."
+        ),
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        request=None,
+        responses={
+            200: ApplicationRegenerateEmailResponseSerializer,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    )
+)
+class ApplicationRegenerateEmailApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, app_id):
+        app = _get_app_or_404(app_id, request.user)
+        app.regenerate_inbound_email()
+        return Response(
+            {
+                "app_id": app.id,
+                "inbound_email_alias": app.inbound_email_alias,
+                "inbound_email_address": app.inbound_email_address,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(

@@ -542,6 +542,36 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Quiet period not found
+  /api/v1/apps/{app_id}/regenerate-email/:
+    post:
+      operationId: api_v1_apps_regenerate_email_create
+      description: Allocates a new inbound email alias (a brand-new ingestion address)
+        for an application owned by the authenticated user. The previous address stops
+        working.
+      summary: Regenerate inbound email address
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationRegenerateEmailResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
   /api/v1/apps/{app_id}/regenerate-token/:
     post:
       operationId: api_v1_apps_regenerate_token_create
@@ -3170,6 +3200,19 @@ components:
       - logo
       - name
       - webhook_url
+    ApplicationRegenerateEmailResponse:
+      type: object
+      properties:
+        app_id:
+          type: integer
+        inbound_email_alias:
+          type: string
+        inbound_email_address:
+          type: string
+      required:
+      - app_id
+      - inbound_email_address
+      - inbound_email_alias
     ApplicationRevokeTokenResponse:
       type: object
       properties:

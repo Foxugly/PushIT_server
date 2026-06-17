@@ -27,6 +27,15 @@ ApplicationTokenRegenerateResponseSerializer = inline_serializer(
     },
 )
 
+ApplicationRegenerateEmailResponseSerializer = inline_serializer(
+    name="ApplicationRegenerateEmailResponse",
+    fields={
+        "app_id": serializers.IntegerField(),
+        "inbound_email_alias": serializers.CharField(),
+        "inbound_email_address": serializers.CharField(),
+    },
+)
+
 ApplicationActivationResponseSerializer = inline_serializer(
     name="ApplicationActivationResponse",
     fields={
