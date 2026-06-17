@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import logging
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -344,12 +345,26 @@ def send_notification(notification_id: int) -> dict:
             continue
 
         try:
+            application = notification.application
+            logo_url = ""
+            if application.logo:
+                logo_url = f"{settings.PUBLIC_MEDIA_BASE_URL.rstrip('/')}{application.logo.url}"
             provider_message_id = send_push_to_device(
                 push_token=device.push_token,
                 title=notification.title,
                 message=notification.message,
-                # Deep-link target: the mobile app opens this message on tap.
-                data={"notification_id": notification.id},
+                # Always carry the deep-link id, content, and the app's identity so
+                # the client can build a rich notification in data-only mode. The
+                # message TYPE (with/without notification block) is decided by
+                # PUSH_DELIVERY_MODE + the device platform inside send_push_to_device.
+                data={
+                    "notification_id": notification.id,
+                    "title": notification.title,
+                    "message": notification.message,
+                    "application_name": application.name,
+                    "application_logo": logo_url,
+                },
+                platform=device.platform,
             )
             _mark_delivery_as_sent(delivery, provider_message_id)
 

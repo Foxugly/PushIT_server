@@ -78,8 +78,14 @@ def test_send_notification_success(mock_send):
     assert NotificationDelivery.objects.count() == 2
     assert NotificationDelivery.objects.filter(status=DeliveryStatus.SENT).count() == 2
     assert mock_send.call_count == 2
-    # Each push carries the notification id so the app can deep-link on tap.
-    assert mock_send.call_args.kwargs["data"] == {"notification_id": notification.id}
+    # Data-only payload: deep-link id + content + the app's identity (so the
+    # mobile client builds the notification with the per-app logo and name).
+    data = mock_send.call_args.kwargs["data"]
+    assert data["notification_id"] == notification.id
+    assert data["title"] == "Hello"
+    assert data["message"] == "World"
+    assert data["application_name"] == app.name
+    assert "application_logo" in data
 
     metrics = render_metrics()
     assert 'pushit_notification_send_total{outcome="started"} 1.0' in metrics
@@ -133,7 +139,7 @@ def test_send_notification_uses_precreated_target_deliveries_only(mock_send):
 @pytest.mark.django_db
 @patch("notifications.services.send_push_to_device")
 def test_send_notification_partial_failure(mock_send):
-    def fake_send(push_token, title, message, data=None):
+    def fake_send(push_token, title, message, data=None, platform=None):
         if push_token == VALID_TOKEN_2:
             raise RuntimeError("FCM error")
         return "provider-ok"
