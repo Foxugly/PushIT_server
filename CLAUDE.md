@@ -61,11 +61,12 @@ Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DB_ENGINE`, `DB_NAME`, `D
 
 ### Django Apps
 
-- **accounts** — Custom User model (email as username), JWT auth (login/register/refresh/logout), profile management
-- **applications** — Application CRUD, app token generation (`apt_` prefix, SHA256 hashed), quiet period scheduling, Graph API email alias management (`graph_mail.py`), QR code generation for device onboarding, webhook URL configuration
+- **accounts** — Custom User model (email as username), JWT auth (login/register/refresh/logout), profile management. `/me/` exposes read-only `is_staff` + `is_superuser` so the SPA can gate its admin area.
+- **applications** — Application CRUD, app token generation (`apt_` prefix, SHA256 hashed), quiet period scheduling, QR code generation for device onboarding, webhook URL configuration (SSRF-guarded, see `url_safety.py`), and the **inbound email alias** lifecycle (provisioning is delegated to the `exchange` app; `GET apps/<id>/alias-status/` lets the owner verify the alias is live in Exchange)
+- **exchange** — Exchange Online alias management via a PowerShell Core script (`scripts/exchange/manage_alias.ps1`) executed with `subprocess.run`. `services.ExchangeAliasService` has `add_alias`/`remove_alias`/`list_aliases`; `integration.py` wires it into `Application` save/delete (`provision_alias_for_application` / `deprovision_alias_for_application`) and exposes `is_configured()` + `alias_status(alias_email)` (used by the alias-status endpoint). Swallows non-critical failures so a save never blocks on an Exchange outage.
 - **devices** — Device registration (push tokens), platform tracking (Android/iOS), linking devices to applications via app token
 - **notifications** — Core business logic: notification creation (with idempotency keys), templates with `{{variable}}` substitution, scheduling, quiet period shifting, delivery tracking, retry logic, bulk send, webhook callbacks, inbound email ingestion with auto-reply
-- **health** — Liveness (`/health/live/`), readiness (`/health/ready/`), Prometheus metrics (`/health/metrics/`)
+- **health** — Public liveness (`/health/live/`), readiness (`/health/ready/`), Prometheus metrics (`/health/metrics/`), **plus** the staff-gated `GET /api/v1/admin/status/` (`api_views.py`, `IsAdminUser`) aggregating DB / Celery broker / Celery workers / Exchange health + cheap metrics for the SPA admin panel
 - **config** — Settings, custom exception handler, middleware (RequestId, Metrics), Prometheus counters, JSON logging
 
 ### Two Authentication Mechanisms
@@ -89,22 +90,32 @@ Quiet periods (one-time or recurring) can shift `scheduled_for` → `effective_s
 
 ### Microsoft Graph API Integration
 
-`applications/graph_mail.py` manages email aliases, inbox polling, and email sending via Graph API (MSAL client credentials flow):
-- `add_email_alias` / `remove_email_alias` — manage `proxyAddresses` on the shared mailbox
-- `fetch_unread_emails` / `mark_email_read` — poll inbox for inbound emails
+`applications/graph_mail.py` handles **inbox polling and email sending** via Graph API (MSAL client credentials flow):
+- `fetch_unread_emails` / `mark_email_read` — poll the shared mailbox for inbound emails (also fetches `internetMessageHeaders` → `authentication_results` for the optional inbound-DMARC check)
 - `send_email` — send auto-reply when a known user emails an unknown address
 
-Called from `Application.save()` (add alias), `Application.delete()` (remove alias), and `notifications/inbound_mailbox.py` (polling).
+**Alias management lives in the `exchange` app, not here** (it moved off Graph `proxyAddresses` onto the PowerShell `ExchangeAliasService`). `Application.save()` calls `exchange.integration.provision_alias_for_application`, `Application.delete()` calls `deprovision_alias_for_application`, and the owner can verify an alias is live via `GET apps/<id>/alias-status/` (→ `exchange.integration.alias_status`, which lists the mailbox aliases and checks membership). Inbox polling is driven by `notifications/inbound_mailbox.py`.
+
+### Sessions & admin access
+
+- **Long-lived sessions ("stay logged in" like WhatsApp).** `SIMPLE_JWT.REFRESH_TOKEN_LIFETIME` defaults to **365 days** (`JWT_REFRESH_DAYS`). With `ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION`, every `auth/refresh/` issues a new refresh token and blacklists the old one, sliding the window — so any client (web SPA + mobile) that opens the app within the window stays logged in indefinitely. **Every client MUST persist the rotated refresh token** or it self-ejects on the next refresh. `flush_expired_tokens_task` (beat, 03:30 daily) prunes the outstanding/blacklisted token tables so they stay bounded. Security trade-off: a stolen refresh is valid up to the window — shorten `JWT_REFRESH_DAYS` if needed.
+- **Django admin.** Enabled at the backend origin: `https://pushit-api.foxugly.com/admin/` (session/CSRF cookies + `/static/admin/` already served there). For convenience `pushit.foxugly.com/admin` **301-redirects** to it (nginx, in the frontend repo's vhost) — a redirect rather than a reverse proxy so admin cookies stay on one origin. The SPA admin area also links to it.
+- **Admin status panel.** `GET /api/v1/admin/status/` (`IsAdminUser`) backs the SPA's `dashboard/admin` page: per-dependency checks (DB / Celery broker / Celery workers / Exchange) + metrics, each isolated so one failure degrades rather than 500s.
 
 ### Firebase Cloud Messaging
 
 `notifications/push.py` sends push notifications via the Firebase Admin SDK when `FCM_SERVICE_ACCOUNT_PATH` is configured. Falls back to a mock provider when unconfigured. Maps Firebase exceptions to `InvalidPushTokenError` / `TemporaryPushProviderError` / `PushProviderError`.
 
-### Celery Tasks (beat schedule, every minute each)
+### Celery Tasks (beat schedule)
 
+Every minute:
 - `dispatch_scheduled_notifications_task` — picks up SCHEDULED notifications ready to send
 - `retry_pending_deliveries_task` — retries failed deliveries (3 attempts, exponential backoff)
 - `poll_inbound_mailbox_task` — Graph API polling for inbound email notifications
+- `requeue_stuck_processing_notifications_task` — watchdog: resets notifications stranded in PROCESSING (worker recycle/crash mid-send) older than `NOTIFICATION_PROCESSING_STUCK_MINUTES` (default 15) back to QUEUED; re-dispatch is delivery-idempotent (`processing_started_at` gates it)
+
+Daily:
+- `flush_expired_tokens_task` (03:30) — prunes expired SimpleJWT outstanding/blacklisted tokens (kept bounded despite rotation + long refresh lifetimes)
 
 Worker children recycle to bound memory on the shared EC2: `CELERY_WORKER_MAX_TASKS_PER_CHILD` (default 200) and `CELERY_WORKER_MAX_MEMORY_PER_CHILD` (KB, default ~195 MB) turn a slow leak or a fat task into a graceful recycle instead of a kernel OOM SIGKILL. The Celery worker/beat run as the systemd units `pushit-api-celery` / `pushit-api-celery-beat`.
 
