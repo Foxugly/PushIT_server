@@ -78,8 +78,14 @@ def test_send_notification_success(mock_send):
     assert NotificationDelivery.objects.count() == 2
     assert NotificationDelivery.objects.filter(status=DeliveryStatus.SENT).count() == 2
     assert mock_send.call_count == 2
-    # Each push carries the notification id so the app can deep-link on tap.
-    assert mock_send.call_args.kwargs["data"] == {"notification_id": notification.id}
+    # Data-only payload: deep-link id + content + the app's identity (so the
+    # mobile client builds the notification with the per-app logo and name).
+    data = mock_send.call_args.kwargs["data"]
+    assert data["notification_id"] == notification.id
+    assert data["title"] == "Hello"
+    assert data["message"] == "World"
+    assert data["application_name"] == app.name
+    assert "application_logo" in data
 
     metrics = render_metrics()
     assert 'pushit_notification_send_total{outcome="started"} 1.0' in metrics

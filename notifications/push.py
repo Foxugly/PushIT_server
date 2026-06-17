@@ -56,11 +56,14 @@ def _send_fcm(push_token: str, title: str, message: str, data: dict | None = Non
     from firebase_admin import messaging
     from firebase_admin.exceptions import InvalidArgumentError, UnavailableError
 
+    # Data-only message (no `notification` block): the Android client builds the
+    # notification itself in onMessageReceived — required so it can set the per-app
+    # logo as the large icon and the app name as subtext. `priority=high` keeps
+    # delivery prompt. Trade-off: data-only is not delivered after a force-stop.
+    # FCM data values must all be strings.
     fcm_message = messaging.Message(
-        notification=messaging.Notification(title=title, body=message),
-        # FCM data values must be strings. Carries the notification id so the
-        # mobile app can deep-link to the message when the push is tapped.
         data={k: str(v) for k, v in (data or {}).items()},
+        android=messaging.AndroidConfig(priority="high"),
         token=push_token,
     )
 

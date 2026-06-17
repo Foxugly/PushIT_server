@@ -136,6 +136,9 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / env("MEDIA_ROOT_DIR", default="media")
+# Public origin where MEDIA_URL is served (this API host). Used off-request
+# (Celery worker) to build absolute logo URLs sent in push payloads.
+PUBLIC_MEDIA_BASE_URL = env("PUBLIC_MEDIA_BASE_URL", default="https://pushit-api.foxugly.com")
 
 LOGGING = {
     "version": 1,
