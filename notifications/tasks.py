@@ -131,3 +131,31 @@ def requeue_stuck_processing_notifications_task():
 @shared_task
 def poll_inbound_mailbox_task():
     return poll_inbound_mailbox()
+
+
+@shared_task
+def flush_expired_tokens_task():
+    """Prune expired simplejwt outstanding/blacklisted tokens.
+
+    Mirrors `manage.py flushexpiredtokens`: with ROTATE_REFRESH_TOKENS +
+    BLACKLIST_AFTER_ROTATION the OutstandingToken / BlacklistedToken tables grow
+    one row per refresh and are never reclaimed on their own. Delete every token
+    already past its `expires_at` — blacklisted rows first to respect the FK from
+    BlacklistedToken -> OutstandingToken. Returns the row counts deleted.
+    """
+    from rest_framework_simplejwt.token_blacklist.models import (
+        BlacklistedToken,
+        OutstandingToken,
+    )
+
+    now = timezone.now()
+    blacklisted_deleted, _ = BlacklistedToken.objects.filter(
+        token__expires_at__lt=now
+    ).delete()
+    outstanding_deleted, _ = OutstandingToken.objects.filter(
+        expires_at__lt=now
+    ).delete()
+    return {
+        "blacklisted_deleted": blacklisted_deleted,
+        "outstanding_deleted": outstanding_deleted,
+    }

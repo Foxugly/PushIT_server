@@ -4,6 +4,7 @@ from notifications.api_views_templates import (
     NotificationTemplateDetailApiView,
 )
 from .api_views import (
+    ApplicationAliasStatusApiView,
     ApplicationDetailApiView, ApplicationListCreateApiView, ApplicationRegenerateEmailApiView,
     ApplicationRegenerateTokenApiView,
     ApplicationRevokeTokenApiView, ApplicationActivateApiView, ApplicationDeactivateApiView,
@@ -16,6 +17,7 @@ urlpatterns = [
     path("<int:app_id>/", ApplicationDetailApiView.as_view(), name="app-detail"),
     path("<int:app_id>/regenerate-token/", ApplicationRegenerateTokenApiView.as_view(), name="app-regenerate-token"),
     path("<int:app_id>/regenerate-email/", ApplicationRegenerateEmailApiView.as_view(), name="app-regenerate-email"),
+    path("<int:app_id>/alias-status/", ApplicationAliasStatusApiView.as_view(), name="app-alias-status"),
     path("<int:app_id>/activate/", ApplicationActivateApiView.as_view(), name="app-activate"),
     path("<int:app_id>/deactivate/", ApplicationDeactivateApiView.as_view(), name="app-deactivate"),
     path("<int:app_id>/revoke-token/", ApplicationRevokeTokenApiView.as_view(), name="app-revoke-token"),

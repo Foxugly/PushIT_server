@@ -4,6 +4,59 @@ info:
   version: 1.0.0
   description: Push notification API backend for Firebase Cloud Messaging
 paths:
+  /api/v1/admin/status/:
+    get:
+      operationId: api_v1_admin_status_retrieve
+      description: 'Aggregated backend health for the admin area: database, Celery
+        broker/workers and Exchange configuration checks, plus cheap operational metrics.
+        Requires a staff (admin) user. Overall `status` is `degraded` if any check
+        reports `error`.'
+      summary: Admin backend status
+      tags:
+      - Admin
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStatusResponse'
+              examples:
+                StatusOK:
+                  value:
+                    status: ok
+                    checks:
+                      database:
+                        status: ok
+                        detail: reachable
+                      celery_broker:
+                        status: ok
+                        detail: reachable
+                      celery_workers:
+                        status: ok
+                        detail: 1 worker(s) responded
+                      exchange:
+                        status: ok
+                        configured: false
+                    metrics:
+                      applications:
+                        total: 3
+                        active: 2
+                      devices:
+                        total: 12
+                      notifications:
+                        draft: 0
+                        scheduled: 1
+                        queued: 0
+                        processing: 0
+                        sent: 40
+                        failed: 1
+                        partial: 0
+                        no_target: 0
+                      processing_stuck: 0
+                  summary: Status OK
+          description: Backend status
   /api/v1/apps/:
     get:
       operationId: api_v1_apps_list
@@ -184,6 +237,37 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApplicationActivationResponse'
           description: Application activated
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
+  /api/v1/apps/{app_id}/alias-status/:
+    get:
+      operationId: api_v1_apps_alias_status_retrieve
+      description: Reports whether the application's inbound email alias is actually
+        provisioned on the shared Exchange mailbox. `configured` reflects whether
+        Exchange integration is set up; `provisioned` is `null` when it cannot be
+        determined (not configured, or an Exchange error).
+      summary: Inbound email alias status
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationAliasStatusResponse'
+          description: ''
         '404':
           content:
             application/json:
@@ -2884,6 +2968,33 @@ paths:
           description: Dependency unavailable
 components:
   schemas:
+    AdminStatusCheck:
+      type: object
+      properties:
+        status:
+          type: string
+        detail:
+          type: string
+        configured:
+          type: boolean
+      required:
+      - status
+    AdminStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        checks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/AdminStatusCheck'
+        metrics:
+          type: object
+          additionalProperties: {}
+      required:
+      - checks
+      - metrics
+      - status
     ApplicationActivationResponse:
       type: object
       properties:
@@ -2894,6 +3005,24 @@ components:
       required:
       - app_id
       - is_active
+    ApplicationAliasStatusResponse:
+      type: object
+      properties:
+        alias:
+          type: string
+          format: email
+        configured:
+          type: boolean
+        provisioned:
+          type: boolean
+          nullable: true
+        detail:
+          type: string
+      required:
+      - alias
+      - configured
+      - detail
+      - provisioned
     ApplicationCreate:
       type: object
       properties:
@@ -5017,8 +5146,11 @@ components:
       properties:
         access:
           type: string
+        refresh:
+          type: string
       required:
       - access
+      - refresh
     TokenRefreshValidationErrorResponse:
       type: object
       properties:
@@ -5065,6 +5197,19 @@ components:
           type: boolean
         language:
           $ref: '#/components/schemas/LanguageEnum'
+        is_staff:
+          type: boolean
+          readOnly: true
+          title: Staff status
+          description: Designates whether the user can log into this admin site.
+        is_superuser:
+          type: boolean
+          readOnly: true
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
       required:
       - email
       - id
+      - is_staff
+      - is_superuser

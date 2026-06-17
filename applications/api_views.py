@@ -3,7 +3,7 @@ import io
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, serializers, status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -185,6 +185,49 @@ class ApplicationRegenerateEmailApiView(APIView):
                 "app_id": app.id,
                 "inbound_email_alias": app.inbound_email_alias,
                 "inbound_email_address": app.inbound_email_address,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ApplicationAliasStatusResponseSerializer(serializers.Serializer):
+    alias = serializers.EmailField()
+    configured = serializers.BooleanField()
+    provisioned = serializers.BooleanField(allow_null=True)
+    detail = serializers.CharField()
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="Inbound email alias status",
+        description=(
+            "Reports whether the application's inbound email alias is actually "
+            "provisioned on the shared Exchange mailbox. `configured` reflects "
+            "whether Exchange integration is set up; `provisioned` is `null` when "
+            "it cannot be determined (not configured, or an Exchange error)."
+        ),
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        responses={
+            200: ApplicationAliasStatusResponseSerializer,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    )
+)
+class ApplicationAliasStatusApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, app_id):
+        from exchange.integration import alias_status
+
+        app = _get_app_or_404(app_id, request.user)
+        result = alias_status(app.inbound_email_address)
+        return Response(
+            {
+                "alias": app.inbound_email_address,
+                "configured": result["configured"],
+                "provisioned": result["provisioned"],
+                "detail": result["detail"],
             },
             status=status.HTTP_200_OK,
         )

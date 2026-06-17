@@ -264,6 +264,39 @@ def test_me_returns_current_user():
     assert response.data["id"] == user.id
     assert response.data["email"] == user.email
     assert response.data["language"] == "FR"
+    # is_staff / is_superuser are now exposed (read-only) so the SPA can gate an
+    # admin area; a freshly registered user is neither.
+    assert response.data["is_staff"] is False
+    assert response.data["is_superuser"] is False
+    assert set(response.data.keys()) == {
+        "id", "email", "userkey", "is_active", "email_confirmed", "language",
+        "is_staff", "is_superuser",
+    }
+
+
+@pytest.mark.django_db
+def test_me_does_not_allow_writing_is_staff():
+    client = APIClient()
+    User.objects.create_user(
+        email="renaud@example.com",
+        password="MotDePasseTresSolide123!",
+        email_confirmed=True,
+    )
+    login_response = client.post("/api/v1/auth/login/", {
+        "email": "renaud@example.com",
+        "password": "MotDePasseTresSolide123!",
+    }, format="json")
+    access = login_response.data["access"]
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    # is_staff is read-only on /me/: the PATCH serializer only accepts `language`,
+    # so an attempt to escalate via the profile endpoint is silently ignored.
+    response = client.patch(
+        "/api/v1/auth/me/", {"language": "EN", "is_staff": True}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert User.objects.get(email="renaud@example.com").is_staff is False
 
 
 @pytest.mark.django_db
@@ -379,3 +412,32 @@ def test_resend_confirmation_emails_unconfirmed_user(monkeypatch):
 
     assert response.status_code == 200
     assert sent.get("to") == "pending@example.com"
+
+
+# --- Token refresh (rotation) ---------------------------------------------
+@pytest.mark.django_db
+def test_refresh_returns_rotated_refresh_token():
+    """With ROTATE_REFRESH_TOKENS the refresh endpoint returns both a new access
+    AND a rotated refresh token; the response must expose `refresh` so clients
+    can persist it (and the OpenAPI schema matches)."""
+    client = APIClient()
+    User.objects.create_user(
+        email="renaud@example.com",
+        password="MotDePasseTresSolide123!",
+        email_confirmed=True,
+    )
+    login_response = client.post("/api/v1/auth/login/", {
+        "email": "renaud@example.com",
+        "password": "MotDePasseTresSolide123!",
+    }, format="json")
+    original_refresh = login_response.data["refresh"]
+
+    response = client.post(
+        "/api/v1/auth/refresh/", {"refresh": original_refresh}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert "access" in response.data
+    # The rotated refresh token is returned and differs from the original.
+    assert "refresh" in response.data
+    assert response.data["refresh"] != original_refresh

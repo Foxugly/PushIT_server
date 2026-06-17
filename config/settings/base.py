@@ -199,6 +199,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notifications.tasks.requeue_stuck_processing_notifications_task",
         "schedule": crontab(minute="*"),
     },
+    # Token hygiene: with ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION and
+    # long refresh lifetimes, the OutstandingToken/BlacklistedToken tables grow
+    # one row per refresh forever unless pruned. Run simplejwt's flushexpired
+    # logic daily so they stay bounded.
+    "pushit-flush-expired-tokens": {
+        "task": "notifications.tasks.flush_expired_tokens_task",
+        "schedule": crontab(hour=3, minute=30),
+    },
 }
 
 # Watchdog threshold: a notification PROCESSING longer than this (minutes) is
@@ -243,7 +251,16 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=1)),
+    # Long-lived refresh window ("stay logged in" like WhatsApp). Because
+    # ROTATE_REFRESH_TOKENS is on, *every* refresh issues a new refresh token and
+    # blacklists the old one, sliding the 365-day window forward — so a client
+    # that opens the app at least once within JWT_REFRESH_DAYS stays logged in
+    # indefinitely, while one that goes dark longer than the window must re-login.
+    # Security trade-off: a *stolen* refresh token is valid for up to this long
+    # (and rotation only helps once the legitimate client refreshes and races the
+    # thief). Shorten via the JWT_REFRESH_DAYS env var if that exposure is too
+    # large for a given deployment.
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=365)),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,

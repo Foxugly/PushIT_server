@@ -21,9 +21,13 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
+
+from health.api_views import AdminStatusApiView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("health/", include("health.urls")),
+    path("api/v1/admin/status/", AdminStatusApiView.as_view(), name="admin-status"),
     path("api/v1/auth/", include("accounts.api_urls")),
     path("api/v1/apps/", include("applications.api_urls")),
     path("api/v1/devices/", include("devices.api_urls")),

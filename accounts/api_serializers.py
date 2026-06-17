@@ -134,7 +134,14 @@ class EmailResendSerializer(serializers.Serializer):
 class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "userkey", "is_active", "email_confirmed", "language"]
+        # is_staff / is_superuser are exposed read-only so the SPA can gate an
+        # admin area client-side (the server still enforces IsAdminUser on the
+        # admin endpoints). read_only_fields keeps them un-writable via /me/.
+        fields = [
+            "id", "email", "userkey", "is_active", "email_confirmed", "language",
+            "is_staff", "is_superuser",
+        ]
+        read_only_fields = ["is_staff", "is_superuser"]
 
 
 class UserLanguageUpdateSerializer(serializers.ModelSerializer):
@@ -153,6 +160,10 @@ class LoginResponseSerializer(serializers.Serializer):
 
 class TokenRefreshResponseSerializer(serializers.Serializer):
     access = serializers.CharField()
+    # With ROTATE_REFRESH_TOKENS the refresh endpoint also returns a freshly
+    # rotated refresh token; declare it so the OpenAPI schema matches runtime and
+    # SPA/mobile clients persist the rotated token (see fleet JWT-rotation memo).
+    refresh = serializers.CharField()
 
 
 def build_token_response_for_user(user: User) -> dict:
