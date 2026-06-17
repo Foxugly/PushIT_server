@@ -42,6 +42,11 @@ class Notification(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     scheduled_for = models.DateTimeField(blank=True, null=True)
     sent_at = models.DateTimeField(blank=True, null=True)
+    # Set when the notification enters PROCESSING. A periodic watchdog
+    # (requeue_stuck_processing_notifications_task) resets rows that have been
+    # PROCESSING longer than a threshold back to QUEUED, so a worker recycle /
+    # crash mid-send doesn't strand the notification + its PENDING deliveries.
+    processing_started_at = models.DateTimeField(blank=True, null=True)
     idempotency_key = models.CharField(max_length=255, blank=True, db_index=True)
     request_fingerprint = models.CharField(max_length=64, blank=True)
     

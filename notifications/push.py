@@ -4,19 +4,11 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-MESSAGE_PREVIEW_LENGTH = 160
-
 _fcm_initialized = False
 
 
 def _get_push_token_suffix(push_token: str) -> str:
     return push_token[-8:] if len(push_token) > 8 else push_token
-
-
-def _get_message_preview(message: str) -> str:
-    if len(message) <= MESSAGE_PREVIEW_LENGTH:
-        return message
-    return f"{message[:MESSAGE_PREVIEW_LENGTH]}..."
 
 
 class PushProviderError(Exception):
@@ -95,12 +87,13 @@ def send_push_to_device(
     push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None
 ) -> str:
     provider = "fcm" if _is_fcm_configured() else "mock"
+    # NB: title/message are deliberately NOT logged. For email-sourced
+    # notifications they duplicate the subject/body (often PII) into prod logs on
+    # every send. Only the (non-identifying) message length is kept for ops.
     log_extra = {
         "push_provider": provider,
         "push_token_suffix": _get_push_token_suffix(push_token),
         "push_token_length": len(push_token),
-        "notification_title": title,
-        "notification_message_preview": _get_message_preview(message),
         "notification_message_length": len(message),
     }
 

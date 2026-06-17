@@ -195,7 +195,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notifications.tasks.poll_inbound_mailbox_task",
         "schedule": crontab(minute="*"),
     },
+    "pushit-requeue-stuck-processing-notifications": {
+        "task": "notifications.tasks.requeue_stuck_processing_notifications_task",
+        "schedule": crontab(minute="*"),
+    },
 }
+
+# Watchdog threshold: a notification PROCESSING longer than this (minutes) is
+# treated as stranded by a worker recycle/crash and requeued. See
+# notifications.tasks.requeue_stuck_processing_notifications_task.
+NOTIFICATION_PROCESSING_STUCK_MINUTES = env.int(
+    "NOTIFICATION_PROCESSING_STUCK_MINUTES", default=15
+)
 
 # Recycle worker child processes to bound memory growth: replace a child after
 # it has handled MAX_TASKS_PER_CHILD tasks, or once its resident memory crosses
@@ -243,6 +254,22 @@ FCM_SERVICE_ACCOUNT_PATH = env("FCM_SERVICE_ACCOUNT_PATH", default="")
 PUSHIT_FORCE_MOCK_PUSH = env.bool("PUSHIT_FORCE_MOCK_PUSH", default=False)
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
 INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="foxugly.com")
+
+# Anti-spoofing for inbound email notifications.
+#
+# Inbound mail authorizes the creating user via its `From` address, which is
+# trivially forgeable at the SMTP layer. Our first line of defense is that mail
+# is *not* accepted over open SMTP: it is polled from a managed Microsoft 365 /
+# Exchange Online mailbox via Graph API, and M365 already enforces
+# SPF/DKIM/DMARC inbound — a hard DMARC failure is junked/quarantined and never
+# lands in the Inbox we poll, so it never reaches this code.
+#
+# When True, we additionally require an aligned `dmarc=pass` in the message's
+# Authentication-Results header (when that header is captured) before trusting
+# the `From`. Default False = rely on M365's upstream enforcement (the header is
+# not fetched by the poller by default); flip to True once the poller is
+# configured to fetch internetMessageHeaders so the check has data to act on.
+INBOUND_EMAIL_REQUIRE_DMARC = env.bool("INBOUND_EMAIL_REQUIRE_DMARC", default=False)
 
 GRAPH_TENANT_ID = env("GRAPH_TENANT_ID", default="")
 GRAPH_CLIENT_ID = env("GRAPH_CLIENT_ID", default="")

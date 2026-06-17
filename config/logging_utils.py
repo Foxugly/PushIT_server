@@ -71,8 +71,8 @@ class JsonFormatter(logging.Formatter):
             "push_provider",
             "push_token_suffix",
             "push_token_length",
-            "notification_title",
-            "notification_message_preview",
+            # notification_title / notification_message_preview intentionally NOT
+            # whitelisted: they leak email subject/body (PII) into prod logs.
             "notification_message_length",
             "provider_message_id",
         ):

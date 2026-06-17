@@ -1,10 +1,18 @@
+from datetime import timedelta
+
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from .models import Notification, NotificationDelivery, NotificationStatus
 from .inbound_mailbox import poll_inbound_mailbox
 from .services import send_notification
+
+# A notification that has been PROCESSING longer than this is considered stranded
+# (the worker child was recycled/crashed mid-send) and is requeued. Generous by
+# default so a genuinely slow send is never requeued under it.
+DEFAULT_PROCESSING_STUCK_MINUTES = 15
 
 
 @shared_task
@@ -66,6 +74,58 @@ def dispatch_scheduled_notifications_task():
         queued_count += 1
 
     return {"queued_count": queued_count}
+
+
+@shared_task
+def requeue_stuck_processing_notifications_task():
+    """Watchdog: requeue notifications stranded in PROCESSING.
+
+    If a worker child is recycled (CELERY_WORKER_MAX_*_PER_CHILD) or crashes
+    mid-send, the notification stays PROCESSING forever and its PENDING
+    deliveries are never retried. This periodic task resets rows that have been
+    PROCESSING beyond a threshold back to QUEUED so the dispatcher re-sends them.
+
+    Safety / idempotency:
+    - The reset is a single conditional UPDATE filtered on status=PROCESSING +
+      a stale `processing_started_at`, so it never races a fresh acquisition
+      (which always rewrites `processing_started_at` to now()).
+    - Re-dispatching is idempotent w.r.t. deliveries: `send_notification`
+      re-acquires the notification and skips any delivery already marked SENT,
+      so already-pushed devices are not pushed again.
+    """
+    stuck_minutes = getattr(
+        settings, "NOTIFICATION_PROCESSING_STUCK_MINUTES", DEFAULT_PROCESSING_STUCK_MINUTES
+    )
+    cutoff = timezone.now() - timedelta(minutes=stuck_minutes)
+
+    stuck_ids = list(
+        Notification.objects.filter(
+            status=NotificationStatus.PROCESSING,
+            processing_started_at__isnull=False,
+            processing_started_at__lt=cutoff,
+        )
+        .values_list("id", flat=True)
+        .order_by("id")
+    )
+
+    requeued_count = 0
+    for notification_id in stuck_ids:
+        # Conditional UPDATE: only requeue if it is *still* stuck (guards against
+        # a concurrent legitimate finish between the scan and the update).
+        updated = Notification.objects.filter(
+            id=notification_id,
+            status=NotificationStatus.PROCESSING,
+            processing_started_at__isnull=False,
+            processing_started_at__lt=cutoff,
+        ).update(
+            status=NotificationStatus.QUEUED,
+            processing_started_at=None,
+        )
+        if updated:
+            send_notification_task.delay(notification_id)
+            requeued_count += 1
+
+    return {"requeued_count": requeued_count}
 
 
 @shared_task

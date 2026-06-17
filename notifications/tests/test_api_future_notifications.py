@@ -105,6 +105,41 @@ def test_update_and_delete_future_notification():
 
 
 @pytest.mark.django_db
+def test_patch_clearing_scheduled_for_is_rejected_not_frozen():
+    # Regression: PATCH with scheduled_for=null used to force status=SCHEDULED
+    # while leaving scheduled_for null, which the dispatcher (scheduled_for__
+    # isnull=False) never picks up -> the notification is stuck undispatchable.
+    client = APIClient()
+    user = User.objects.create_user(
+        email="future-null@example.com",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=user, name="Future App")
+    notification = Notification.objects.create(
+        application=app,
+        title="Titre",
+        message="Message",
+        status=NotificationStatus.SCHEDULED,
+        scheduled_for=timezone.now() + timedelta(hours=4),
+    )
+    access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    response = client.patch(
+        f"/api/v1/notifications/future/{notification.id}/",
+        {"scheduled_for": None},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "scheduled_for" in response.data["errors"]
+    notification.refresh_from_db()
+    # Unchanged: still a dispatchable SCHEDULED row with a future date.
+    assert notification.status == NotificationStatus.SCHEDULED
+    assert notification.scheduled_for is not None
+
+
+@pytest.mark.django_db
 def test_cannot_send_notification_scheduled_in_future():
     client = APIClient()
     user = User.objects.create_user(

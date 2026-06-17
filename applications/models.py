@@ -7,6 +7,8 @@ from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from .url_safety import validate_webhook_url
+
 
 class QuietPeriodType(models.TextChoices):
     ONCE = "ONCE", "One-time"
@@ -23,7 +25,7 @@ class Application(models.Model):
     # The random suffix of the alias, stored + DB-unique so it's race-proof and
     # queryable (the alias is "app_<slug>_<suffix>"). Populated on save().
     inbound_email_suffix = models.CharField(max_length=32, unique=True)
-    webhook_url = models.URLField(max_length=500, blank=True)
+    webhook_url = models.URLField(max_length=500, blank=True, validators=[validate_webhook_url])
 
     is_active = models.BooleanField(default=True)
     revoked_at = models.DateTimeField(null=True, blank=True)

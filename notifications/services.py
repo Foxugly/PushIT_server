@@ -129,7 +129,8 @@ def _acquire_notification_for_processing(notification_id: int) -> Notification |
             return None
 
         notification.status = NotificationStatus.PROCESSING
-        notification.save(update_fields=["status"])
+        notification.processing_started_at = timezone.now()
+        notification.save(update_fields=["status", "processing_started_at"])
 
         logger.info(
             "notification_acquired_for_processing",
@@ -249,6 +250,7 @@ def send_notification(notification_id: int) -> dict:
             status=NotificationStatus.SCHEDULED,
             scheduled_for=quiet_period_end,
             sent_at=None,
+            processing_started_at=None,
         )
         logger.info(
             "notification_deferred_quiet_period",
@@ -287,6 +289,7 @@ def send_notification(notification_id: int) -> dict:
         Notification.objects.filter(id=notification.id).update(
             status=NotificationStatus.NO_TARGET,
             sent_at=None,
+            processing_started_at=None,
         )
         send_webhook_callback(
             application=notification.application,
@@ -489,6 +492,7 @@ def send_notification(notification_id: int) -> dict:
     Notification.objects.filter(id=notification.id).update(
         status=final_status,
         sent_at=sent_at_value,
+        processing_started_at=None,
     )
 
     send_webhook_callback(

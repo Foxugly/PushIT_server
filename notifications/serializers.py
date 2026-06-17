@@ -414,6 +414,26 @@ class NotificationCreateWithAppTokenSerializer(BaseNotificationWriteSerializer):
         )
 
 
+def _dmarc_passes(authentication_results: str, from_domain: str) -> bool:
+    """True iff the Authentication-Results header asserts an aligned dmarc=pass.
+
+    M365 stamps a single Authentication-Results line such as
+    ``... dmarc=pass action=none header.from=example.com; ...``. We require both
+    ``dmarc=pass`` AND that the verdict is aligned to the envelope From domain
+    (``header.from=<from_domain>``) so a pass for a *different* domain can't be
+    replayed to spoof ours.
+    """
+    if not authentication_results:
+        return False
+    lowered = authentication_results.lower()
+    if "dmarc=pass" not in lowered:
+        return False
+    # If the header advertises the evaluated From domain, it must match ours.
+    if "header.from=" in lowered:
+        return f"header.from={from_domain.lower()}" in lowered
+    return True
+
+
 class NotificationInboundEmailSerializer(serializers.Serializer):
     sender = serializers.EmailField()
     recipient = serializers.EmailField()
@@ -425,8 +445,25 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         allow_blank=True,
         trim_whitespace=True,
     )
+    # Raw Authentication-Results header (SPF/DKIM/DMARC verdicts stamped by M365).
+    # Only consulted when INBOUND_EMAIL_REQUIRE_DMARC is on; otherwise ignored.
+    authentication_results = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        default="",
+    )
 
     def validate(self, attrs):
+        # Anti-spoofing: the `From` (sender) is the only thing authorizing the
+        # creating user below, and it is forgeable at the SMTP layer. Mail reaches
+        # us only by polling a managed M365 mailbox (Graph API) — M365 enforces
+        # SPF/DKIM/DMARC inbound, so a hard DMARC failure is junked/quarantined
+        # before it lands in the polled Inbox. When INBOUND_EMAIL_REQUIRE_DMARC is
+        # enabled AND the Authentication-Results header was captured, we
+        # additionally require an aligned dmarc=pass here as defense in depth.
+        # When the setting is off (default) anti-spoofing is delegated to M365 and
+        # documented as residual risk (see settings.INBOUND_EMAIL_REQUIRE_DMARC).
         errors = {}
 
         sender = attrs["sender"].strip().lower()
@@ -481,6 +518,24 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
                 "Sender must match the owner of the target application."
             )
 
+        # Anti-spoofing enforcement (defense in depth on top of M365's upstream
+        # SPF/DKIM/DMARC). Only enforced when explicitly enabled, and only when we
+        # would otherwise trust this sender (a known user), so it can never *grant*
+        # access — only deny a forged `From` that passed the user/owner checks.
+        if (
+            getattr(settings, "INBOUND_EMAIL_REQUIRE_DMARC", False)
+            and user is not None
+            and "sender" not in errors
+        ):
+            try:
+                _, sender_domain = sender.split("@", 1)
+            except ValueError:
+                sender_domain = ""
+            if not _dmarc_passes(attrs.get("authentication_results", ""), sender_domain):
+                errors.setdefault("sender", []).append(
+                    "Sender failed DMARC authentication."
+                )
+
         if errors:
             raise serializers.ValidationError(errors)
 
@@ -516,7 +571,17 @@ class NotificationFutureUpdateSerializer(BaseNotificationWriteSerializer):
         for field in ["title", "message", "scheduled_for"]:
             if field in validated_data:
                 setattr(instance, field, validated_data[field])
-        instance.status = NotificationStatus.SCHEDULED
+
+        # A PATCH that clears scheduled_for (or otherwise leaves it null) must not
+        # freeze the row as SCHEDULED: the dispatcher filters scheduled_for__isnull
+        # =False, so a SCHEDULED row with no date would never fire. Mirror the
+        # create path via build_status_from_scheduled_for: a future date stays
+        # SCHEDULED, a null one falls back to DRAFT.
+        if instance.scheduled_for is None:
+            raise serializers.ValidationError(
+                {"scheduled_for": ["A scheduled notification must keep a future send date."]}
+            )
+        instance.status = self.build_status_from_scheduled_for(instance.scheduled_for)
         instance.save(update_fields=["title", "message", "scheduled_for", "status"])
         return instance
 

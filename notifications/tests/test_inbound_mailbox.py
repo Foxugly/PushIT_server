@@ -206,6 +206,86 @@ def test_poll_does_not_send_reply_for_unknown_sender(
 
 
 @pytest.mark.django_db
+@override_settings(
+    INBOUND_EMAIL_DOMAIN="pushit.com",
+    INBOUND_EMAIL_REQUIRE_DMARC=True,
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
+)
+@patch("applications.models.Application._provision_exchange_alias")
+@patch("notifications.inbound_mailbox.mark_email_read")
+@patch("notifications.inbound_mailbox.send_unknown_address_reply")
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_dmarc_required_rejects_when_no_auth_results(
+    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
+):
+    owner = User.objects.create_user(
+        email="owner@example.com",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=owner, name="DMARC App")
+
+    mock_fetch.return_value = [
+        GraphEmail(
+            graph_id="graph-501",
+            sender=owner.email,
+            recipient=f"{app.inbound_email_alias}@pushit.com",
+            subject="Spoofed?",
+            text="No auth-results header present.",
+            message_id="mail-501@example.com",
+            authentication_results="",
+        ),
+    ]
+
+    result = poll_inbound_mailbox()
+
+    assert result["rejected_count"] == 1
+    assert Notification.objects.count() == 0
+
+
+@pytest.mark.django_db
+@override_settings(
+    INBOUND_EMAIL_DOMAIN="pushit.com",
+    INBOUND_EMAIL_REQUIRE_DMARC=True,
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
+)
+@patch("applications.models.Application._provision_exchange_alias")
+@patch("notifications.inbound_mailbox.mark_email_read")
+@patch("notifications.inbound_mailbox.send_unknown_address_reply")
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_dmarc_required_accepts_aligned_pass(
+    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
+):
+    owner = User.objects.create_user(
+        email="owner@example.com",
+        password="MotDePasseTresSolide123!",
+    )
+    app = Application.objects.create(owner=owner, name="DMARC App")
+
+    mock_fetch.return_value = [
+        GraphEmail(
+            graph_id="graph-502",
+            sender=owner.email,
+            recipient=f"{app.inbound_email_alias}@pushit.com",
+            subject="Legit",
+            text="Authenticated mail.",
+            message_id="mail-502@example.com",
+            authentication_results="spf=pass; dkim=pass; dmarc=pass action=none header.from=example.com",
+        ),
+    ]
+
+    result = poll_inbound_mailbox()
+
+    assert result["created_count"] == 1
+    assert Notification.objects.count() == 1
+
+
+@pytest.mark.django_db
 @override_settings(INBOUND_EMAIL_DOMAIN="pushit.com")
 def test_build_unknown_address_reply_lists_user_apps():
     owner = User.objects.create_user(

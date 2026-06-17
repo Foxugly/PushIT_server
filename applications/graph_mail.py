@@ -62,6 +62,11 @@ class GraphEmail:
     subject: str
     text: str
     message_id: str
+    # Raw Authentication-Results header value (SPF/DKIM/DMARC verdicts stamped by
+    # M365 on receipt), or "" when not captured. Used to anti-spoof the `From`
+    # when INBOUND_EMAIL_REQUIRE_DMARC is enabled. Empty unless the poller is
+    # configured to fetch internetMessageHeaders.
+    authentication_results: str = ""
 
 
 def fetch_unread_emails(max_count: int = 50) -> list[GraphEmail]:
@@ -77,7 +82,7 @@ def fetch_unread_emails(max_count: int = 50) -> list[GraphEmail]:
         params={
             "$filter": "isRead eq false",
             "$top": max_count,
-            "$select": "id,from,toRecipients,ccRecipients,subject,body,internetMessageId",
+            "$select": "id,from,toRecipients,ccRecipients,subject,body,internetMessageId,internetMessageHeaders",
             "$orderby": "receivedDateTime asc",
         },
         timeout=30,
@@ -105,6 +110,15 @@ def fetch_unread_emails(max_count: int = 50) -> list[GraphEmail]:
             body_content = re.sub(r"<[^>]+>", " ", body_content)
             body_content = " ".join(body_content.split())
 
+        # M365 stamps SPF/DKIM/DMARC verdicts in Authentication-Results on
+        # receipt. Capture it (may be absent for very old/migrated items) so the
+        # serializer can anti-spoof the `From` when DMARC enforcement is enabled.
+        auth_results = ""
+        for header in msg.get("internetMessageHeaders", []) or []:
+            if (header.get("name") or "").strip().lower() == "authentication-results":
+                auth_results = (header.get("value") or "").strip()
+                break
+
         emails.append(GraphEmail(
             graph_id=msg["id"],
             sender=sender_addr,
@@ -112,6 +126,7 @@ def fetch_unread_emails(max_count: int = 50) -> list[GraphEmail]:
             subject=(msg.get("subject") or "").strip(),
             text=body_content.strip(),
             message_id=(msg.get("internetMessageId") or "").strip().strip("<>").strip(),
+            authentication_results=auth_results,
         ))
 
     return emails

@@ -6,6 +6,8 @@ import logging
 import requests
 from django.utils import timezone
 
+from applications.url_safety import UnsafeWebhookURL, assert_webhook_url_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,6 +18,23 @@ def _sign_payload(payload_bytes: bytes, secret: str) -> str:
 def send_webhook_callback(application, notification_id: int, final_status: str, sent_at=None) -> None:
     webhook_url = application.webhook_url
     if not webhook_url:
+        return
+
+    # Re-validate the resolved host right before sending (anti-DNS-rebinding): the
+    # URL passed the write-time validator, but the name could now resolve to IMDS
+    # / loopback / a private host. If it does, drop the callback rather than let
+    # the worker be used as a confused deputy.
+    try:
+        assert_webhook_url_safe(webhook_url)
+    except UnsafeWebhookURL as exc:
+        logger.warning(
+            "webhook_callback_blocked_unsafe_url",
+            extra={
+                "notification_id": notification_id,
+                "application_id": application.id,
+                "error": str(exc),
+            },
+        )
         return
 
     payload = {
@@ -40,6 +59,9 @@ def send_webhook_callback(application, notification_id: int, final_status: str, 
                 "X-PushIT-Event": "notification.status_changed",
             },
             timeout=10,
+            # Never follow redirects: a 3xx to 169.254.169.254 / loopback would
+            # bypass the pre-flight SSRF check above.
+            allow_redirects=False,
         )
         logger.info(
             "webhook_callback_sent",

@@ -29,6 +29,9 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
             "subject": email.subject,
             "text": email.text,
             "message_id": email.message_id,
+            # SPF/DKIM/DMARC verdicts stamped by M365; consulted only when
+            # INBOUND_EMAIL_REQUIRE_DMARC is enabled (anti-`From`-spoofing).
+            "authentication_results": email.authentication_results,
         }
     )
 
