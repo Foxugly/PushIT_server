@@ -51,21 +51,31 @@ def _ensure_fcm_initialized():
     logger.info("fcm_initialized", extra={"service_account": settings.FCM_SERVICE_ACCOUNT_PATH})
 
 
-def _send_fcm(push_token: str, title: str, message: str, data: dict | None = None) -> str:
+def _send_fcm(push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None) -> str:
     _ensure_fcm_initialized()
     from firebase_admin import messaging
     from firebase_admin.exceptions import InvalidArgumentError, UnavailableError
 
-    # Data-only message (no `notification` block): the Android client builds the
-    # notification itself in onMessageReceived — required so it can set the per-app
-    # logo as the large icon and the app name as subtext. `priority=high` keeps
-    # delivery prompt. Trade-off: data-only is not delivered after a force-stop.
+    # PUSH_DELIVERY_MODE drives whether we attach a `notification` block:
+    #   - "hybrid": always attach it (the system renders it even when the app is
+    #     backgrounded/killed).
+    #   - "data-only": omit it so the Android client builds the notification itself
+    #     (per-app logo as the large icon + app name) — at the cost of no delivery
+    #     after a force-stop.
+    # iOS can't render a data-only push, so it ALWAYS keeps the notification block.
+    mode = (getattr(settings, "PUSH_DELIVERY_MODE", "hybrid") or "hybrid").strip().lower()
+    is_ios = (platform or "").strip().lower() == "ios"
+    include_notification = mode != "data-only" or is_ios
+
     # FCM data values must all be strings.
-    fcm_message = messaging.Message(
-        data={k: str(v) for k, v in (data or {}).items()},
-        android=messaging.AndroidConfig(priority="high"),
-        token=push_token,
-    )
+    message_kwargs = {
+        "data": {k: str(v) for k, v in (data or {}).items()},
+        "android": messaging.AndroidConfig(priority="high"),
+        "token": push_token,
+    }
+    if include_notification:
+        message_kwargs["notification"] = messaging.Notification(title=title, body=message)
+    fcm_message = messaging.Message(**message_kwargs)
 
     try:
         return messaging.send(fcm_message)
@@ -77,11 +87,13 @@ def _send_fcm(push_token: str, title: str, message: str, data: dict | None = Non
         raise PushProviderError(str(exc)) from exc
 
 
-def _send_mock(push_token: str, title: str, message: str, data: dict | None = None) -> str:
+def _send_mock(push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None) -> str:
     return f"mock-msg-{push_token[-6:]}"
 
 
-def send_push_to_device(push_token: str, title: str, message: str, data: dict | None = None) -> str:
+def send_push_to_device(
+    push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None
+) -> str:
     provider = "fcm" if _is_fcm_configured() else "mock"
     log_extra = {
         "push_provider": provider,
@@ -96,9 +108,9 @@ def send_push_to_device(push_token: str, title: str, message: str, data: dict | 
 
     try:
         if provider == "fcm":
-            provider_message_id = _send_fcm(push_token, title, message, data)
+            provider_message_id = _send_fcm(push_token, title, message, data, platform)
         else:
-            provider_message_id = _send_mock(push_token, title, message, data)
+            provider_message_id = _send_mock(push_token, title, message, data, platform)
 
         logger.info(
             "push_send_succeeded",

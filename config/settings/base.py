@@ -140,6 +140,15 @@ MEDIA_ROOT = BASE_DIR / env("MEDIA_ROOT_DIR", default="media")
 # (Celery worker) to build absolute logo URLs sent in push payloads.
 PUBLIC_MEDIA_BASE_URL = env("PUBLIC_MEDIA_BASE_URL", default="https://pushit-api.foxugly.com")
 
+# FCM delivery mode — flip the whole platform between:
+#   "hybrid"    : send a notification block (system renders it even when the app
+#                 is backgrounded/killed). Default — safe, current behaviour.
+#   "data-only" : omit it so the Android client builds the notification itself
+#                 (per-app logo as large icon + app name), at the cost of no
+#                 delivery after a force-stop. iOS always keeps the notification
+#                 block regardless (it can't render a data-only push).
+PUSH_DELIVERY_MODE = env("PUSH_DELIVERY_MODE", default="hybrid")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
