@@ -47,6 +47,12 @@ EmailResendValidationErrorResponseSerializer = build_validation_error_serializer
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    # Declared explicitly with no validators so DRF's auto-added UniqueValidator
+    # (from User.email's unique=True) does NOT fire: a duplicate email must not
+    # 400 here (account-enumeration leak). The view detects the duplicate and
+    # responds with the same pending body instead. Still an EmailField → format
+    # validation is kept.
+    email = serializers.EmailField(validators=[])
     password = serializers.CharField(write_only=True, min_length=8)
     # Cloudflare Turnstile token. Optional at the serializer layer so the field
     # exists in the schema without breaking register while the captcha is not yet
@@ -60,10 +66,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ["email", "password", "turnstile_token"]
 
     def validate_email(self, value):
-        value = value.strip().lower()
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("This email is already in use.")
-        return value
+        # Normalize only. We deliberately do NOT reject an already-registered
+        # email here: returning a "this email is in use" 400 would leak account
+        # existence (enumeration). The view handles a duplicate by returning the
+        # same pending-verification body and notifying the existing user instead.
+        return value.strip().lower()
 
     def validate_password(self, value):
         validate_password(value)

@@ -89,12 +89,31 @@ def get_target_deliveries_for_notification(notification: Notification) -> list[N
     devices = list(
         get_target_devices_for_notification(notification).prefetch_related("quiet_periods")
     )
-    deliveries = []
-    for device in devices:
-        delivery = _get_or_create_delivery(notification, device)
-        delivery.device = device
-        deliveries.append(delivery)
-    return deliveries
+    if not devices:
+        return []
+
+    # Materialize the missing deliveries in a single round-trip. The
+    # (notification, device) unique constraint makes ignore_conflicts safe: any
+    # row a concurrent worker already created is skipped, not duplicated. We then
+    # re-query once (select_related the device) rather than doing one
+    # get_or_create per device.
+    NotificationDelivery.objects.bulk_create(
+        [
+            NotificationDelivery(
+                notification=notification,
+                device=device,
+                status=DeliveryStatus.PENDING,
+                attempt_count=0,
+            )
+            for device in devices
+        ],
+        ignore_conflicts=True,
+    )
+    return list(
+        notification.deliveries.select_related("device")
+        .prefetch_related("device__quiet_periods")
+        .order_by("device_id")
+    )
 
 
 def get_current_quiet_period_end(notification: Notification, at=None):
@@ -144,15 +163,6 @@ def _acquire_notification_for_processing(notification_id: int) -> Notification |
             labels={"outcome": "acquired"},
         )
         return notification
-
-def _get_or_create_delivery(notification: Notification, device: Device) -> NotificationDelivery:
-    delivery, _ = NotificationDelivery.objects.get_or_create(
-        notification=notification,
-        device=device,
-        defaults={"status": DeliveryStatus.PENDING, "attempt_count":0,},
-    )
-    return delivery
-
 
 def _should_skip_delivery(delivery: NotificationDelivery) -> bool:
     return delivery.status == DeliveryStatus.SENT
@@ -216,6 +226,58 @@ def _mark_delivery_as_failed(delivery: NotificationDelivery, exc: Exception) -> 
             "status",
             "next_retry_at",
         ]
+    )
+
+
+def _record_delivery_failure(
+    delivery: NotificationDelivery,
+    device: Device,
+    exc: Exception,
+    *,
+    event: str,
+    outcome: str,
+    notification_id: int,
+    invalidate_token: bool = False,
+) -> None:
+    """Common failure-recording path shared by every send-error arm.
+
+    Logs the (per-arm) ``event``, bumps the device failure counter, marks the
+    delivery failed, and increments the delivery counter with the per-arm
+    ``outcome``. When ``invalidate_token`` is set (permanent invalid-token error)
+    the device is additionally hard-invalidated in the same save.
+    """
+    logger.warning(
+        event,
+        extra={
+            "notification_id": notification_id,
+            "device_id": device.id,
+            "attempt_count": delivery.attempt_count + 1,
+            "error": str(exc),
+        },
+    )
+
+    device.failure_count += 1
+    if invalidate_token:
+        device.push_token_status = DeviceTokenStatus.INVALID
+        device.is_active = False
+        device.invalidated_at = timezone.now()
+        device.invalidation_reason = "invalid_token"
+        device.save(
+            update_fields=[
+                "push_token_status",
+                "is_active",
+                "invalidated_at",
+                "invalidation_reason",
+                "failure_count",
+            ]
+        )
+    else:
+        device.save(update_fields=["failure_count"])
+
+    _mark_delivery_as_failed(delivery, exc)
+    increment_counter(
+        "pushit_notification_delivery_total",
+        labels={"outcome": outcome},
     )
 
 
@@ -314,6 +376,21 @@ def send_notification(notification_id: int) -> dict:
     deferred_count = 0
     waiting_count = 0
 
+    # Hoist everything that does not vary per device out of the loop: the
+    # application, its logo URL, and the static part of the push data payload are
+    # identical for every target. Only the push token + platform change inside.
+    application = notification.application
+    logo_url = ""
+    if application.logo:
+        logo_url = f"{settings.PUBLIC_MEDIA_BASE_URL.rstrip('/')}{application.logo.url}"
+    base_data = {
+        "notification_id": notification.id,
+        "title": notification.title,
+        "message": notification.message,
+        "application_name": application.name,
+        "application_logo": logo_url,
+    }
+
     for delivery in deliveries:
         device = delivery.device
 
@@ -348,10 +425,6 @@ def send_notification(notification_id: int) -> dict:
             continue
 
         try:
-            application = notification.application
-            logo_url = ""
-            if application.logo:
-                logo_url = f"{settings.PUBLIC_MEDIA_BASE_URL.rstrip('/')}{application.logo.url}"
             provider_message_id = send_push_to_device(
                 push_token=device.push_token,
                 title=notification.title,
@@ -360,13 +433,7 @@ def send_notification(notification_id: int) -> dict:
                 # the client can build a rich notification in data-only mode. The
                 # message TYPE (with/without notification block) is decided by
                 # PUSH_DELIVERY_MODE + the device platform inside send_push_to_device.
-                data={
-                    "notification_id": notification.id,
-                    "title": notification.title,
-                    "message": notification.message,
-                    "application_name": application.name,
-                    "application_logo": logo_url,
-                },
+                data=base_data,
                 platform=device.platform,
             )
             _mark_delivery_as_sent(delivery, provider_message_id)
@@ -382,98 +449,47 @@ def send_notification(notification_id: int) -> dict:
             sent_count += 1
 
         except InvalidPushTokenError as exc:
-            logger.warning(
-                "delivery_invalid_push_token",
-                extra={
-                    "notification_id": notification.id,
-                    "device_id": device.id,
-                    "attempt_count": delivery.attempt_count + 1,
-                    "error": str(exc),
-                },
-            )
-
-            device.push_token_status = DeviceTokenStatus.INVALID
-            device.is_active = False
-            device.invalidated_at = timezone.now()
-            device.invalidation_reason = "invalid_token"
-            device.failure_count += 1
-            device.save(
-                update_fields=[
-                    "push_token_status",
-                    "is_active",
-                    "invalidated_at",
-                    "invalidation_reason",
-                    "failure_count",
-                ]
-            )
-
-            _mark_delivery_as_failed(delivery, exc)
-            increment_counter(
-                "pushit_notification_delivery_total",
-                labels={"outcome": "invalid_token"},
+            _record_delivery_failure(
+                delivery,
+                device,
+                exc,
+                event="delivery_invalid_push_token",
+                outcome="invalid_token",
+                notification_id=notification.id,
+                invalidate_token=True,
             )
             failed_count += 1
 
         except TemporaryPushProviderError as exc:
-            logger.warning(
-                "delivery_temporary_provider_error",
-                extra={
-                    "notification_id": notification.id,
-                    "device_id": device.id,
-                    "attempt_count": delivery.attempt_count + 1,
-                    "error": str(exc),
-                },
-            )
-
-            device.failure_count += 1
-            device.save(update_fields=["failure_count"])
-
-            _mark_delivery_as_failed(delivery, exc)
-            increment_counter(
-                "pushit_notification_delivery_total",
-                labels={"outcome": "temporary_provider_error"},
+            _record_delivery_failure(
+                delivery,
+                device,
+                exc,
+                event="delivery_temporary_provider_error",
+                outcome="temporary_provider_error",
+                notification_id=notification.id,
             )
             failed_count += 1
 
         except PushProviderError as exc:
-            logger.warning(
-                "delivery_provider_error",
-                extra={
-                    "notification_id": notification.id,
-                    "device_id": device.id,
-                    "attempt_count": delivery.attempt_count + 1,
-                    "error": str(exc),
-                },
-            )
-
-            device.failure_count += 1
-            device.save(update_fields=["failure_count"])
-
-            _mark_delivery_as_failed(delivery, exc)
-            increment_counter(
-                "pushit_notification_delivery_total",
-                labels={"outcome": "provider_error"},
+            _record_delivery_failure(
+                delivery,
+                device,
+                exc,
+                event="delivery_provider_error",
+                outcome="provider_error",
+                notification_id=notification.id,
             )
             failed_count += 1
 
         except Exception as exc:
-            logger.warning(
-                "delivery_unexpected_error",
-                extra={
-                    "notification_id": notification.id,
-                    "device_id": device.id,
-                    "attempt_count": delivery.attempt_count + 1,
-                    "error": str(exc),
-                },
-            )
-
-            device.failure_count += 1
-            device.save(update_fields=["failure_count"])
-
-            _mark_delivery_as_failed(delivery, exc)
-            increment_counter(
-                "pushit_notification_delivery_total",
-                labels={"outcome": "unexpected_error"},
+            _record_delivery_failure(
+                delivery,
+                device,
+                exc,
+                event="delivery_unexpected_error",
+                outcome="unexpected_error",
+                notification_id=notification.id,
             )
             failed_count += 1
 

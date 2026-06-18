@@ -7,7 +7,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from config.api_errors import error_response
-from .email_confirmation import confirm_email, resend_confirmation_email, send_confirmation_email
+from .email_confirmation import (
+    confirm_email,
+    resend_confirmation_email,
+    send_confirmation_email,
+    send_duplicate_registration_email,
+)
+from .models import User
 from .password_reset import confirm_password_reset, request_password_reset
 from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
 from .api_serializers import (
@@ -86,13 +92,24 @@ class RegisterApiView(APIView):
                     http_status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        user = serializer.save()  # email_confirmed defaults to False
-        send_confirmation_email(user)
+        email = serializer.validated_data["email"]
+
+        # Anti-enumeration: never reveal whether the address is already taken.
+        # For a duplicate we skip account creation, notify the genuine owner with
+        # a neutral heads-up, and fall through to the SAME pending-verification
+        # body a fresh signup gets — the caller cannot distinguish the two cases.
+        existing = User.objects.filter(email=email).first()
+        if existing is not None:
+            send_duplicate_registration_email(existing)
+        else:
+            user = serializer.save()  # email_confirmed defaults to False
+            send_confirmation_email(user)
+
         return Response(
             {
                 "code": "registration_pending_verification",
                 "detail": "Account created. Check your inbox to confirm your email before signing in.",
-                "email": user.email,
+                "email": email,
             },
             status=status.HTTP_201_CREATED,
         )

@@ -8,6 +8,9 @@ from django.utils import timezone
 from .models import Notification, NotificationDelivery, NotificationStatus
 from .inbound_mailbox import poll_inbound_mailbox
 from .services import send_notification
+# Re-exported so Celery's autodiscover (which scans each app's tasks module)
+# reliably registers the webhook callback task defined in webhooks.py.
+from .webhooks import send_webhook_callback_task  # noqa: F401
 
 # A notification that has been PROCESSING longer than this is considered stranded
 # (the worker child was recycled/crashed mid-send) and is requeued. Generous by

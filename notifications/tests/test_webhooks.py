@@ -17,7 +17,7 @@ import pytest
 
 from accounts.models import User
 from applications.models import Application
-from notifications.webhooks import send_webhook_callback
+from notifications.webhooks import send_webhook_callback, send_webhook_callback_task
 
 
 def _make_app(webhook_url: str) -> Application:
@@ -93,6 +93,52 @@ def test_payload_layout_is_exact(mock_post, _mock_safe):
     assert kwargs["headers"]["X-PushIT-Event"] == "notification.status_changed"
     # Redirects must never be followed (SSRF bypass vector).
     assert kwargs["allow_redirects"] is False
+
+
+@pytest.mark.django_db
+@patch("notifications.webhooks.send_webhook_callback_task.delay")
+def test_send_callback_enqueues_task_does_not_block(mock_delay):
+    # The send path must hand the (blocking) HTTP POST to a Celery task rather than
+    # call requests.post inline, so a slow customer endpoint can't stall the send
+    # worker. send_webhook_callback should only enqueue.
+    from django.utils import timezone
+
+    app = _make_app("https://hooks.example.com/pushit")
+    now = timezone.now()
+    send_webhook_callback(app, notification_id=11, final_status="sent", sent_at=now)
+
+    mock_delay.assert_called_once()
+    _, kwargs = mock_delay.call_args
+    assert kwargs["application_id"] == app.id
+    assert kwargs["notification_id"] == 11
+    assert kwargs["final_status"] == "sent"
+    # sent_at is passed as an ISO string (JSON-serializable across the broker).
+    assert kwargs["sent_at"] == now.isoformat()
+
+
+@pytest.mark.django_db
+@patch("notifications.webhooks.send_webhook_callback_task.delay")
+def test_send_callback_skips_enqueue_when_url_empty(mock_delay):
+    app = _make_app("")
+    send_webhook_callback(app, notification_id=12, final_status="sent")
+    mock_delay.assert_not_called()
+
+
+@pytest.mark.django_db
+@patch("notifications.webhooks.assert_webhook_url_safe", return_value=None)
+@patch("notifications.webhooks.requests.post")
+def test_task_performs_the_post(mock_post, _mock_safe):
+    # The task itself still performs the signed POST (exercised directly).
+    app = _make_app("https://hooks.example.com/pushit")
+    mock_post.return_value.status_code = 200
+
+    send_webhook_callback_task(
+        application_id=app.id,
+        notification_id=13,
+        final_status="sent",
+        sent_at=None,
+    )
+    mock_post.assert_called_once()
 
 
 @pytest.mark.django_db

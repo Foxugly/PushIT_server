@@ -335,6 +335,71 @@ def _confirm_tokens(user):
 
 
 @pytest.mark.django_db
+def test_register_duplicate_email_does_not_leak_and_notifies_existing_user(monkeypatch):
+    # Anti-enumeration: a duplicate-email registration must return the SAME
+    # pending-verification body as a fresh signup (no 400, no "in use" leak),
+    # must NOT create a second account, and must email the existing owner a
+    # neutral heads-up instead of the confirmation link.
+    existing = User.objects.create_user(
+        email="taken@example.com", password="MotDePasseTresSolide123!"
+    )
+
+    confirmations = []
+    notices = []
+    monkeypatch.setattr(
+        "accounts.api_views.send_confirmation_email",
+        lambda user: confirmations.append(user.email),
+    )
+    monkeypatch.setattr(
+        "accounts.api_views.send_duplicate_registration_email",
+        lambda user: notices.append(user.email),
+    )
+
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "taken@example.com", "password": "UnAutreMotDePasseSolide456!",
+    }, format="json")
+
+    # Indistinguishable from a fresh registration.
+    assert response.status_code == 201
+    assert response.data["code"] == "registration_pending_verification"
+    assert response.data["email"] == "taken@example.com"
+    # No second account created; the existing user's password is untouched.
+    assert User.objects.filter(email="taken@example.com").count() == 1
+    assert User.objects.get(email="taken@example.com").pk == existing.pk
+    assert existing.check_password("MotDePasseTresSolide123!")
+    # The existing owner was notified; no confirmation link was sent.
+    assert notices == ["taken@example.com"]
+    assert confirmations == []
+
+
+@pytest.mark.django_db
+def test_register_new_email_still_creates_account(monkeypatch):
+    confirmations = []
+    notices = []
+    monkeypatch.setattr(
+        "accounts.api_views.send_confirmation_email",
+        lambda user: confirmations.append(user.email),
+    )
+    monkeypatch.setattr(
+        "accounts.api_views.send_duplicate_registration_email",
+        lambda user: notices.append(user.email),
+    )
+
+    client = APIClient()
+    response = client.post("/api/v1/auth/register/", {
+        "email": "fresh@example.com", "password": "MotDePasseTresSolide123!",
+    }, format="json")
+
+    assert response.status_code == 201
+    assert response.data["code"] == "registration_pending_verification"
+    assert User.objects.filter(email="fresh@example.com").count() == 1
+    # A genuinely new email gets the confirmation link, not the duplicate notice.
+    assert confirmations == ["fresh@example.com"]
+    assert notices == []
+
+
+@pytest.mark.django_db
 def test_register_sends_confirmation_email_and_creates_unconfirmed(monkeypatch):
     sent = {}
     monkeypatch.setattr(

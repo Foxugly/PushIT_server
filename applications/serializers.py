@@ -1,4 +1,5 @@
 from drf_spectacular.utils import inline_serializer
+from PIL import Image, UnidentifiedImageError
 from rest_framework import serializers
 
 from config.api_errors import (
@@ -6,6 +7,21 @@ from config.api_errors import (
     build_validation_error_serializer,
 )
 from .models import Application, ApplicationQuietPeriod, QuietPeriodType
+
+
+# Logo upload limits. Kept conservative: a logo is a small UI asset, so a few MB
+# and a couple thousand pixels per side is generous. Bounding both the byte size
+# and the pixel dimensions guards against memory-exhaustion / decompression-bomb
+# uploads (a tiny file can still decode to an enormous bitmap).
+LOGO_MAX_BYTES = 2 * 1024 * 1024  # ~2 MB
+LOGO_MAX_DIMENSION = 2048  # px per side
+LOGO_ALLOWED_FORMATS = {"PNG", "JPEG", "WEBP"}
+
+# Defensive cap against decompression bombs: refuse to even decode images whose
+# pixel count is absurd, before we look at the dimensions. Pillow raises rather
+# than allocating gigabytes. Set to a hair above our own max so legitimate
+# in-bounds images always decode.
+Image.MAX_IMAGE_PIXELS = LOGO_MAX_DIMENSION * LOGO_MAX_DIMENSION * 2
 
 
 ApplicationCreateValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -87,6 +103,37 @@ class ApplicationLogoUploadSerializer(serializers.Serializer):
     """Multipart upload of an application logo image."""
 
     logo = serializers.ImageField()
+
+    def validate_logo(self, value):
+        if value.size > LOGO_MAX_BYTES:
+            raise serializers.ValidationError(
+                f"Logo file is too large (max {LOGO_MAX_BYTES // (1024 * 1024)} MB)."
+            )
+
+        # Inspect the decoded image: format restriction + dimension bound. Pillow
+        # raises if the pixel count exceeds Image.MAX_IMAGE_PIXELS (bomb guard).
+        try:
+            value.seek(0)
+            with Image.open(value) as img:
+                image_format = img.format
+                width, height = img.size
+        except (UnidentifiedImageError, Image.DecompressionBombError, OSError):
+            raise serializers.ValidationError("Could not read the image file.")
+        finally:
+            value.seek(0)
+
+        if image_format not in LOGO_ALLOWED_FORMATS:
+            raise serializers.ValidationError(
+                "Unsupported image format. Use PNG, JPEG, or WebP."
+            )
+
+        if width > LOGO_MAX_DIMENSION or height > LOGO_MAX_DIMENSION:
+            raise serializers.ValidationError(
+                f"Logo dimensions are too large "
+                f"(max {LOGO_MAX_DIMENSION}x{LOGO_MAX_DIMENSION} px)."
+            )
+
+        return value
 
 
 class ApplicationCreateSerializer(serializers.ModelSerializer):

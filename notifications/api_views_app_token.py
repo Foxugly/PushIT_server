@@ -9,6 +9,7 @@ from applications.authentication import AppTokenAuthentication
 from applications.permissions import HasAppToken
 from applications.throttles import AppTokenRateThrottle
 from config.api_errors import error_response
+from .api_views import device_ids_prefetch
 from .creation import create_notification_with_optional_idempotency
 from .models import Notification, NotificationStatus
 from .serializers import (
@@ -432,7 +433,7 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
         return (
             Notification.objects.filter(application=self.request.auth_application)
             .select_related("application")
-            .prefetch_related("application__quiet_periods", "deliveries")
+            .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .order_by("-id")
         )
 

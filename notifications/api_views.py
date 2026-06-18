@@ -50,6 +50,21 @@ ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
 }
 
 
+def device_ids_prefetch() -> Prefetch:
+    """Narrow ``deliveries`` prefetch for views serialized by
+    ``NotificationReadSerializer``, which only reads ``device_id`` (via
+    ``get_device_ids``). Fetching the device id (+ the FK back to the
+    notification, needed to attach the rows) instead of the full delivery rows
+    keeps these list endpoints from hydrating every column of the largest table.
+    ``NotificationDetailSerializer`` keeps its richer ``select_related('device')``
+    prefetch — it needs the device name + per-delivery fields.
+    """
+    return Prefetch(
+        "deliveries",
+        queryset=NotificationDelivery.objects.only("notification_id", "device_id"),
+    )
+
+
 @extend_schema_view(
     get=extend_schema(
         summary="List notifications",
@@ -263,7 +278,7 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
         return (
             Notification.objects.filter(application__owner=self.request.user)
             .select_related("application")
-            .prefetch_related("application__quiet_periods", "deliveries")
+            .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .order_by("-id")
         )
 
@@ -484,7 +499,7 @@ class NotificationFutureListApiView(generics.ListAPIView):
                 scheduled_for__gt=timezone.now(),
             )
             .select_related("application")
-            .prefetch_related("application__quiet_periods", "deliveries")
+            .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .order_by("scheduled_for", "id")
         )
 
@@ -615,7 +630,7 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
                 scheduled_for__gt=timezone.now(),
             )
             .select_related("application")
-            .prefetch_related("application__quiet_periods", "deliveries")
+            .prefetch_related("application__quiet_periods", device_ids_prefetch())
         )
 
     def get_serializer_class(self):
@@ -951,8 +966,15 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
 
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = NotificationReadSerializer
-    # Bare array (mobile consumes a List, like the other SPA list endpoints).
+    # Bare array (mobile consumes a List, like the other SPA list endpoints), so
+    # we keep `pagination_class = None` rather than switch to an envelope. To stop
+    # the response from being unbounded (every notification a long-lived device has
+    # ever received), the queryset is hard-capped below; the app pages through
+    # older history with the `sent_since` window instead.
     pagination_class = None
+    # Hard ceiling on rows returned in one call (newest first). Generous enough to
+    # cover a normal inbox view; older items are reachable via `sent_since`.
+    MAX_INBOX_ROWS = 200
 
     def get_queryset(self):
         from devices.models import Device
@@ -966,7 +988,7 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
         queryset = (
             Notification.objects.filter(deliveries__device=device)
             .select_related("application")
-            .prefetch_related("application__quiet_periods", "deliveries")
+            .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .distinct()
             .order_by("-id")
         )
@@ -980,7 +1002,9 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
                     {"sent_since": "Invalid datetime; expected ISO 8601."}
                 )
             queryset = queryset.filter(sent_at__gte=sent_since)
-        return queryset
+        # Cap the number of rows (newest first) so the bare array can never be
+        # unbounded. Applied last; the slice freezes ordering, which is fine here.
+        return queryset[: self.MAX_INBOX_ROWS]
 
 
 class NotificationOpenedReceiptApiView(APIView):

@@ -45,6 +45,30 @@ def send_confirmation_email(user) -> None:
     logger.info("email_confirmation_sent", extra={"user_id": user.pk})
 
 
+def send_duplicate_registration_email(user) -> None:
+    """Notify an existing user that someone tried to register with their address.
+
+    Sent on the anti-enumeration registration path: when a duplicate email is
+    submitted we return the same pending-verification body as a fresh signup (so
+    the caller can't tell the address is taken) and, instead of creating a second
+    account, send this neutral heads-up to the genuine owner. No link, nothing
+    actionable — if it was them, the message tells them to just sign in; if not,
+    it is a benign security notice. Best-effort (no-op if Graph isn't configured).
+    """
+    subject = "Someone tried to register with your PushIT email"
+    body = (
+        "Hello,\n\n"
+        "Someone just tried to create a PushIT account using this email address, "
+        "but an account already exists for it.\n\n"
+        "If this was you, there's nothing to do — simply sign in with your "
+        "existing password, or use \"forgot password\" if you don't remember it.\n\n"
+        "If this wasn't you, you can safely ignore this email; no changes were "
+        "made to your account.\n"
+    )
+    send_email(to=user.email, subject=subject, body=body)
+    logger.info("duplicate_registration_notice_sent", extra={"user_id": user.pk})
+
+
 def resend_confirmation_email(email: str) -> None:
     """Re-send the confirmation link to ``email`` if it matches an
     not-yet-confirmed active account. Silent no-op otherwise (anti-leak)."""
