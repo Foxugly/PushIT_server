@@ -97,6 +97,37 @@ def test_identify_known_device_returns_linked_applications_for_authenticated_use
 
 
 @pytest.mark.django_db
+def test_identify_same_push_token_is_idempotent_upsert():
+    """The device upsert is wrapped in a transaction (race-safe against the
+    unique push_token constraint). Re-identifying the same token must update the
+    existing row, never create a duplicate or raise IntegrityError."""
+    user = User.objects.create_user(
+        email="renaud@example.com",
+        password="MotDePasseTresSolide123!",
+    )
+    client = _auth_client_for(user)
+    payload = {
+        "device_name": "Pixel",
+        "platform": "android",
+        "push_token": "token_dedup_0000000000000000",
+    }
+
+    first = client.post("/api/v1/devices/identify/", payload, format="json")
+    assert first.status_code == 200
+    assert first.data["device_created"] is True
+
+    payload["device_name"] = "Pixel renamed"
+    second = client.post("/api/v1/devices/identify/", payload, format="json")
+    assert second.status_code == 200
+    assert second.data["device_created"] is False
+    assert second.data["device_id"] == first.data["device_id"]
+
+    assert Device.objects.filter(push_token="token_dedup_0000000000000000").count() == 1
+    device = Device.objects.get(push_token="token_dedup_0000000000000000")
+    assert device.device_name == "Pixel renamed"
+
+
+@pytest.mark.django_db
 def test_identify_returns_absolute_logo_url_for_linked_application(tmp_path, settings):
     settings.MEDIA_ROOT = str(tmp_path)
     import io

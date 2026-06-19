@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from config.metrics import increment_counter
@@ -207,7 +208,12 @@ def _mark_delivery_as_deferred(delivery: NotificationDelivery, retry_at) -> None
     )
 
 def _mark_delivery_as_failed(delivery: NotificationDelivery, exc: Exception) -> None:
-    delivery.attempt_count += 1
+    # Atomic, race-safe increment: concurrent failures for the same delivery
+    # (e.g. retried by overlapping workers) must not clobber each other's count.
+    NotificationDelivery.objects.filter(pk=delivery.pk).update(
+        attempt_count=F("attempt_count") + 1
+    )
+    delivery.refresh_from_db(fields=["attempt_count"])
     delivery.last_attempt_at = timezone.now()
     delivery.error_message = str(exc)
 
@@ -220,7 +226,6 @@ def _mark_delivery_as_failed(delivery: NotificationDelivery, exc: Exception) -> 
 
     delivery.save(
         update_fields=[
-            "attempt_count",
             "last_attempt_at",
             "error_message",
             "status",
@@ -256,7 +261,10 @@ def _record_delivery_failure(
         },
     )
 
-    device.failure_count += 1
+    # Atomic counter bump (read-modify-write would race with concurrent FCM
+    # failures for the same device). Done in a single UPDATE; the in-memory
+    # `device` is refreshed afterwards so callers see the new value.
+    Device.objects.filter(pk=device.pk).update(failure_count=F("failure_count") + 1)
     if invalidate_token:
         device.push_token_status = DeviceTokenStatus.INVALID
         device.is_active = False
@@ -268,11 +276,9 @@ def _record_delivery_failure(
                 "is_active",
                 "invalidated_at",
                 "invalidation_reason",
-                "failure_count",
             ]
         )
-    else:
-        device.save(update_fields=["failure_count"])
+    device.refresh_from_db(fields=["failure_count"])
 
     _mark_delivery_as_failed(delivery, exc)
     increment_counter(

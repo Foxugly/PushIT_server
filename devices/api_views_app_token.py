@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import permissions, status
@@ -22,35 +24,76 @@ from .serializers import (
 )
 
 
-def _upsert_authenticated_device(*, user, data):
-    device = Device.objects.filter(push_token=data["push_token"]).first()
-    created = device is None
-    if created:
-        device = Device(push_token=data["push_token"])
-    elif device.user_id is not None and device.user_id != user.id:
+def _select_existing_device(push_token):
+    """Fetch the device row for ``push_token``, locking it when the backend
+    supports row locking so two concurrent upserts for the same token serialise
+    instead of racing. ``skip_locked`` is *not* used here: we must operate on the
+    row, not skip it, when another tx holds it — the FOR UPDATE simply makes us
+    wait for that tx to commit."""
+    qs = Device.objects.filter(push_token=push_token)
+    if settings.DB_SUPPORTS_ROW_LOCKING:
+        qs = qs.select_for_update()
+    return qs.first()
+
+
+def _apply_device_fields(device, *, user, data):
+    if device.user_id is not None and device.user_id != user.id:
         device.application_links.filter(is_active=True).update(
             is_active=False,
             unlinked_at=timezone.now(),
             unlink_source=UnlinkSource.TAKEOVER,
         )
-
     device.user = user
     device.device_name = data.get("device_name", "")
     device.platform = data.get("platform", "android")
     device.push_token_status = DeviceTokenStatus.ACTIVE
     device.last_seen_at = timezone.now()
-    device.save(
-        update_fields=[
-            "user",
-            "device_name",
-            "platform",
-            "push_token_status",
-            "last_seen_at",
-        ]
-        if not created
-        else None
-    )
-    return device, created
+
+
+def _upsert_authenticated_device(*, user, data):
+    push_token = data["push_token"]
+    # The whole read-modify-write is wrapped in a transaction so the row lock
+    # (taken in _select_existing_device) is held for its duration. On backends
+    # without row locking (sqlite tests) we additionally guard the INSERT against
+    # a concurrent creator via the unique push_token constraint.
+    with transaction.atomic():
+        device = _select_existing_device(push_token)
+        if device is not None:
+            _apply_device_fields(device, user=user, data=data)
+            device.save(
+                update_fields=[
+                    "user",
+                    "device_name",
+                    "platform",
+                    "push_token_status",
+                    "last_seen_at",
+                ]
+            )
+            return device, False
+
+        device = Device(push_token=push_token)
+        _apply_device_fields(device, user=user, data=data)
+        try:
+            with transaction.atomic():
+                device.save()
+            return device, True
+        except IntegrityError:
+            # A concurrent request created the same push_token between our SELECT
+            # and INSERT. Re-fetch (locking) and fall through to the update path.
+            device = _select_existing_device(push_token)
+            if device is None:  # pragma: no cover - lost row, should not happen
+                raise
+            _apply_device_fields(device, user=user, data=data)
+            device.save(
+                update_fields=[
+                    "user",
+                    "device_name",
+                    "platform",
+                    "push_token_status",
+                    "last_seen_at",
+                ]
+            )
+            return device, False
 
 
 def _serialize_linked_applications(device, request=None):
@@ -154,19 +197,27 @@ class DeviceLinkWithAppTokenApiView(APIView):
             data=data,
         )
 
-        link, link_created = DeviceApplicationLink.objects.get_or_create(
-            device=device,
-            application=application,
-            defaults={"is_active": True},
-        )
+        # get_or_create + the reactivation read-modify-write are wrapped in one
+        # transaction. get_or_create is itself race-safe against the link's unique
+        # (device, application) constraint; the surrounding lock serialises a
+        # concurrent reactivation so it can't clobber the unlink audit fields.
+        with transaction.atomic():
+            link, link_created = DeviceApplicationLink.objects.get_or_create(
+                device=device,
+                application=application,
+                defaults={"is_active": True},
+            )
 
-        if not link_created and not link.is_active:
-            # Reactivation: clear the previous unlink audit so an active link never
-            # carries stale unlinked_at / unlink_source.
-            link.is_active = True
-            link.unlinked_at = None
-            link.unlink_source = ""
-            link.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
+            if not link_created and not link.is_active:
+                # Reactivation: clear the previous unlink audit so an active link
+                # never carries stale unlinked_at / unlink_source.
+                if settings.DB_SUPPORTS_ROW_LOCKING:
+                    link = DeviceApplicationLink.objects.select_for_update().get(pk=link.pk)
+                if not link.is_active:
+                    link.is_active = True
+                    link.unlinked_at = None
+                    link.unlink_source = ""
+                    link.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
 
         return Response(
             {
