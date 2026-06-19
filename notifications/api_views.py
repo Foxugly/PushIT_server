@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db import OperationalError, transaction
 from django.db.models import Count, Prefetch
@@ -41,6 +43,8 @@ from .serializers import (
     NotificationStatsSerializer,
 )
 from .tasks import send_notification_task
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_NOTIFICATION_STATUSES_TO_QUEUE = {
     NotificationStatus.DRAFT,
@@ -710,6 +714,19 @@ def _try_queue_notification(notification, owner_filter=None):
     try:
         task = send_notification_task.delay(notification.id)
     except Exception:
+        # Broker/queue submit failed (e.g. Redis/kombu OperationalError). We must
+        # NOT report the notification as queued — silently dropping delivery is the
+        # bug. Log at error level (with traceback) so the failure is observable in
+        # Sentry, roll the status back, and surface a 'queue_unavailable' error to
+        # the caller. The catch stays broad on purpose: the broker layer raises a
+        # variety of transport-specific exceptions and any of them means "not
+        # queued".
+        logger.error(
+            "Failed to submit notification %s to the send queue; rolling back to %s.",
+            notification.id,
+            previous_status,
+            exc_info=True,
+        )
         Notification.objects.filter(
             id=notification.id,
             status=NotificationStatus.QUEUED,

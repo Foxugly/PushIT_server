@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import re
 import secrets
 
@@ -74,7 +75,9 @@ class Application(models.Model):
         return alias.rsplit("_", 1)[-1]
 
     def check_app_token(self, raw_token: str) -> bool:
-        return self.app_token_hash == self.hash_app_token(raw_token)
+        # Constant-time compare of the stored hash vs the candidate hash, to avoid
+        # leaking a match via timing. Both operands are fixed-length sha256 hex.
+        return hmac.compare_digest(self.app_token_hash, self.hash_app_token(raw_token))
 
     def revoke_token(self, save: bool = True):
         self.revoked_at = timezone.now()

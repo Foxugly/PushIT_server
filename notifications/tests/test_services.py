@@ -376,6 +376,40 @@ def test_temporary_provider_error_does_not_invalidate_device(mock_send):
 
 @pytest.mark.django_db
 @patch("notifications.services.send_push_to_device")
+def test_failure_count_increment_is_relative_atomic(mock_send):
+    """The device failure_count is bumped with an atomic F() UPDATE, so a
+    pre-existing count is incremented by exactly one (not overwritten by a stale
+    in-memory read-modify-write)."""
+    mock_send.side_effect = TemporaryPushProviderError("Temporary provider error")
+
+    user = User.objects.create_user(email="u1@example.com", password="1234")
+    app = Application.objects.create(owner=user, name="App")
+
+    device = Device.objects.create(
+        push_token=VALID_TOKEN_1,
+        push_token_status=DeviceTokenStatus.ACTIVE,
+        is_active=True,
+        failure_count=5,
+    )
+    DeviceApplicationLink.objects.create(device=device, application=app)
+
+    notification = Notification.objects.create(
+        application=app,
+        title="Hello",
+        message="World",
+        status=NotificationStatus.QUEUED,
+    )
+
+    send_notification(notification.id)
+
+    device.refresh_from_db()
+    # 5 (seeded) + 1 (this failure) — proves the increment is relative, not an
+    # absolute write that would have produced 1.
+    assert device.failure_count == 6
+
+
+@pytest.mark.django_db
+@patch("notifications.services.send_push_to_device")
 def test_send_notification_is_deferred_during_quiet_period(mock_send):
     user = User.objects.create_user(email="u1@example.com", password="1234")
     app = Application.objects.create(owner=user, name="App")
