@@ -325,6 +325,29 @@ def test_me_patch_updates_language():
     assert User.objects.get(email="renaud@example.com").language == "EN"
 
 
+@pytest.mark.django_db
+def test_me_patch_accepts_italian_and_spanish():
+    """IT / ES were added to UserLanguage so the frontend's 5 UI languages can
+    persist server-side (previously only FR/NL/EN were accepted)."""
+    client = APIClient()
+    User.objects.create_user(
+        email="renaud@example.com",
+        password="MotDePasseTresSolide123!",
+        email_confirmed=True,
+    )
+    login_response = client.post("/api/v1/auth/login/", {
+        "email": "renaud@example.com",
+        "password": "MotDePasseTresSolide123!",
+    }, format="json")
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {login_response.data['access']}")
+
+    for code in ("IT", "ES"):
+        response = client.patch("/api/v1/auth/me/", {"language": code}, format="json")
+        assert response.status_code == 200, response.data
+        assert response.data["language"] == code
+        assert User.objects.get(email="renaud@example.com").language == code
+
+
 # --- Email confirmation ---------------------------------------------------
 CONFIRM_URL = "/api/v1/auth/email/confirm/"
 RESEND_URL = "/api/v1/auth/email/resend/"

@@ -4134,11 +4134,15 @@ components:
       - FR
       - NL
       - EN
+      - IT
+      - ES
       type: string
       description: |-
         * `FR` - French
         * `NL` - Dutch
         * `EN` - English
+        * `IT` - Italian
+        * `ES` - Spanish
     LanguageUpdateValidationErrorResponse:
       type: object
       properties:
@@ -5043,7 +5047,6 @@ components:
           type: string
           format: email
           minLength: 1
-          maxLength: 254
         password:
           type: string
           writeOnly: true
