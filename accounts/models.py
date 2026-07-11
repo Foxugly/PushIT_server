@@ -11,6 +11,8 @@ class UserLanguage(models.TextChoices):
     FR = "FR", "French"
     NL = "NL", "Dutch"
     EN = "EN", "English"
+    IT = "IT", "Italian"
+    ES = "ES", "Spanish"
 
 
 class UserManager(BaseUserManager):
