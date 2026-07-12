@@ -13,6 +13,7 @@ from .email_confirmation import (
     send_confirmation_email,
     send_duplicate_registration_email,
 )
+from .magic_link import request_magic_link, verify_magic_link
 from .models import User
 from .password_reset import confirm_password_reset, request_password_reset
 from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
@@ -29,6 +30,10 @@ from .api_serializers import (
     LoginValidationErrorResponseSerializer,
     LogoutSerializer,
     LogoutValidationErrorResponseSerializer,
+    MagicLinkRequestSerializer,
+    MagicLinkRequestValidationErrorResponseSerializer,
+    MagicLinkVerifySerializer,
+    MagicLinkVerifyValidationErrorResponseSerializer,
     RegisterSerializer,
     RegisterValidationErrorResponseSerializer,
     ResetPasswordConfirmSerializer,
@@ -40,6 +45,7 @@ from .api_serializers import (
 )
 from .throttles import (
     LoginRateThrottle,
+    MagicLinkRateThrottle,
     PasswordResetRateThrottle,
     RegisterRateThrottle,
     ResendEmailRateThrottle,
@@ -277,6 +283,93 @@ class ResetPasswordConfirmApiView(APIView):
             {"code": "ok", "detail": "Your password has been reset. You can now sign in."},
             status=status.HTTP_200_OK,
         )
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Request a passwordless magic-link",
+        description=(
+            "Emails a single-use, time-limited sign-in link to the address if it "
+            "matches an active, email-confirmed account. Always returns 200 with "
+            "the same body (anti-leak), whether or not the email exists."
+        ),
+        tags=["Accounts"],
+        auth=[],
+        request=MagicLinkRequestSerializer,
+        responses={
+            200: DetailResponseSerializer,
+            400: OpenApiResponse(
+                response=MagicLinkRequestValidationErrorResponseSerializer,
+                description="Invalid data or captcha failure",
+            ),
+        },
+    )
+)
+class MagicLinkRequestApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [MagicLinkRateThrottle]
+
+    def post(self, request):
+        serializer = MagicLinkRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Turnstile gate (same model as register/forgot-password): verified only
+        # once a secret is configured, fail-closed. Runs before the anti-leak
+        # no-op so a bot can't probe addresses without solving the captcha.
+        if turnstile_enabled():
+            token = serializer.validated_data.get("turnstile_token") or ""
+            if not verify_turnstile_token(token, remote_ip=get_remote_ip(request)):
+                return error_response(
+                    code="captcha_failed",
+                    detail="Captcha verification failed. Please try again.",
+                    http_status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        request_magic_link(serializer.validated_data["email"])
+        # Anti-leak: identical response whether or not the email matched.
+        return Response(
+            {"code": "ok", "detail": "If that email is registered, a sign-in link has been sent."},
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Verify a magic-link and sign in",
+        description=(
+            "Validates the single-use token from the emailed link, marks it used, "
+            "and returns JWT tokens (auto-login). Rejects an invalid, expired, or "
+            "already-used token with 400."
+        ),
+        tags=["Accounts"],
+        auth=[],
+        request=MagicLinkVerifySerializer,
+        responses={
+            200: LoginResponseSerializer,
+            400: OpenApiResponse(
+                response=MagicLinkVerifyValidationErrorResponseSerializer,
+                description="Invalid/expired/used link or invalid data",
+            ),
+        },
+    )
+)
+class MagicLinkVerifyApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_classes = [LoginRateThrottle]
+
+    def post(self, request):
+        serializer = MagicLinkVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = verify_magic_link(serializer.validated_data["token"])
+        if user is None:
+            return error_response(
+                code="magic_link_invalid",
+                detail="This sign-in link is invalid, expired, or already used.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(build_token_response_for_user(user), status=status.HTTP_200_OK)
 
 
 @extend_schema_view(

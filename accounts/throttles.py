@@ -15,3 +15,7 @@ class PasswordResetRateThrottle(AnonRateThrottle):
 
 class ResendEmailRateThrottle(AnonRateThrottle):
     scope = "resend"
+
+
+class MagicLinkRateThrottle(AnonRateThrottle):
+    scope = "magic_link"

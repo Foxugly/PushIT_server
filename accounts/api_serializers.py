@@ -45,6 +45,16 @@ EmailResendValidationErrorResponseSerializer = build_validation_error_serializer
     ["email"],
 )
 
+MagicLinkRequestValidationErrorResponseSerializer = build_validation_error_serializer(
+    "MagicLinkRequestValidationErrorResponse",
+    ["email"],
+)
+
+MagicLinkVerifyValidationErrorResponseSerializer = build_validation_error_serializer(
+    "MagicLinkVerifyValidationErrorResponse",
+    ["token"],
+)
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     # Declared explicitly with no validators so DRF's auto-added UniqueValidator
@@ -136,6 +146,23 @@ class EmailResendSerializer(serializers.Serializer):
     """Body of POST /auth/email/resend/. Anti-leak: the view always returns 200."""
 
     email = serializers.EmailField()
+
+
+class MagicLinkRequestSerializer(serializers.Serializer):
+    """Body of POST /auth/magic-link/. Anti-leak: the view always returns 200
+    regardless of whether the email matches a confirmed user."""
+
+    email = serializers.EmailField()
+    # Optional at the serializer layer; the view enforces Turnstile (fail-closed)
+    # only once a secret is configured (same rollout gate as register/forgot).
+    turnstile_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+
+class MagicLinkVerifySerializer(serializers.Serializer):
+    """Body of POST /auth/magic-link/verify/. `token` is the single-use token
+    from the emailed link ({FRONTEND_BASE_URL}/auth/magic-link/{token})."""
+
+    token = serializers.CharField()
 
 
 class UserMeSerializer(serializers.ModelSerializer):

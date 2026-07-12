@@ -40,6 +40,10 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 # emailed to users ({FRONTEND_BASE_URL}/reset-password/{uid}/{token}).
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="https://pushit.foxugly.com")
 
+# Lifetime (minutes) of a passwordless magic-link login token before it expires.
+# Single-use regardless; this bounds how long an emailed link stays valid.
+MAGIC_LINK_TTL_MINUTES = env.int("MAGIC_LINK_TTL_MINUTES", default=15)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -241,6 +245,7 @@ REST_FRAMEWORK = {
         "register": "5/min",
         "password_reset": "5/min",
         "resend": "3/min",
+        "magic_link": "5/min",
         "app_token": "300/min",
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
