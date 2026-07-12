@@ -5,6 +5,8 @@ from .api_views import (
     ForgotPasswordApiView,
     LoginApiView,
     LogoutApiView,
+    MagicLinkRequestApiView,
+    MagicLinkVerifyApiView,
     MeApiView,
     RegisterApiView,
     ResendConfirmationApiView,
@@ -21,4 +23,6 @@ urlpatterns = [
     path("me/", MeApiView.as_view(), name="auth-me"),
     path("forgot-password/", ForgotPasswordApiView.as_view(), name="auth-forgot-password"),
     path("reset-password/", ResetPasswordConfirmApiView.as_view(), name="auth-reset-password"),
+    path("magic-link/", MagicLinkRequestApiView.as_view(), name="auth-magic-link"),
+    path("magic-link/verify/", MagicLinkVerifyApiView.as_view(), name="auth-magic-link-verify"),
 ]

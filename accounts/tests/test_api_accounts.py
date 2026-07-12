@@ -1,9 +1,10 @@
 import pytest
 from django.contrib.auth.tokens import default_token_generator
+from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework.test import APIClient
-from accounts.models import User
+from accounts.models import MagicLinkToken, User
 
 
 @pytest.mark.django_db
@@ -529,3 +530,111 @@ def test_refresh_returns_rotated_refresh_token():
     # The rotated refresh token is returned and differs from the original.
     assert "refresh" in response.data
     assert response.data["refresh"] != original_refresh
+
+
+# --- Magic-link (passwordless) --------------------------------------------
+MAGIC_URL = "/api/v1/auth/magic-link/"
+MAGIC_VERIFY_URL = "/api/v1/auth/magic-link/verify/"
+
+
+@pytest.mark.django_db
+def test_magic_link_request_unknown_email_returns_200_antileak():
+    client = APIClient()
+    response = client.post(MAGIC_URL, {"email": "nobody@example.com"}, format="json")
+    assert response.status_code == 200
+    assert response.data["code"] == "ok"
+    # No token minted for a non-existent user.
+    assert MagicLinkToken.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_magic_link_request_unconfirmed_user_is_noop_antileak():
+    # Same 200 body, but no link for an unconfirmed account (login gate parity).
+    User.objects.create_user(email="pending@example.com", password="MotDePasseTresSolide123!")
+    client = APIClient()
+    response = client.post(MAGIC_URL, {"email": "pending@example.com"}, format="json")
+    assert response.status_code == 200
+    assert MagicLinkToken.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_magic_link_request_confirmed_user_sends_link(monkeypatch):
+    User.objects.create_user(
+        email="renaud@example.com", password="MotDePasseTresSolide123!", email_confirmed=True
+    )
+    sent = {}
+    monkeypatch.setattr(
+        "accounts.magic_link.send_email",
+        lambda to, subject, body: sent.update(to=to, body=body),
+    )
+    client = APIClient()
+    response = client.post(MAGIC_URL, {"email": "renaud@example.com"}, format="json")
+
+    assert response.status_code == 200
+    assert MagicLinkToken.objects.count() == 1
+    token = MagicLinkToken.objects.get().token
+    assert sent["to"] == "renaud@example.com"
+    assert f"/auth/magic-link/{token}" in sent["body"]
+
+
+@pytest.mark.django_db
+def test_magic_link_request_with_turnstile_invalid_token_returns_400(settings, monkeypatch):
+    settings.TURNSTILE_SECRET_KEY = "test-secret"
+    monkeypatch.setattr(
+        "accounts.api_views.verify_turnstile_token", lambda token, remote_ip=None: False
+    )
+    User.objects.create_user(
+        email="renaud@example.com", password="MotDePasseTresSolide123!", email_confirmed=True
+    )
+    client = APIClient()
+    response = client.post(
+        MAGIC_URL, {"email": "renaud@example.com", "turnstile_token": "bad"}, format="json"
+    )
+    assert response.status_code == 400
+    assert response.data["code"] == "captcha_failed"
+    assert MagicLinkToken.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_magic_link_verify_issues_tokens_and_is_single_use():
+    user = User.objects.create_user(
+        email="renaud@example.com", password="MotDePasseTresSolide123!", email_confirmed=True
+    )
+    link = MagicLinkToken.objects.create(
+        user=user, expires_at=timezone.now() + timezone.timedelta(minutes=15)
+    )
+    client = APIClient()
+
+    ok = client.post(MAGIC_VERIFY_URL, {"token": link.token}, format="json")
+    assert ok.status_code == 200
+    assert "access" in ok.data and "refresh" in ok.data
+    assert ok.data["user"]["email"] == "renaud@example.com"
+    link.refresh_from_db()
+    assert link.used_at is not None
+
+    # Single-use: a second attempt with the same token is rejected.
+    again = client.post(MAGIC_VERIFY_URL, {"token": link.token}, format="json")
+    assert again.status_code == 400
+    assert again.data["code"] == "magic_link_invalid"
+
+
+@pytest.mark.django_db
+def test_magic_link_verify_rejects_expired_token():
+    user = User.objects.create_user(
+        email="renaud@example.com", password="MotDePasseTresSolide123!", email_confirmed=True
+    )
+    link = MagicLinkToken.objects.create(
+        user=user, expires_at=timezone.now() - timezone.timedelta(minutes=1)
+    )
+    client = APIClient()
+    response = client.post(MAGIC_VERIFY_URL, {"token": link.token}, format="json")
+    assert response.status_code == 400
+    assert response.data["code"] == "magic_link_invalid"
+
+
+@pytest.mark.django_db
+def test_magic_link_verify_rejects_unknown_token():
+    client = APIClient()
+    response = client.post(MAGIC_VERIFY_URL, {"token": "does-not-exist"}, format="json")
+    assert response.status_code == 400
+    assert response.data["code"] == "magic_link_invalid"
