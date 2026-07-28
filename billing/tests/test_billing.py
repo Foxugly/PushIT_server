@@ -336,3 +336,42 @@ def test_plans_are_relayed_not_hardcoded(owner):
 
     assert body == [{"code": "app"}]
     assert appele.call_args.args[0] == "plans/"
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_the_history_is_translated_into_the_fleet_shape(owner):
+    """Le central parle snake_case, le SPA attend du camelCase : la traduction
+    vit ici pour que la forme du central puisse bouger sans casser le front."""
+    brut = {
+        "subscriptions": [{
+            "id": "sub_1", "status": "active", "plan": "app", "plan_name": "Par application",
+            "interval": "monthly", "quantity": 3,
+            "started_at": "2026-01-01T00:00:00Z", "current_period_end": "2026-02-01T00:00:00Z",
+            "canceled_at": None,
+        }],
+        "invoices": [{
+            "id": "in_1", "number": "F-001", "status": "paid", "amount_paid": 726,
+            "currency": "EUR", "created": "2026-01-01T00:00:00Z",
+            "hosted_invoice_url": "https://invoice", "invoice_pdf": "https://pdf",
+        }],
+    }
+    with patch("billing.client.get", return_value=brut):
+        body = _client(owner).get("/api/v1/billing/history/").json()
+
+    assert body["subscriptions"][0]["planName"] == "Par application"
+    assert body["subscriptions"][0]["quantity"] == 3
+    assert body["subscriptions"][0]["currentPeriodEnd"] == "2026-02-01T00:00:00Z"
+    assert body["invoices"][0]["amountPaid"] == 726
+    assert body["invoices"][0]["pdfUrl"] == "https://pdf"
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_an_unreachable_central_still_renders_the_history_page(owner):
+    """Une page de facturation blanche inquiete plus qu'une page vide."""
+    with patch("billing.client.get", side_effect=BillingUnavailable("timeout")):
+        r = _client(owner).get("/api/v1/billing/history/")
+
+    assert r.status_code == 200
+    assert r.json() == {"billingEnabled": True, "subscriptions": [], "invoices": []}
