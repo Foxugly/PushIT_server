@@ -33,6 +33,7 @@ urlpatterns = [
     path("api/v1/devices/", include("devices.api_urls")),
     path("api/v1/notifications/", include("notifications.api_urls")),
     path("api/v1/billing/", include("billing.api_urls")),
+    path("api/v1/staff/", include("accounts.api_staff_urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     # Redoc (optionnel, plus clean)
