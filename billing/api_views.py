@@ -305,6 +305,16 @@ class EntitlementView(APIView):
             return Response(status=status.HTTP_401_UNAUTHORIZED)
 
         payload = request.data
+
+        if payload.get("ping"):
+            # Le central teste la connectivite et le secret depuis sa console.
+            # Sans ce cas, un cablage PARFAIT retombe sur « delivery_id requis »
+            # (400) et le bouton Test annonce un echec -- ce qui est pire qu'une
+            # absence de test, puisqu'on cherche alors une panne inexistante.
+            # On repond apres la verification de signature : le test doit
+            # prouver le secret, pas seulement la joignabilite.
+            return Response({"pong": True}, status=status.HTTP_200_OK)
+
         delivery_id = payload.get("delivery_id")
         if not delivery_id:
             return error_response(code="missing_delivery_id", detail="delivery_id requis.", http_status=400)
