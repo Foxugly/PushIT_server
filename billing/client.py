@@ -21,7 +21,42 @@ TIMEOUT_SECONDS = 10
 
 
 class BillingUnavailable(Exception):
-    """Le central est injoignable ou répond de travers."""
+    """Le central est injoignable ou en panne : la demande peut être retentée."""
+
+
+class BillingRefused(Exception):
+    """Le central a refusé la demande, et le refus a un sens pour l'utilisateur.
+
+    « Vous avez déjà un abonnement », « ce plan n'existe pas » : ce ne sont pas
+    des pannes. Les confondre avec une indisponibilité afficherait « service
+    momentanément indisponible » à quelqu'un qui doit juste faire autre chose --
+    et masquerait une erreur de configuration derrière un message qui invite à
+    réessayer.
+    """
+
+    def __init__(self, status_code: int, code: str, detail: str):
+        super().__init__(f"{status_code} {code}")
+        self.status_code = status_code
+        self.code = code
+        self.detail = detail
+
+
+def _raise_for_status(response, path: str) -> None:
+    """Trie ce qui est une panne de ce qui est un refus."""
+    if response.status_code < 400:
+        return
+    logger.warning("billing_error", extra={"path": path, "code": response.status_code})
+    if response.status_code >= 500:
+        raise BillingUnavailable(f"HTTP {response.status_code}")
+    try:
+        corps = response.json()
+    except ValueError:
+        corps = {}
+    raise BillingRefused(
+        response.status_code,
+        corps.get("code") or "billing_refused",
+        corps.get("detail") or "La demande a été refusée.",
+    )
 
 
 def _sign(method: str, path: str, body: bytes, timestamp: int) -> str:
@@ -66,9 +101,7 @@ def post(path: str, payload: dict) -> dict:
         logger.warning("billing_unreachable", extra={"path": path, "error": str(exc)})
         raise BillingUnavailable(str(exc)) from exc
 
-    if response.status_code >= 400:
-        logger.warning("billing_error", extra={"path": path, "code": response.status_code})
-        raise BillingUnavailable(f"HTTP {response.status_code}")
+    _raise_for_status(response, path)
     return response.json()
 
 
@@ -82,9 +115,7 @@ def get(path: str) -> dict:
         logger.warning("billing_unreachable", extra={"path": path, "error": str(exc)})
         raise BillingUnavailable(str(exc)) from exc
 
-    if response.status_code >= 400:
-        logger.warning("billing_error", extra={"path": path, "code": response.status_code})
-        raise BillingUnavailable(f"HTTP {response.status_code}")
+    _raise_for_status(response, path)
     return response.json()
 
 

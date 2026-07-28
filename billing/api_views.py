@@ -37,6 +37,15 @@ def _unavailable():
     )
 
 
+def _refused(refus):
+    """Relaie le refus du central tel quel.
+
+    Le code et le detail viennent de lui : c'est lui qui sait pourquoi, et le
+    SPA doit pouvoir distinguer « vous avez deja un abonnement » d'une panne.
+    """
+    return error_response(code=refus.code, detail=refus.detail, http_status=refus.status_code)
+
+
 def _front(path: str = "") -> str:
     from django.conf import settings
 
@@ -97,8 +106,11 @@ class SubscriptionView(APIView):
 
         try:
             payload = client.get(f"entitlements/{settings.BILLING_APP_SLUG}/{user.id}/")
-        except client.BillingUnavailable:
-            return  # le push finira par arriver : on sert le cache
+        except (client.BillingUnavailable, client.BillingRefused):
+            # Panne comme refus, le geste est le meme : servir le cache. Le push
+            # finira par arriver, et un rafraichissement de confort ne doit
+            # jamais faire echouer l'affichage de la page.
+            return
         apply_entitlement(user, payload)
 
 
@@ -116,6 +128,8 @@ class PlansView(APIView):
             return Response([])
         try:
             return Response(client.get("plans/"))
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
 
@@ -141,6 +155,8 @@ class CheckoutView(APIView):
                     "cancel_url": _front("/billing?checkout=cancel"),
                 },
             )
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
         return Response({"url": data.get("url", "")})
@@ -159,6 +175,8 @@ class PortalView(APIView):
                 "portal/",
                 {"external_user_id": str(request.user.id), "return_url": _front("/billing")},
             )
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
         return Response({"url": data.get("url", "")})
@@ -181,6 +199,8 @@ class QuantityPreviewView(APIView):
                 "quantity/preview/",
                 {"external_user_id": str(request.user.id), "quantity": request.data.get("quantity")},
             )
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
         return Response(data)
@@ -199,6 +219,8 @@ class QuantityView(APIView):
                 "quantity/",
                 {"external_user_id": str(request.user.id), "quantity": request.data.get("quantity")},
             )
+        except client.BillingRefused as refus:
+            return _refused(refus)
         except client.BillingUnavailable:
             return _unavailable()
         # Le droit sera recalcule et pousse par le webhook Stripe ; on ne duplique
@@ -217,8 +239,8 @@ class BillingHistoryView(APIView):
             return Response({"billingEnabled": False, "subscriptions": [], "invoices": []})
         try:
             data = client.get(f"history/?external_user_id={request.user.id}")
-        except client.BillingUnavailable:
-            # La page doit s'afficher meme si le central est coupe.
+        except (client.BillingUnavailable, client.BillingRefused):
+            # La page doit s'afficher meme si le central est coupe ou refuse.
             return Response({"billingEnabled": True, "subscriptions": [], "invoices": []})
 
         # Le central parle snake_case ; le SPA de la flotte attend du camelCase.
