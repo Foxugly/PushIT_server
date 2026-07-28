@@ -220,7 +220,40 @@ class BillingHistoryView(APIView):
         except client.BillingUnavailable:
             # La page doit s'afficher meme si le central est coupe.
             return Response({"billingEnabled": True, "subscriptions": [], "invoices": []})
-        return Response({"billingEnabled": True, **data})
+
+        # Le central parle snake_case ; le SPA de la flotte attend du camelCase.
+        # La traduction est faite ici plutot que dans le front pour que la forme
+        # du central puisse evoluer sans casser deux depots a la fois.
+        subscriptions = [
+            {
+                "id": s.get("id", ""),
+                "status": s.get("status", ""),
+                "plan": s.get("plan", ""),
+                "planName": s.get("plan_name", ""),
+                "interval": s.get("interval", ""),
+                "quantity": s.get("quantity", 1),
+                "startedAt": s.get("started_at"),
+                "currentPeriodEnd": s.get("current_period_end"),
+                "canceledAt": s.get("canceled_at"),
+            }
+            for s in data.get("subscriptions", [])
+        ]
+        invoices = [
+            {
+                "id": i.get("id", ""),
+                "number": i.get("number", ""),
+                "status": i.get("status", ""),
+                "amountPaid": i.get("amount_paid", 0),
+                "currency": i.get("currency", ""),
+                "createdAt": i.get("created"),
+                "hostedUrl": i.get("hosted_invoice_url", ""),
+                "pdfUrl": i.get("invoice_pdf", ""),
+            }
+            for i in data.get("invoices", [])
+        ]
+        return Response(
+            {"billingEnabled": True, "subscriptions": subscriptions, "invoices": invoices}
+        )
 
 
 class EntitlementView(APIView):
