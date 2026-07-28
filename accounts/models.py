@@ -62,6 +62,13 @@ class User(AbstractUser):
     # sends a confirmation link; login is refused until it is confirmed. Existing
     # accounts are backfilled to True by the data migration so they aren't locked out.
     email_confirmed = models.BooleanField(default=False)
+    # Acces offert : le compte a tous les droits payants sans souscription.
+    # Distinct de is_staff, qui n'accorde AUCUN droit metier. Lu et court-circuite
+    # dans billing/service.py (user_is_paid / application_quota), nulle part ailleurs.
+    subscription_bypass = models.BooleanField(default=False)
+    # Audit seul, aucun effet fonctionnel : pourquoi et quand l'acces a ete offert.
+    bypass_note = models.CharField(max_length=200, blank=True)
+    bypass_granted_at = models.DateTimeField(null=True, blank=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -95,3 +102,43 @@ class MagicLinkToken(models.Model):
     def consume(self) -> None:
         self.used_at = timezone.now()
         self.save(update_fields=["used_at"])
+
+
+class BypassGrantLog(models.Model):
+    """Journal append-only des octrois et revocations d'acces offert.
+
+    Le User porte l'ETAT courant (`subscription_bypass`, `bypass_note`,
+    `bypass_granted_at`) ; ce modele porte l'HISTOIRE, dont l'acteur, que l'etat
+    courant ne dit pas. Jamais modifie ni supprime : une revocation ajoute une
+    ligne, elle n'en efface aucune -- offrir l'acces est un geste commercial, on
+    doit pouvoir dire qui l'a fait et quand.
+
+    Transpose de Poker_server, ou le meme journal existe.
+    """
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="bypass_grants_made",
+    )
+    # Snapshot de l'email : la trace survit a la suppression du compte staff.
+    actor_label = models.CharField(max_length=254, blank=True)
+    target = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="bypass_grants_received",
+    )
+    # Snapshot de l'email : la trace survit a la suppression du compte cible.
+    target_label = models.CharField(max_length=254, blank=True)
+    granted = models.BooleanField()  # True = octroi, False = revocation
+    note = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        verbe = "grant" if self.granted else "revoke"
+        return f"{verbe} {self.target_label} by {self.actor_label}"

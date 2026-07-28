@@ -214,3 +214,21 @@ class LogoutSerializer(serializers.Serializer):
         write_only=True,
         help_text="Refresh token to invalidate"
     )
+
+
+class StaffUserSerializer(serializers.ModelSerializer):
+    """Vue staff d'un compte : identité et état de l'accès offert.
+
+    Seuls `subscription_bypass` et `bypass_note` sont mutables ;
+    `bypass_granted_at` est horodaté par la vue, jamais transmis par le client.
+    Rien d'autre n'est modifiable ici — l'email, le mot de passe et l'activation
+    restent du ressort de l'admin Django.
+    """
+
+    class Meta:
+        model = User
+        fields = [
+            "id", "email", "userkey", "is_active", "email_confirmed",
+            "subscription_bypass", "bypass_note", "bypass_granted_at",
+        ]
+        read_only_fields = ["id", "email", "userkey", "is_active", "email_confirmed", "bypass_granted_at"]

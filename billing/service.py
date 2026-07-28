@@ -5,6 +5,9 @@ quota est le **nombre d'applications** qu'un utilisateur peut posséder.
 
 Tant que la facturation n'est pas branchée (`BILLING_*` absents), tout est ouvert.
 C'est ce qui permet de déployer cette migration sans rien changer au comportement.
+
+Deux portes s'ouvrent donc sans Stripe : la facturation non branchée, et l'accès
+offert (`subscription_bypass`) accordé compte par compte par le staff.
 """
 from django.conf import settings
 from django.utils import timezone
@@ -39,8 +42,14 @@ def _active_subscription(user):
 
 
 def user_is_paid(user) -> bool:
-    """Si l'utilisateur a un abonnement (ou un essai) en cours."""
+    """Si l'utilisateur a un abonnement (ou un essai) en cours.
+
+    Un compte offert (`subscription_bypass`) passe toujours : c'est un geste
+    commercial accorde par le staff, il ne depend d'aucun abonnement Stripe.
+    """
     if not billing_configured():
+        return True
+    if getattr(user, "subscription_bypass", False):
         return True
     return _active_subscription(user) is not None
 
@@ -52,6 +61,8 @@ def application_quota(user) -> int:
     souscrite, pour le forfait il vaut « illimité ».
     """
     if not billing_configured():
+        return UNLIMITED
+    if getattr(user, "subscription_bypass", False):
         return UNLIMITED
     sub = _active_subscription(user)
     if sub is None:
