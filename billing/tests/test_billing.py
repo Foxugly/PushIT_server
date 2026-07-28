@@ -430,3 +430,25 @@ def test_a_refused_history_still_renders_the_page(owner):
 
     assert r.status_code == 200
     assert r.json()["subscriptions"] == []
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_a_signed_ping_answers_200_so_the_console_test_means_something(db):
+    """Le bouton « Test » de la console pousse {"ping": true}. Sans ce cas, un
+    cablage parfait retombait sur « delivery_id requis » (400) et le test
+    annoncait un echec -- pire qu'une absence de test, puisqu'on part alors
+    chercher une panne qui n'existe pas."""
+    r = _push({"ping": True})
+
+    assert r.status_code == 200
+    assert r.json() == {"pong": True}
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_an_unsigned_ping_is_still_refused(db):
+    """Le test doit prouver le secret, pas seulement la joignabilite."""
+    r = APIClient().post("/api/v1/billing/entitlement/", {"ping": True}, format="json")
+
+    assert r.status_code == 401
