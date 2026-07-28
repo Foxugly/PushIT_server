@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "applications.apps.ApplicationsConfig",
     "devices.apps.DevicesConfig",
     "notifications.apps.NotificationsConfig",
+    "billing.apps.BillingConfig",
     "health.apps.HealthConfig",
 ]
 
@@ -396,3 +397,14 @@ if SENTRY_DSN and _SENTRY_PROD_ACTIVE:
 # just by seeding the SSM secret + the frontend site key. See accounts/turnstile.py.
 TURNSTILE_SITE_KEY = env("TURNSTILE_SITE_KEY", default="")
 TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
+
+
+# --- Facturation : PushIT est CONSOMMATEUR du service central --------------------
+# PushIT ne detient aucune cle Stripe. Il delegue a billing-api.foxugly.com, signe
+# en HMAC, et recoit en retour des droits pousses qu'il met en cache.
+# Gate sur ces deux variables : tant qu'elles sont absentes, la facturation est
+# inerte — la creation d'applications reste libre et le checkout repond 503. C'est
+# ce qui permet de deployer cette migration sans rien changer au comportement.
+BILLING_BASE_URL = env("BILLING_BASE_URL", default="")
+BILLING_APP_SECRET = env("BILLING_APP_SECRET", default="")
+BILLING_APP_SLUG = env("BILLING_APP_SLUG", default="pushit")

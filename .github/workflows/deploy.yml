@@ -3,10 +3,18 @@ name: Test & Deploy
 on:
   push:
     branches: [main]
+  # Sans ça une PR n'est jamais verifiee : on ne decouvrait une suite cassee
+  # qu'apres le merge, sur la branche qui deploie. Seul `test` tourne ici,
+  # `deploy` restant garde par son `if: github.ref == 'refs/heads/main'`.
+  pull_request:
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+  # Les deploiements se serialisent entre eux ; les runs de PR non, sinon une PR
+  # ferait la queue derriere un deploiement en cours.
+  group: >-
+    ${{ github.ref == 'refs/heads/main' && 'deploy-production'
+        || format('test-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
