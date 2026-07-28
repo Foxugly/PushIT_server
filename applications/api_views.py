@@ -9,6 +9,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing.service import quota_required
 from config.pagination import OptionalPageNumberPagination
 from .models import Application
 from .serializers import (
@@ -79,6 +80,10 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
         return {"request": self.request}
 
     def create(self, request, *args, **kwargs):
+        # Gating de facturation : inerte tant que le central n'est pas branche.
+        refus = quota_required(request.user)
+        if refus is not None:
+            return refus
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
