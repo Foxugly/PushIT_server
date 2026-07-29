@@ -7,18 +7,24 @@ mois plus tard.
 
 ---
 
-## Décisions à prendre (pas des correctifs)
+## Décisions
 
-### B1 — Durée du jeton de rafraîchissement : 365 jours
+### ~~B1~~ — CLOS le 2026-07-30 : le jeton de rafraîchissement reste à 365 jours
 `config/settings/base.py:269`, piloté par `JWT_REFRESH_DAYS` en SSM.
 
-Une XSS dans la console donne un an d'accès. Le compromis est assumé dans le code
-(« rester connecté » façon messagerie) et la CSP réduit fortement le risque, mais
-la vente d'abonnements approche.
+**Décision : ne pas changer.** Le confort d'usage — rester connecté comme dans une
+messagerie — l'emporte sur le gain de sécurité, à cette échelle et pour ce
+produit.
 
-**Pas fait parce que** c'est un arbitrage produit, pas un défaut : raccourcir
-déconnecte des utilisateurs réels. Le paramètre existe déjà, la bascule est un
-geste ops :
+Ce qui rend la décision tenable :
+- la CSP de la console est stricte (nonce, pas de `unsafe-inline` en script) ;
+- les **deux XSS Angular** qui rendaient réellement ce choix dangereux ont été
+  corrigées le 2026-07-30 (console #42) — c'était le vrai risque, pas la durée ;
+- le backend **rote et blackliste** le jeton à chaque rafraîchissement : un jeton
+  volé cesse de fonctionner dès que le client légitime en obtient un nouveau.
+
+**À réouvrir si** une XSS est trouvée dans la console, ou si un client demande une
+politique de session plus courte. La bascule reste un seul geste :
 ```
 aws ssm put-parameter --name /pushit/prod/JWT_REFRESH_DAYS --value 90 \
   --type String --overwrite --region eu-west-1
