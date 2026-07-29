@@ -152,14 +152,23 @@ def get_application_for_raw_app_token(raw_token: str | None) -> Application:
         Application.objects.filter(pk=application.pk).update(last_used_at=timezone.now())
         return application
 
-    increment_counter("pushit_app_token_auth_total", labels={"outcome": "legacy_send"})
-    application = _legacy_application(raw_token)
-    # Estampille posee ICI et nulle part ailleurs : sur le chemin d'emission
-    # seulement. L'enrolement avec l'ancien jeton reste normal le temps que les
-    # installations mobiles basculent -- le compter allumerait le bandeau
-    # d'extinction chez toutes les applications a chaque scan de QR.
-    Application.objects.filter(pk=application.pk).update(legacy_send_last_used_at=timezone.now())
-    return application
+    # ETEINT (2026-07-29). Le jeton historique n'emet plus. C'etait la derniere
+    # porte par laquelle un destinataire -- qui detient forcement ce jeton, il
+    # etait dans le QR -- pouvait ecrire a tous les autres terminaux.
+    #
+    # Il reste accepte a l'ENROLEMENT (`get_application_for_enrolment`) : des
+    # installations mobiles le portent encore et s'en servent pour se rattacher.
+    # Le refuser la les couperait sans que personne y gagne quoi que ce soit.
+    #
+    # Code distinct d'`app_token_invalid` a dessein : un 401 muet enverrait
+    # chercher un probleme d'authentification, alors que la reponse est
+    # « ce jeton n'emet plus, cree un jeton d'emission ».
+    increment_counter("pushit_app_token_auth_total", labels={"outcome": "legacy_send_refused"})
+    raise exceptions.AuthenticationFailed(
+        "This application token no longer authorises sending. "
+        "Create a send token from the console and use it instead.",
+        code="app_token_retired",
+    )
 
 
 def _legacy_application(raw_token: str) -> Application:

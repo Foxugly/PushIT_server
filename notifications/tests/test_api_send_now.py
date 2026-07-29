@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import User
 from applications.models import Application
+from applications.models_send_token import AppSendToken
 from devices.models import Device, DeviceApplicationLink, DeviceTokenStatus
 from notifications.models import Notification, NotificationStatus
 
@@ -85,8 +86,7 @@ def test_app_token_send_now_creates_and_dispatches(mock_delay):
     client = APIClient()
     user = User.objects.create_user(email="appt@example.com", password=PWD)
     app = Application.objects.create(owner=user, name="Acme")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     resp = client.post(
         "/api/v1/notifications/app/send/",
@@ -107,8 +107,7 @@ def test_app_token_send_now_is_idempotent_and_does_not_resend(mock_delay):
     client = APIClient()
     user = User.objects.create_user(email="appt2@example.com", password=PWD)
     app = Application.objects.create(owner=user, name="Acme")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
     body = {"title": "Hi", "message": "yo"}
 
     first = client.post(
@@ -132,8 +131,7 @@ def test_app_token_send_now_requires_idempotency_key(mock_delay):
     client = APIClient()
     user = User.objects.create_user(email="appt3@example.com", password=PWD)
     app = Application.objects.create(owner=user, name="Acme")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     resp = client.post(
         "/api/v1/notifications/app/send/",

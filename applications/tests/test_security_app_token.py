@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from accounts.models import User
 from applications.authentication import AppTokenAuthentication, AppTokenPrincipal
 from applications.models import Application
+from applications.models_send_token import AppSendToken
 from applications.permissions import HasAppToken
 
 VALID_PUSH_TOKEN = "token_12345678901234567890"
@@ -139,8 +140,11 @@ def test_app_token_auth_does_not_expose_owner_as_request_user():
         password="1234Test!!",
     )
     app = Application(owner=user, name="App")
-    raw_token = app.set_new_app_token()
+    app.set_new_app_token()
     app.save()
+    # Un jeton d'emission : c'est le seul identifiant qu'AppTokenAuthentication
+    # accepte encore, le jeton historique ayant ete eteint sur ce chemin.
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     request = APIRequestFactory().post(
         "/api/v1/devices/link/",

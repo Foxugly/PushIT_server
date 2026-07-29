@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from accounts.models import User
 from applications.authentication import AppTokenAuthentication
 from applications.models import Application
+from applications.models_send_token import AppSendToken
 from applications.permissions import HasAppToken
 
 
@@ -77,8 +78,7 @@ def test_internal_error_logs_application_context_for_app_token_requests(caplog):
         password="MotDePasseTresSolide123!",
     )
     application = Application.objects.create(owner=user, name="App")
-    raw_token = application.set_new_app_token()
-    application.save()
+    _, raw_token = AppSendToken.issue(application, "tests")
 
     with caplog.at_level(logging.ERROR, logger="pushit.api"):
         response = client.post(
