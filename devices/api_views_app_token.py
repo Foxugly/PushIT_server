@@ -6,7 +6,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from applications.authentication import get_application_for_raw_app_token
+from applications.authentication import get_application_for_enrolment
 from .models import Device, DeviceApplicationLink, DeviceTokenStatus, UnlinkSource
 from .serializers import (
     DetailResponseSerializer,
@@ -191,7 +191,7 @@ class DeviceLinkWithAppTokenApiView(APIView):
         serializer = DeviceLinkWithAppTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        application = get_application_for_raw_app_token(data.get("app_token"))
+        application = get_application_for_enrolment(data.get("app_token"))
         device, created = _upsert_authenticated_device(
             user=request.user,
             data=data,
@@ -261,7 +261,7 @@ class DeviceUnlinkWithAppTokenApiView(APIView):
         serializer = DeviceUnlinkWithAppTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        application = get_application_for_raw_app_token(data.get("app_token"))
+        application = get_application_for_enrolment(data.get("app_token"))
 
         device = Device.objects.filter(
             push_token=data["push_token"], user=request.user

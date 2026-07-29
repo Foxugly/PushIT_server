@@ -20,8 +20,17 @@ class Application(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="applications")
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
+    # HERITE : ce jeton faisait deux metiers opposes -- il partait dans le QR vers
+    # chaque destinataire ET il autorisait l'emission. Remplace a l'enrolement par
+    # `enrolment_code`, et a l'emission par AppSendToken. Conserve le temps que les
+    # installations mobiles existantes basculent.
     app_token_prefix = models.CharField(max_length=24, db_index=True)
     app_token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    # Public : c'est lui qui part dans le QR. Stocke en clair parce qu'il n'a rien
+    # d'un secret -- on le montre a tous ceux qu'on veut voir s'abonner. Il n'ouvre
+    # QUE l'enrolement : jamais l'emission, jamais la lecture.
+    enrolment_code = models.CharField(max_length=32, unique=True, db_index=True)
+    enrolment_code_rotated_at = models.DateTimeField(null=True, blank=True)
     inbound_email_alias = models.CharField(max_length=120, unique=True, db_index=True)
     # The random suffix of the alias, stored + DB-unique so it's race-proof and
     # queryable (the alias is "app_<slug>_<suffix>"). Populated on save().
@@ -51,6 +60,28 @@ class Application(models.Model):
     @staticmethod
     def generate_raw_app_token() -> str:
         return f"apt_{secrets.token_hex(24)}"
+
+    @staticmethod
+    def generate_enrolment_code() -> str:
+        """Court : il se recopie a la main et se lit sur un QR.
+
+        `token_urlsafe` peut produire `-` et `_`, qu'on retire : le code est lu a
+        voix haute et retape, et ces deux caracteres se confondent avec la
+        ponctuation d'une phrase. 12 caracteres restants suffisent largement --
+        ce n'est pas un secret, seulement un identifiant non devinable.
+        """
+        alphabet = secrets.token_urlsafe(24).replace("-", "").replace("_", "")
+        return f"apk_{alphabet[:12]}"
+
+    def rotate_enrolment_code(self) -> str:
+        """Ferme la porte aux futurs rattachements. N'expulse PERSONNE.
+
+        Les terminaux deja rattaches le restent -- c'est deliberement le cas, et
+        la console doit le dire. Retirer quelqu'un est un autre geste.
+        """
+        self.enrolment_code = self.generate_enrolment_code()
+        self.enrolment_code_rotated_at = timezone.now()
+        return self.enrolment_code
 
     # Inbound-alias format: "app_<name-slug>_<random>", e.g. app_my_resto_3f9a2c1b.
     # The random suffix makes the address unique AND non-guessable (so the inbound
@@ -100,6 +131,8 @@ class Application(models.Model):
     def save(self, *args, **kwargs):
         if not self.app_token_hash:
             self.set_new_app_token()
+        if not self.enrolment_code:
+            self.enrolment_code = self.generate_enrolment_code()
 
         if self.inbound_email_alias:
             # Alias already assigned (update path): keep the stored suffix in sync.
