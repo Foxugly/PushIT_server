@@ -69,8 +69,46 @@ class AppTokenAuthentication(authentication.BaseAuthentication):
         return "X-App-Token"
 
 
+def get_application_for_enrolment(raw_code: str | None) -> Application:
+    """Résout un identifiant présenté pour **rattacher un terminal**.
+
+    Volontairement séparée de `get_application_for_raw_app_token`, qui sert à
+    l'**émission**. Les deux usages n'acceptent pas les mêmes identifiants, et
+    les confondre est exactement le défaut qu'on corrige : un code d'enrôlement
+    circule vers chaque destinataire, il ne doit jamais ouvrir un envoi.
+
+    Accepte le code d'enrôlement, et — le temps de la transition — le jeton
+    hérité que portent les installations mobiles déjà publiées.
+    """
+    if not raw_code:
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "missing"})
+        raise exceptions.NotAuthenticated("Missing app token.", code="app_token_missing")
+
+    if raw_code.startswith("apk_"):
+        application = Application.objects.select_related("owner").filter(
+            enrolment_code=raw_code
+        ).first()
+        if application is None:
+            increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid"})
+            raise exceptions.AuthenticationFailed("Invalid app token.", code="app_token_invalid")
+        if not application.is_active:
+            increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
+            raise exceptions.AuthenticationFailed(
+                "Inactive application.", code="app_token_inactive"
+            )
+        return application
+
+    # Repli hérité : à retirer quand plus aucune installation ne l'utilise.
+    return get_application_for_raw_app_token(raw_code)
+
+
 def get_application_for_raw_app_token(raw_token: str | None) -> Application:
-    """Validate a raw app token and return its application without changing request.user."""
+    """Validate a raw app token and return its application without changing request.user.
+
+    Chemin d'**émission** : n'accepte QUE le jeton `apt_`. Un code d'enrôlement
+    présenté ici doit échouer — c'est ce qui empêche un destinataire d'écrire aux
+    autres. Le format est vérifié avant toute recherche, donc un `apk_` sort ici.
+    """
 
     if not raw_token:
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "missing"})
