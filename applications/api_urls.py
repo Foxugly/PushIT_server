@@ -15,6 +15,7 @@ from .api_views import (
     ApplicationDetailApiView, ApplicationListCreateApiView, ApplicationRegenerateEmailApiView,
     ApplicationRegenerateTokenApiView,
     ApplicationRevokeTokenApiView, ApplicationActivateApiView, ApplicationDeactivateApiView,
+    ApplicationRotateEnrolmentCodeApiView,
     ApplicationQrCodeApiView, ApplicationLogoApiView,
     ApplicationQuietPeriodListCreateApiView, ApplicationQuietPeriodDetailApiView,
 )
@@ -28,6 +29,7 @@ urlpatterns = [
     path("<int:app_id>/activate/", ApplicationActivateApiView.as_view(), name="app-activate"),
     path("<int:app_id>/deactivate/", ApplicationDeactivateApiView.as_view(), name="app-deactivate"),
     path("<int:app_id>/revoke-token/", ApplicationRevokeTokenApiView.as_view(), name="app-revoke-token"),
+    path("<int:app_id>/rotate-enrolment-code/", ApplicationRotateEnrolmentCodeApiView.as_view(), name="app-rotate-enrolment-code"),
     path("<int:app_id>/qrcode/", ApplicationQrCodeApiView.as_view(), name="app-qrcode"),
     path("<int:app_id>/logo/", ApplicationLogoApiView.as_view(), name="app-logo"),
     path("<int:app_id>/devices/<int:device_id>/", ApplicationDeviceEvictApiView.as_view(), name="app-device-evict"),

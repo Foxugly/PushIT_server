@@ -43,6 +43,15 @@ ApplicationTokenRegenerateResponseSerializer = inline_serializer(
     },
 )
 
+ApplicationEnrolmentCodeResponseSerializer = inline_serializer(
+    name="ApplicationEnrolmentCodeResponse",
+    fields={
+        "app_id": serializers.IntegerField(),
+        "enrolment_code": serializers.CharField(),
+        "enrolment_code_rotated_at": serializers.DateTimeField(),
+    },
+)
+
 ApplicationRegenerateEmailResponseSerializer = inline_serializer(
     name="ApplicationRegenerateEmailResponse",
     fields={
@@ -88,6 +97,15 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "app_token_prefix",
+            # En clair, et c'est voulu : le code d'enrolement se distribue. Le
+            # cacher derriere une revelation le ferait passer pour un secret,
+            # alors que le seul secret d'une application est son jeton
+            # d'emission — jamais rendu ici.
+            "enrolment_code",
+            "enrolment_code_rotated_at",
+            # Drapeau d'extinction : non nul = cette application emet encore avec
+            # le jeton herite, et la couper la casserait.
+            "legacy_send_last_used_at",
             "inbound_email_alias",
             "inbound_email_address",
             "webhook_url",
@@ -149,6 +167,9 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
             "description",
             "webhook_url",
             "app_token_prefix",
+            # Rendu des la creation : c'est ce que la console affiche pour faire
+            # scanner le premier terminal.
+            "enrolment_code",
             "inbound_email_alias",
             "inbound_email_address",
             "app_token",
@@ -161,6 +182,7 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "app_token_prefix",
+            "enrolment_code",
             "inbound_email_alias",
             "inbound_email_address",
             "app_token",

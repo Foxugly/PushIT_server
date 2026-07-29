@@ -31,6 +31,12 @@ class Application(models.Model):
     # QUE l'enrolement : jamais l'emission, jamais la lecture.
     enrolment_code = models.CharField(max_length=32, unique=True, db_index=True)
     enrolment_code_rotated_at = models.DateTimeField(null=True, blank=True)
+    # Derniere EMISSION faite avec le jeton herite -- jamais un enrolement, qui
+    # reste normal le temps que les installations mobiles basculent. C'est la
+    # condition d'extinction : tant que ce champ bouge, couper le jeton herite
+    # casserait l'integration de quelqu'un sans prevenir. La console en fait un
+    # bandeau sur la page de l'application.
+    legacy_send_last_used_at = models.DateTimeField(null=True, blank=True)
     inbound_email_alias = models.CharField(max_length=120, unique=True, db_index=True)
     # The random suffix of the alias, stored + DB-unique so it's race-proof and
     # queryable (the alias is "app_<slug>_<suffix>"). Populated on save().
