@@ -23,7 +23,7 @@ Conséquence : quiconque a scanné le QR peut écrire à tous les terminaux de l
 
 ## Contraintes globales
 
-- **L'application mobile publiée ne doit pas casser.** `QrScannerScreen.kt:64` stocke la chaîne scannée verbatim et la poste à `/devices/link/` : une installation existante acceptera donc un code d'enrôlement **sans mise à jour**. Cette propriété est le pivot du plan — ne pas introduire de QR structuré (JSON, URL) qui la briserait.
+- ~~**L'application mobile publiée ne doit pas casser.** `QrScannerScreen.kt:64` stocke la chaîne scannée verbatim et la poste à `/devices/link/` : une installation existante acceptera donc un code d'enrôlement **sans mise à jour**.~~ **FAUX, corrigé en tâche 5 (2026-07-29).** La ligne 64 stocke bien verbatim, mais la **ligne 63** filtrait `startsWith("apt_")` **avant** de stocker : tout QR `apk_` était refusé avec « QR code invalide ». Le mobile n'était pas transparent, c'était le maillon manquant. Le scanner accepte désormais `apk_` et `apt_`. Reste vrai : ne pas introduire de QR structuré (JSON, URL), qui briserait la lecture verbatim.
 - **Le chemin d'authentification reste fondé sur une empreinte.** Le chiffré ne sert **qu'à** la révélation. Un défaut dans la fonction de révélation ne doit pas pouvoir affaiblir l'authentification.
 - **Un code d'enrôlement n'authentifie jamais une émission.** C'est l'invariant que tout le plan protège ; il mérite un test dédié dans chaque phase.
 - **Un jeton d'émission ne lie jamais un terminal.** Sinon on le redistribuerait aux téléphones et on recréerait le défaut.
@@ -62,7 +62,7 @@ Conséquence : quiconque a scanné le QR peut écrire à tous les terminaux de l
 
 **Interfaces produites :** `Application.enrolment_code` (str, `apk_…`), `Application.rotate_enrolment_code() -> str`.
 
-- [ ] **Étape 1 : écrire le test qui échoue**
+- [x] **Étape 1 : écrire le test qui échoue**
 
 ```python
 @pytest.mark.django_db
@@ -83,8 +83,8 @@ def test_the_enrolment_code_can_never_send(app, client):
     assert r.status_code == 401
 ```
 
-- [ ] **Étape 2 : vérifier l'échec** — `pytest applications/tests/test_enrolment_code.py -v`, attendu : `enrolment_code` inexistant.
-- [ ] **Étape 3 : ajouter le champ et le générateur**
+- [x] **Étape 2 : vérifier l'échec** — `pytest applications/tests/test_enrolment_code.py -v`, attendu : `enrolment_code` inexistant.
+- [x] **Étape 3 : ajouter le champ et le générateur**
 
 ```python
 def generate_enrolment_code() -> str:
@@ -92,10 +92,10 @@ def generate_enrolment_code() -> str:
     return f"apk_{secrets.token_urlsafe(9)[:12]}"
 ```
 
-- [ ] **Étape 4 : migration de données** — attribuer un code à chaque application existante (`RunPython`, boucle avec `bulk_update`).
-- [ ] **Étape 5 : accepter le code dans `/devices/link/` et `/devices/unlink/`**, en gardant le jeton hérité.
-- [ ] **Étape 6 : vérifier le passage** des deux tests.
-- [ ] **Étape 7 : commit** — `feat(apps): code d'enrolement distinct du jeton`.
+- [x] **Étape 4 : migration de données** — attribuer un code à chaque application existante (`RunPython`, boucle avec `bulk_update`).
+- [x] **Étape 5 : accepter le code dans `/devices/link/` et `/devices/unlink/`**, en gardant le jeton hérité.
+- [x] **Étape 6 : vérifier le passage** des deux tests.
+- [x] **Étape 7 : commit** — `feat(apps): code d'enrolement distinct du jeton`.
 
 ## Tâche 2 : les jetons d'émission (serveur)
 
@@ -103,7 +103,7 @@ def generate_enrolment_code() -> str:
 
 **Interfaces produites :** `AppSendToken.issue(application, name) -> (instance, raw)`, `AppSendToken.reveal() -> str`.
 
-- [ ] **Étape 1 : le modèle**
+- [x] **Étape 1 : le modèle**
 
 ```python
 class AppSendToken(models.Model):
@@ -128,7 +128,7 @@ class AppSendToken(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
 ```
 
-- [ ] **Étape 2 : le chiffrement, à deux clés dès le premier jour**
+- [x] **Étape 2 : le chiffrement, à deux clés dès le premier jour**
 
 `applications/crypto.py`, **`MultiFernet`** et non `Fernet` : `APP_TOKEN_ENCRYPTION_KEYS` est une **liste** de clés, la première chiffre, toutes déchiffrent.
 
@@ -144,7 +144,7 @@ def cipher() -> MultiFernet:
 ```
 
 Si aucune clé n'est configurée : la création de jetons fonctionne, la révélation renvoie 503 explicite. **Ne jamais retomber silencieusement sur du clair.**
-- [ ] **Étape 3 : tests d'authentification**
+- [x] **Étape 3 : tests d'authentification**
 
 ```python
 @pytest.mark.django_db
@@ -162,9 +162,9 @@ def test_a_send_token_can_never_link_a_device(app):
 def test_revealing_requires_the_password_and_is_logged(staff_client, app): ...
 ```
 
-- [ ] **Étape 4 : brancher `AppTokenAuthentication`** — chercher d'abord dans `AppSendToken`, puis retomber sur le jeton hérité (journalisé sous `legacy_app_token_send`, pour savoir quand on peut couper).
-- [ ] **Étape 5 : l'API** — `GET/POST /apps/<id>/send-tokens/`, `DELETE …/<id>/`, `POST …/<id>/reveal/` (mot de passe requis, écrit `SendTokenReveal`).
-- [ ] **Étape 6 : vérifier**, puis **commit**.
+- [x] **Étape 4 : brancher `AppTokenAuthentication`** — chercher d'abord dans `AppSendToken`, puis retomber sur le jeton hérité (journalisé sous `legacy_app_token_send`, pour savoir quand on peut couper).
+- [x] **Étape 5 : l'API** — `GET/POST /apps/<id>/send-tokens/`, `DELETE …/<id>/`, `POST …/<id>/reveal/` (mot de passe requis, écrit `SendTokenReveal`).
+- [x] **Étape 6 : vérifier**, puis **commit**.
 
 ## Tâche 3 : expulser un abonné (serveur + console)
 
@@ -174,7 +174,7 @@ Conséquence : un indésirable rattaché ne peut être retiré qu'en désactivan
 
 **Fichiers :** `applications/api_views.py`, `applications/api_urls.py`, tests, console.
 
-- [ ] **Étape 1 : le test qui échoue**
+- [x] **Étape 1 : le test qui échoue**
 
 ```python
 @pytest.mark.django_db
@@ -198,34 +198,53 @@ def test_a_stranger_cannot_evict_from_an_application_they_do_not_own(client, app
     assert client.delete(f"/api/v1/apps/{app.id}/devices/{foreign_device.id}/").status_code in (403, 404)
 ```
 
-- [ ] **Étape 2 : vérifier l'échec**, puis implémenter `DELETE /apps/<id>/devices/<device_id>/` (désactive le lien, ne supprime pas le terminal — il appartient à quelqu'un d'autre).
-- [ ] **Étape 3 : console** — bouton « Retirer » sur la liste des terminaux de l'application, avec confirmation.
-- [ ] **Étape 4 : vérifier**, puis **commit**.
+- [x] **Étape 2 : vérifier l'échec**, puis implémenter `DELETE /apps/<id>/devices/<device_id>/` (désactive le lien, ne supprime pas le terminal — il appartient à quelqu'un d'autre).
+- [x] **Étape 3 : console** — bouton « Retirer » sur la liste des terminaux de l'application, avec confirmation.
+- [x] **Étape 4 : vérifier**, puis **commit**.
 
 ## Tâche 4 : la console
 
-- [ ] Bloc **Enrôlement** : code affiché en permanence, QR, bouton « Nouveau code » avec avertissement — *les terminaux déjà rattachés ne sont pas touchés ; pour retirer quelqu'un, utiliser la liste des terminaux*.
-- [ ] Bloc **Jetons d'émission** : liste (nom, préfixe, dernier usage), création avec révélation unique, bouton « Révéler » derrière la re-saisie du mot de passe, révocation.
-- [ ] **La révélation se masque d'elle-même** après quelques secondes, et n'est jamais rendue par défaut. Un jeton laissé à l'écran finit dans une capture ou un partage d'écran.
-- [ ] **Avertissement d'extinction** : si l'application émet encore avec le jeton hérité (drapeau posé par le journal `legacy_app_token_send`), un bandeau le dit sur sa page. Sans ça, l'extinction de la tâche 6 casse l'intégration de quelqu'un sans prévenir.
-- [ ] Onglet **Exemples** : C, C++, Python, Java, Ruby, Go.
-- [ ] **Les exemples lisent le jeton depuis une variable d'environnement** (`PUSHIT_TOKEN`), jamais en dur. C'est ce que font les bonnes documentations, et ça évite le geste qui fait fuiter les secrets : coller l'extrait tel quel dans un dépôt. L'identifiant d'application, lui, peut être écrit dans l'exemple — il n'est pas secret.
-- [ ] **Les exemples visent le jeton d'émission, jamais le code d'enrôlement.** Un exemple qui se trompe réintroduit la faille par la documentation.
-- [ ] Copie dans les 5 catalogues ; la spec de parité doit passer.
+- [x] Bloc **Enrôlement** : code affiché en permanence, QR, bouton « Nouveau code » avec avertissement — *les terminaux déjà rattachés ne sont pas touchés ; pour retirer quelqu'un, utiliser la liste des terminaux*.
+- [x] Bloc **Jetons d'émission** : liste (nom, préfixe, dernier usage), création avec révélation unique, bouton « Révéler » derrière la re-saisie du mot de passe, révocation.
+- [x] **La révélation se masque d'elle-même** après quelques secondes, et n'est jamais rendue par défaut. Un jeton laissé à l'écran finit dans une capture ou un partage d'écran.
+- [x] **Avertissement d'extinction** : si l'application émet encore avec le jeton hérité (drapeau posé par le journal `legacy_app_token_send`), un bandeau le dit sur sa page. Sans ça, l'extinction de la tâche 6 casse l'intégration de quelqu'un sans prévenir.
+- [x] Onglet **Exemples** : C, C++, Python, Java, Ruby, Go.
+- [x] **Les exemples lisent le jeton depuis une variable d'environnement** (`PUSHIT_TOKEN`), jamais en dur. C'est ce que font les bonnes documentations, et ça évite le geste qui fait fuiter les secrets : coller l'extrait tel quel dans un dépôt. L'identifiant d'application, lui, peut être écrit dans l'exemple — il n'est pas secret.
+- [x] **Les exemples visent le jeton d'émission, jamais le code d'enrôlement.** Un exemple qui se trompe réintroduit la faille par la documentation.
+- [x] Copie dans les 5 catalogues ; la spec de parité doit passer.
 
-## Tâche 5 : l'application mobile (confort)
+## Tâche 5 : l'application mobile — **pas du confort**
 
-Aucun changement fonctionnel : le scanner stocke la chaîne verbatim et le serveur accepte les deux formats.
+~~Aucun changement fonctionnel : le scanner stocke la chaîne verbatim et le serveur accepte les deux formats.~~ Le scanner filtrait `apt_` avant de stocker : sans cette tâche, **tout QR produit par la tâche 4 aurait été refusé** par l'application. Voir « Contraintes globales ».
 
-- [ ] Renommer `app_token` en `enrolment_code` dans `TokenStorage` (migration de la valeur existante).
-- [ ] Reformuler les messages d'erreur (`app_token_invalid` → « ce code n'est plus valide »).
-- [ ] Publier **sans urgence** — les installations existantes fonctionnent sans.
+- [x] Accepter `apk_` (et garder `apt_`) dans le scanner — extrait dans `looksLikeEnrolmentCode`, testé.
+- [x] Renommer `app_token` en `enrolment_code` dans `TokenStorage` (migration de la valeur existante, Android + iOS).
+- [x] Reformuler les libellés et messages d'erreur (FR/NL/EN).
+- [ ] Publier — l'app n'est pas encore sur le Play Store (publication en pause), donc rien à pousser dans l'immédiat. À reprendre avec le dossier Play.
 
-## Tâche 6 : extinction
+## Tâche 6 : extinction — **EN ATTENTE, volontairement**
 
-- [ ] Attendre que `legacy_app_token_send` ne paraisse plus dans les journaux **et** qu'aucune application ne porte le bandeau d'avertissement.
-- [ ] Refuser le jeton hérité sur `/notifications/app/*` ; le garder sur `/devices/link/`.
+Elle ne se décide pas à la date mais sur ce que montrent les journaux. Rien n'est coupé tant que la première case n'est pas vraie.
+
+- [ ] Attendre que plus aucune application n'émette avec le jeton hérité **et** qu'aucune page ne porte le bandeau d'avertissement.
+      → `python manage.py legacy_send_report [--since-days N]` répond exactement à cette question (lecture seule, il ne coupe rien).
+- [ ] Refuser le jeton hérité sur `/notifications/app/*` ; le garder sur `/devices/link/` — les installations mobiles s'en servent encore pour s'enrôler.
 - [ ] Supprimer `app_token_hash` / `app_token_prefix` après une période d'observation.
+
+---
+
+## État au 2026-07-29
+
+| Tâche | État |
+|---|---|
+| 1 — code d'enrôlement (serveur) | livré, PR #21 |
+| 2 — jetons d'émission (serveur) | livré, PR #22 |
+| 3 — expulser un abonné | livré, serveur #23 + console #38 |
+| 4 — console | serveur #24 livré, console #39 |
+| 5 — mobile | livré, app #4 (non publié) |
+| 6 — extinction | **en attente** de la condition ci-dessus |
+
+**Geste ops encore dû :** poser `APP_TOKEN_ENCRYPTION_KEYS` dans `/pushit/prod` (SSM, `SecureString`, liste séparée par des virgules). Sans lui, les jetons d'émission fonctionnent mais la console répond 503 à « Revoir le jeton » — c'est le comportement voulu, pas une panne, mais la relecture reste impossible.
 
 ---
 
