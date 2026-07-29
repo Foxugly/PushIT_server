@@ -11,6 +11,7 @@ from notifications.api_views_templates import (
 )
 from .api_views import (
     ApplicationAliasStatusApiView,
+    ApplicationDeviceEvictApiView,
     ApplicationDetailApiView, ApplicationListCreateApiView, ApplicationRegenerateEmailApiView,
     ApplicationRegenerateTokenApiView,
     ApplicationRevokeTokenApiView, ApplicationActivateApiView, ApplicationDeactivateApiView,
@@ -29,6 +30,7 @@ urlpatterns = [
     path("<int:app_id>/revoke-token/", ApplicationRevokeTokenApiView.as_view(), name="app-revoke-token"),
     path("<int:app_id>/qrcode/", ApplicationQrCodeApiView.as_view(), name="app-qrcode"),
     path("<int:app_id>/logo/", ApplicationLogoApiView.as_view(), name="app-logo"),
+    path("<int:app_id>/devices/<int:device_id>/", ApplicationDeviceEvictApiView.as_view(), name="app-device-evict"),
     path("<int:app_id>/send-tokens/", SendTokenListCreateApiView.as_view(), name="app-send-token-list"),
     path("<int:app_id>/send-tokens/<int:token_id>/", SendTokenRevokeApiView.as_view(), name="app-send-token-revoke"),
     path("<int:app_id>/send-tokens/<int:token_id>/reveal/", SendTokenRevealApiView.as_view(), name="app-send-token-reveal"),
