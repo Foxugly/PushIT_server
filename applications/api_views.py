@@ -19,6 +19,7 @@ from .serializers import (
     ApplicationActivationResponseSerializer,
     ApplicationCreateSerializer,
     ApplicationCreateValidationErrorResponseSerializer,
+    ApplicationEnrolmentCodeResponseSerializer,
     ApplicationLogoUploadSerializer,
     ApplicationQuietPeriodReadSerializer,
     ApplicationQuietPeriodValidationErrorResponseSerializer,
@@ -340,17 +341,89 @@ class ApplicationRevokeTokenApiView(APIView):
         return Response({"app_id": app.id, "revoked_at": app.revoked_at}, status=status.HTTP_200_OK)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        summary="Rotate the enrolment code",
+        description=(
+            "Draws a new enrolment code for an application owned by the authenticated "
+            "user. The previous code stops linking new devices. **It evicts nobody**: "
+            "already-linked devices stay linked — use `DELETE /apps/<id>/devices/<device_id>/` "
+            "for that."
+        ),
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        request=None,
+        responses={
+            200: ApplicationEnrolmentCodeResponseSerializer,
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    )
+)
+class ApplicationRotateEnrolmentCodeApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, app_id):
+        app = _get_app_or_404(app_id, request.user)
+        app.rotate_enrolment_code()
+        app.save(update_fields=["enrolment_code", "enrolment_code_rotated_at"])
+        return Response(
+            {
+                "app_id": app.id,
+                "enrolment_code": app.enrolment_code,
+                "enrolment_code_rotated_at": app.enrolment_code_rotated_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+def _qr_png(payload: str) -> HttpResponse:
+    import qrcode
+
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(payload)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    return HttpResponse(buffer.getvalue(), content_type="image/png")
+
+
 class ApplicationQrCodeApiView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        summary="Generate QR code for an app token",
+        summary="QR code of the enrolment code",
         description=(
-            "Returns a PNG image of a QR code encoding the provided app token "
-            "in plain text (e.g. `apt_xxxxxxxxxxxx`). The token must match the "
-            "application's current token. Mobile clients scan this QR code "
-            "to link their device to the application."
+            "Returns a PNG of a QR code encoding the application's **enrolment code** "
+            "(`apk_…`) in plain text — the string a mobile client scans to link a "
+            "device. Needs no secret from the caller: the code is stored in clear "
+            "because it is meant to be distributed. It never encodes a send token."
         ),
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        responses={
+            (200, "image/png"): OpenApiResponse(
+                response=OpenApiTypes.BINARY,
+                description="QR code PNG image",
+            ),
+            404: OpenApiResponse(response=DetailResponseSerializer, description="Application not found"),
+        },
+    )
+    def get(self, request, app_id):
+        app = _get_app_or_404(app_id, request.user)
+        return _qr_png(app.enrolment_code)
+
+    @extend_schema(
+        summary="QR code for a legacy app token (deprecated)",
+        description=(
+            "Legacy form: encodes the raw legacy app token passed in the body, which "
+            "the caller must still hold. Kept while published mobile installs carry "
+            "that token; new callers should use `GET` and distribute the enrolment code."
+        ),
+        deprecated=True,
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=None,
@@ -363,24 +436,13 @@ class ApplicationQrCodeApiView(APIView):
         },
     )
     def post(self, request, app_id):
-        import qrcode
-
         app = _get_app_or_404(app_id, request.user)
 
         raw_token = (request.data.get("app_token") or "").strip()
         if not raw_token or not app.check_app_token(raw_token):
             raise NotFound("Invalid app token.", code="app_token_invalid")
 
-        qr = qrcode.QRCode(version=1, box_size=10, border=4)
-        qr.add_data(raw_token)
-        qr.make(fit=True)
-
-        img = qr.make_image(fill_color="black", back_color="white")
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        return HttpResponse(buffer.getvalue(), content_type="image/png")
+        return _qr_png(raw_token)
 
 
 @extend_schema_view(

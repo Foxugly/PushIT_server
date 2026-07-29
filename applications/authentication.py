@@ -153,7 +153,13 @@ def get_application_for_raw_app_token(raw_token: str | None) -> Application:
         return application
 
     increment_counter("pushit_app_token_auth_total", labels={"outcome": "legacy_send"})
-    return _legacy_application(raw_token)
+    application = _legacy_application(raw_token)
+    # Estampille posee ICI et nulle part ailleurs : sur le chemin d'emission
+    # seulement. L'enrolement avec l'ancien jeton reste normal le temps que les
+    # installations mobiles basculent -- le compter allumerait le bandeau
+    # d'extinction chez toutes les applications a chaque scan de QR.
+    Application.objects.filter(pk=application.pk).update(legacy_send_last_used_at=timezone.now())
+    return application
 
 
 def _legacy_application(raw_token: str) -> Application:
