@@ -98,8 +98,12 @@ def get_application_for_enrolment(raw_code: str | None) -> Application:
             )
         return application
 
-    # Repli hérité : à retirer quand plus aucune installation ne l'utilise.
-    return get_application_for_raw_app_token(raw_code)
+    # Repli hérité, et hérité SEULEMENT : surtout pas via le résolveur
+    # d'émission, qui accepte maintenant les jetons `apt_` dédiés. Y retomber
+    # laisserait un jeton d'émission rattacher un terminal — donc le
+    # redistribuer aux téléphones, et recréer le défaut qu'on corrige.
+    # À retirer quand plus aucune installation ne présente l'ancien jeton.
+    return _legacy_application(raw_code)
 
 
 def get_application_for_raw_app_token(raw_token: str | None) -> Application:
@@ -117,6 +121,48 @@ def get_application_for_raw_app_token(raw_token: str | None) -> Application:
             code="app_token_missing",
         )
 
+    if not raw_token.startswith("apt_"):
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid_format"})
+        raise exceptions.AuthenticationFailed(
+            "Invalid app token format.",
+            code="app_token_invalid_format",
+        )
+
+    # D'abord les jetons d'emission dedies. Le jeton historique n'est plus qu'un
+    # repli, compte pour savoir quand plus personne ne l'utilise -- c'est la
+    # condition d'extinction.
+    from .models_send_token import AppSendToken
+
+    jeton = AppSendToken.objects.select_related("application__owner").filter(
+        token_hash=AppSendToken.hash_raw(raw_token)
+    ).first()
+    if jeton is not None:
+        if jeton.revoked_at is not None:
+            increment_counter("pushit_app_token_auth_total", labels={"outcome": "revoked"})
+            raise exceptions.AuthenticationFailed(
+                "Revoked app token.", code="app_token_revoked"
+            )
+        application = jeton.application
+        if not application.is_active:
+            increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
+            raise exceptions.AuthenticationFailed(
+                "Inactive application.", code="app_token_inactive"
+            )
+        AppSendToken.objects.filter(pk=jeton.pk).update(last_used_at=timezone.now())
+        Application.objects.filter(pk=application.pk).update(last_used_at=timezone.now())
+        return application
+
+    increment_counter("pushit_app_token_auth_total", labels={"outcome": "legacy_send"})
+    return _legacy_application(raw_token)
+
+
+def _legacy_application(raw_token: str) -> Application:
+    """Résout le jeton historique, et lui seul.
+
+    Partagé par les deux chemins pendant la transition. Séparé du résolveur
+    d'émission exprès : celui-ci accepte les jetons `apt_` dédiés, qui ne
+    doivent jamais servir à enrôler.
+    """
     if not raw_token.startswith("apt_"):
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid_format"})
         raise exceptions.AuthenticationFailed(

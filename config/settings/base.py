@@ -405,6 +405,14 @@ TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
 # Gate sur ces deux variables : tant qu'elles sont absentes, la facturation est
 # inerte — la creation d'applications reste libre et le checkout repond 503. C'est
 # ce qui permet de deployer cette migration sans rien changer au comportement.
+# Chiffrement des jetons d'emission (applications/crypto.py). LISTE de cles :
+# la premiere chiffre, toutes dechiffrent, pour qu'une rotation soit possible
+# sans rendre d'un coup tous les jetons illisibles. Absente, la relecture est
+# indisponible -- les jetons restent parfaitement fonctionnels.
+APP_TOKEN_ENCRYPTION_KEYS = [
+    k.strip() for k in env("APP_TOKEN_ENCRYPTION_KEYS", default="").split(",") if k.strip()
+]
+
 BILLING_BASE_URL = env("BILLING_BASE_URL", default="")
 BILLING_APP_SECRET = env("BILLING_APP_SECRET", default="")
 BILLING_APP_SLUG = env("BILLING_APP_SLUG", default="pushit")

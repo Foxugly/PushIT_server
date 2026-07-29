@@ -221,3 +221,12 @@ class ApplicationQuietPeriod(AbstractQuietPeriod):
         if self.period_type == QuietPeriodType.ONCE and self.start_at is not None:
             return self.name or f"quiet:{self.application_id}:{self.start_at.isoformat()}"
         return self.name or f"quiet:{self.application_id}:{self.period_type.lower()}"
+
+
+# Declares dans un module dedie pour ne pas alourdir celui-ci, re-exportes ici
+# parce que Django ne decouvre les modeles que via `models`.
+from .models_send_token import (  # noqa: E402,F401  (import tardif volontaire)
+    MAX_TOKENS_PER_APPLICATION,
+    AppSendToken,
+    SendTokenReveal,
+)

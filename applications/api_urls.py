@@ -1,4 +1,10 @@
 from django.urls import path
+
+from .api_views_send_tokens import (
+    SendTokenListCreateApiView,
+    SendTokenRevealApiView,
+    SendTokenRevokeApiView,
+)
 from notifications.api_views_templates import (
     NotificationTemplateListCreateApiView,
     NotificationTemplateDetailApiView,
@@ -23,6 +29,9 @@ urlpatterns = [
     path("<int:app_id>/revoke-token/", ApplicationRevokeTokenApiView.as_view(), name="app-revoke-token"),
     path("<int:app_id>/qrcode/", ApplicationQrCodeApiView.as_view(), name="app-qrcode"),
     path("<int:app_id>/logo/", ApplicationLogoApiView.as_view(), name="app-logo"),
+    path("<int:app_id>/send-tokens/", SendTokenListCreateApiView.as_view(), name="app-send-token-list"),
+    path("<int:app_id>/send-tokens/<int:token_id>/", SendTokenRevokeApiView.as_view(), name="app-send-token-revoke"),
+    path("<int:app_id>/send-tokens/<int:token_id>/reveal/", SendTokenRevealApiView.as_view(), name="app-send-token-reveal"),
     path("<int:app_id>/quiet-periods/", ApplicationQuietPeriodListCreateApiView.as_view(), name="app-quiet-period-list-create"),
     path("<int:app_id>/quiet-periods/<int:quiet_period_id>/", ApplicationQuietPeriodDetailApiView.as_view(), name="app-quiet-period-detail"),
     path("<int:app_id>/templates/", NotificationTemplateListCreateApiView.as_view(), name="app-template-list-create"),
