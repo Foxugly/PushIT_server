@@ -222,14 +222,14 @@ def test_a_stranger_cannot_evict_from_an_application_they_do_not_own(client, app
 - [x] Reformuler les libellés et messages d'erreur (FR/NL/EN).
 - [ ] Publier — l'app n'est pas encore sur le Play Store (publication en pause), donc rien à pousser dans l'immédiat. À reprendre avec le dossier Play.
 
-## Tâche 6 : extinction — **EN ATTENTE, volontairement**
+## Tâche 6 : extinction — **faite le 2026-07-29**, sauf la suppression des colonnes
 
-Elle ne se décide pas à la date mais sur ce que montrent les journaux. Rien n'est coupé tant que la première case n'est pas vraie.
-
-- [ ] Attendre que plus aucune application n'émette avec le jeton hérité **et** qu'aucune page ne porte le bandeau d'avertissement.
-      → `python manage.py legacy_send_report [--since-days N]` répond exactement à cette question (lecture seule, il ne coupe rien).
-- [ ] Refuser le jeton hérité sur `/notifications/app/*` ; le garder sur `/devices/link/` — les installations mobiles s'en servent encore pour s'enrôler.
+- [x] Vérifier que plus personne n'émet avec le jeton hérité.
+      Constaté avant de couper : `legacy_send_report` vide, **une seule** requête `/notifications/app/send/` dans tout l'historique nginx conservé (16/07, HTTP 400 — un essai manuel), 0 jeton d'émission existant, 1 terminal rattaché.
+      → `python manage.py legacy_send_report [--since-days N]` reste l'outil de la question (lecture seule).
+- [x] Refuser le jeton hérité sur `/notifications/app/*` — code `app_token_retired` ; **gardé sur `/devices/link/`**, les installations mobiles s'en servent encore pour s'enrôler.
 - [ ] Supprimer `app_token_hash` / `app_token_prefix` après une période d'observation.
+      ⚠️ Irréversible, et ça coupe aussi **l'enrôlement** hérité : un vieux QR imprimé, ou une réinstallation de l'app mobile avec l'ancien jeton en poche, ne pourrait plus se rattacher. À ne faire que lorsque plus aucun terminal ne dépend de ce chemin.
 
 ---
 
@@ -242,9 +242,17 @@ Elle ne se décide pas à la date mais sur ce que montrent les journaux. Rien n'
 | 3 — expulser un abonné | livré, serveur #23 + console #38 |
 | 4 — console | serveur #24 livré, console #39 |
 | 5 — mobile | livré, app #4 (non publié) |
-| 6 — extinction | **en attente** de la condition ci-dessus |
+| 6 — extinction | émission coupée ; suppression des colonnes `app_token_*` **encore à faire** |
 
-**Geste ops encore dû :** poser `APP_TOKEN_ENCRYPTION_KEYS` dans `/pushit/prod` (SSM, `SecureString`, liste séparée par des virgules). Sans lui, les jetons d'émission fonctionnent mais la console répond 503 à « Revoir le jeton » — c'est le comportement voulu, pas une panne, mais la relecture reste impossible.
+**Matrice après extinction :**
+
+| Identifiant | `/devices/link/` | `/notifications/app/*` |
+|---|:--:|:--:|
+| jeton historique | accepté | **refusé** (`app_token_retired`) |
+| code d'enrôlement `apk_` | accepté | jamais |
+| jeton d'émission `apt_` | jamais | accepté |
+
+**Ops :** `APP_TOKEN_ENCRYPTION_KEYS` est en place dans `/pushit/prod` (SecureString, posé le 2026-07-29 ; round-trip de chiffrement vérifié en prod). La révélation d'un jeton fonctionne.
 
 ---
 
