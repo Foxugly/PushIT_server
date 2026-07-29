@@ -96,7 +96,11 @@ class MagicLinkToken(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="magic_links"
     )
-    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    # `unique=True` SANS `db_index=True` : sur PostgreSQL, cumuler les deux fait
+    # créer deux fois l'index `…_like` (varchar_pattern_ops) et la migration
+    # échoue sur `relation … already exists`. SQLite ne le voit pas, donc la
+    # suite de tests non plus — constaté en déployant.
+    token_hash = models.CharField(max_length=64, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)

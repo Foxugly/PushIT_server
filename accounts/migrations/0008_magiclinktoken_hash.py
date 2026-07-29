@@ -38,17 +38,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Aucun index à l'ajout, et `unique=True` seul à la fin : cumuler
+        # `db_index=True` et `unique=True` fait créer deux fois l'index
+        # `…_like` sur PostgreSQL, et la migration meurt sur
+        # `relation "…_token_hash_…_like" already exists`. SQLite l'ignore, donc
+        # la suite de tests aussi — ce lot l'a appris en déployant.
         migrations.AddField(
             model_name="magiclinktoken",
             name="token_hash",
-            field=models.CharField(db_index=True, default="", max_length=64),
+            field=models.CharField(default="", max_length=64),
             preserve_default=False,
         ),
         migrations.RunPython(_hacher, _impossible),
         migrations.AlterField(
             model_name="magiclinktoken",
             name="token_hash",
-            field=models.CharField(db_index=True, max_length=64, unique=True),
+            field=models.CharField(max_length=64, unique=True),
         ),
         migrations.RemoveField(
             model_name="magiclinktoken",
