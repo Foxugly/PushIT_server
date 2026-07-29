@@ -55,7 +55,21 @@ colonnes.
 **Pas fait parce que** la suppression est irréversible et couperait aussi
 l'**enrôlement** hérité : un vieux QR imprimé, ou une réinstallation de
 l'application mobile avec l'ancien jeton en poche, ne pourrait plus se rattacher.
-À faire quand plus aucun terminal n'en dépend.
+
+**Condition, désormais mesurable.** Elle ne l'était pas : seuls les *échecs* de ce
+chemin étaient comptés, un enrôlement hérité réussi ne laissait aucune trace — la
+condition n'aurait donc jamais pu être déclarée vraie. Le compteur existe
+maintenant :
+
+```
+pushit_app_token_auth_total{outcome="legacy_enrolment"}   # doit rester à 0
+pushit_app_token_auth_total{outcome="enrolment_code"}     # doit être le seul à bouger
+```
+plus le journal `legacy_enrolment_used` (qui nomme l'application concernée).
+
+Quand `legacy_enrolment` ne bouge plus sur plusieurs semaines : supprimer les deux
+colonnes, le drapeau `legacy_send_last_used_at`, le bandeau de la console et son
+bloc de copie dans les 5 catalogues, en une seule PR.
 
 ### B4 — Couverture des branches à 48 % côté console
 Les chemins d'erreur sont peu couverts : révélation indisponible (503), mot de
@@ -64,23 +78,23 @@ passe refusé, pannes réseau, expirations.
 **Pas fait parce que** ce n'est pas un correctif ponctuel mais un travail de
 fond ; il se traite en accompagnant chaque prochaine modification de la console.
 
-### B5 — `.subscribe()` non gardé dans deux services racine
+### ~~B5~~ — CLOS le 2026-07-30 : `.subscribe()` dans deux services racine
 `core/services/console-shell.service.ts` (8), `core/services/language-preference.service.ts` (1).
 
-**Pas fait parce que** ces services sont `providedIn: 'root'` : ils vivent aussi
-longtemps que l'application, il n'y a rien à annuler, et `takeUntilDestroyed` y
-serait un contresens. Les 13 composants, eux, sont corrigés.
+**Décision : ne pas faire.** Ces services sont `providedIn: 'root'` — ils vivent
+aussi longtemps que l'application, il n'y a rien à annuler, et
+`takeUntilDestroyed` y serait un contresens. Les 13 composants, eux, sont
+corrigés. Ce n'était pas une tâche mais un constat mal classé.
 
-### B6 — Reprise d'un terminal par connaissance de son jeton FCM
+### ~~B6~~ — CLOS le 2026-07-30 : reprise d'un terminal via son jeton FCM
 `devices/api_views_app_token.py:40-45`.
 
-Qui obtient le jeton FCM d'un tiers peut se l'attribuer et couper les
-notifications de la victime (déni de service ciblé).
+**Décision : risque accepté.** Qui obtient le jeton FCM d'un tiers peut se
+l'attribuer et couper ses notifications. Mais le jeton n'est pas devinable, et le
+comportement est *voulu* : un terminal qui change de mains doit changer de
+propriétaire. Une preuve de possession côté appareil serait disproportionnée.
 
-**Pas fait parce que** le jeton n'est pas devinable et le comportement actuel est
-volontaire (un terminal qui change de mains doit changer de propriétaire). Une
-protection demanderait une preuve de possession côté appareil — disproportionné
-au risque.
+À réouvrir seulement si un incident réel se présente.
 
 ### B7 — Test d'intégration : vert en CI, bloqué sous Windows
 `tests/test_full_flow_integration.py`.
@@ -98,8 +112,17 @@ confort local viendra avec une session dédiée.
 
 À traiter comme des audits à part entière, pas comme des tickets.
 
-- **Scan de dépendances** — ni `pip-audit` ni `npm audit` n'ont été lancés. Le
-  plus rentable des quatre, et le plus rapide.
+- ~~**Scan de dépendances**~~ — **FAIT le 2026-07-29**, et il n'était pas vide :
+  30 avis côté Python (26 sur **Pillow**, qui décode les logos téléversés) et
+  **7 vulnérabilités de production** côté console, dont **deux XSS Angular**.
+  Corrigé (serveur #31, console #42) ; les deux scans sont désormais propres sur
+  ce qui part en production.
+  **Reste :** 12 avis dans l'outillage de développement de la console (karma,
+  vite, glob, `@angular/build`…). Leur correction demande des montées **majeures**
+  pour des paquets jamais servis aux utilisateurs — à faire à l'occasion d'une
+  montée d'Angular, pas en forçant.
+  **À automatiser :** Dependabot est **désactivé** sur les trois dépôts (vérifié :
+  HTTP 403). L'activer coûte un clic et remplace ce scan manuel.
 - **Chaîne d'envoi FCM** (`notifications/services.py`, `push.py`, ~1 500 lignes) —
   parcourue en surface seulement. Les périodes de silence, les reprises et les
   états de livraison mériteraient une passe dédiée.
