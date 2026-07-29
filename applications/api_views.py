@@ -1,6 +1,8 @@
 import io
+import logging
 
 from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, permissions, serializers, status
@@ -11,6 +13,7 @@ from rest_framework.views import APIView
 
 from billing.service import quota_required
 from config.pagination import OptionalPageNumberPagination
+from devices.models import UnlinkSource
 from .models import Application
 from .serializers import (
     ApplicationActivationResponseSerializer,
@@ -28,6 +31,9 @@ from .serializers import (
     ApplicationUpdateValidationErrorResponseSerializer,
     DetailResponseSerializer,
 )
+
+
+logger = logging.getLogger("pushit")
 
 
 def _raise_app_not_found():
@@ -417,6 +423,63 @@ class ApplicationLogoApiView(APIView):
             app.logo.delete(save=False)
             app.logo = None
             app.save(update_fields=["logo"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema_view(
+    delete=extend_schema(
+        summary="Evict a device from an application",
+        description=(
+            "Deactivates the link between an application owned by the authenticated "
+            "user and one of its subscribed devices. The device itself is left "
+            "untouched — it belongs to somebody else, and may be linked to other "
+            "applications. Idempotent: evicting an already-evicted device returns 204. "
+            "Note that eviction alone does not prevent a comeback: whoever still has "
+            "the enrolment code can link again, so rotate the code as well."
+        ),
+        tags=["Applications"],
+        auth=[{"BearerAuth": []}],
+        request=None,
+        responses={
+            204: None,
+            404: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Application not found, or this device is not one of its subscribers",
+            ),
+        },
+    )
+)
+class ApplicationDeviceEvictApiView(APIView):
+    """Le seul geste qui retire quelqu'un d'une application.
+
+    Les deux déliens existants partent du téléphone : `/devices/unlink/` délie
+    l'appelant, `/devices/unlink-app/` sert au destinataire qui se désabonne.
+    Côté propriétaire il n'y avait rien — et faire tourner le code d'enrôlement
+    ne délie personne. Restait à désactiver toute l'application pour retirer un
+    seul indésirable.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, app_id, device_id):
+        app = _get_app_or_404(app_id, request.user)
+
+        link = app.device_links.filter(device_id=device_id).first()
+        if link is None:
+            # Repondre 204 ici ferait dire a la console « retire » d'un terminal
+            # qui n'a jamais ete la.
+            raise NotFound(
+                "This device is not linked to this application.",
+                code="device_not_linked",
+            )
+
+        if link.is_active:
+            link.is_active = False
+            link.unlinked_at = timezone.now()
+            link.unlink_source = UnlinkSource.OWNER_EVICTION
+            link.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
+            logger.info("device_evicted", extra={"app": app.id, "device": device_id})
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

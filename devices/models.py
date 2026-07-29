@@ -55,6 +55,10 @@ class UnlinkSource(models.TextChoices):
     DEVICE_BUTTON = "device_button", "Device button"   # Settings "unlink this device"
     INBOX = "inbox", "Inbox per-app unlink"
     TAKEOVER = "takeover", "Push-token takeover by another user"
+    # The only source where the decision comes from the other side: the app
+    # owner removed a subscriber. Kept distinct because a voluntary unlink and
+    # an eviction do not tell the same story to support afterwards.
+    OWNER_EVICTION = "owner_eviction", "Evicted by the application owner"
 
 
 class DeviceApplicationLink(models.Model):
