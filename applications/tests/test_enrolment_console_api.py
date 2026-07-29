@@ -13,6 +13,7 @@ import pytest
 import qrcode
 from cryptography.fernet import Fernet
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -196,17 +197,10 @@ def test_a_stranger_gets_no_qr(app, autre):
 
 # ------------------------------------------- savoir si l'ancien jeton sert
 
-@override_settings(**CHIFFREMENT)
-@pytest.mark.django_db
-def test_sending_with_the_legacy_token_is_recorded_on_the_application(app, owner, legacy_token):
-    """C'est la condition d'extinction : sans ce drapeau, couper le jeton hérité
-    casserait l'intégration de quelqu'un sans prévenir."""
-    assert app.legacy_send_last_used_at is None
-
-    _envoyer(legacy_token)
-
-    app.refresh_from_db()
-    assert app.legacy_send_last_used_at is not None
+# Le drapeau ne se pose plus : le jeton hérité a été éteint à l'émission
+# (2026-07-29, voir test_legacy_send_extinction.py). Il n'est plus qu'une trace
+# historique — la console continue de la lire, ce que vérifie
+# `test_the_console_can_read_the_warning` plus bas.
 
 
 @override_settings(**CHIFFREMENT)
@@ -233,10 +227,12 @@ def test_linking_with_the_legacy_token_is_not_a_send(app, autre, legacy_token):
     assert app.legacy_send_last_used_at is None
 
 
-@override_settings(**CHIFFREMENT)
 @pytest.mark.django_db
-def test_the_console_can_read_the_warning(app, owner, legacy_token):
-    _envoyer(legacy_token)
+def test_the_console_can_read_the_warning(app, owner):
+    """Le drapeau ne se pose plus, mais une application qui l'a porté avant
+    l'extinction doit rester lisible : sinon son bandeau disparaîtrait sans que
+    personne n'ait rien migré."""
+    Application.objects.filter(pk=app.pk).update(legacy_send_last_used_at=timezone.now())
 
     r = _as(owner).get(f"/api/v1/apps/{app.id}/")
 

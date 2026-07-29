@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from accounts.models import User
 from applications.models import Application, ApplicationQuietPeriod
+from applications.models_send_token import AppSendToken
 from notifications.models import Notification
 from notifications.models import NotificationStatus
 
@@ -21,8 +22,7 @@ def test_create_notification_with_app_token():
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     response = client.post(
         "/api/v1/notifications/app/create/",
@@ -51,8 +51,7 @@ def test_create_notification_with_same_idempotency_key_returns_existing_notifica
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     payload = {
         "title": "Alerte",
@@ -89,8 +88,7 @@ def test_create_notification_with_same_idempotency_key_and_different_payload_ret
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     response1 = client.post(
         "/api/v1/notifications/app/create/",
@@ -129,8 +127,7 @@ def test_create_notification_without_idempotency_key_returns_400():
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     response = client.post(
         "/api/v1/notifications/app/create/",
@@ -158,8 +155,7 @@ def test_concurrent_create_notification_with_same_idempotency_key_is_idempotent(
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
     transaction.commit()
 
     url = f"{live_server.url}/api/v1/notifications/app/create/"
@@ -205,8 +201,7 @@ def test_concurrent_create_notification_with_same_idempotency_key_and_different_
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
     transaction.commit()
 
     url = f"{live_server.url}/api/v1/notifications/app/create/"
@@ -247,8 +242,7 @@ def test_list_notifications_with_app_token_can_filter_by_effective_scheduled_ran
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     base_time = timezone.now() + timedelta(hours=2)
     ApplicationQuietPeriod.objects.create(
@@ -305,8 +299,7 @@ def test_list_notifications_with_app_token_can_filter_by_status_and_shift_flag()
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     base_time = timezone.now() + timedelta(hours=2)
     ApplicationQuietPeriod.objects.create(
@@ -353,8 +346,7 @@ def test_list_notifications_with_app_token_rejects_invalid_effective_range():
         password="MotDePasseTresSolide123!",
     )
     app = Application.objects.create(owner=user, name="Mon App")
-    raw_token = app.set_new_app_token()
-    app.save()
+    _, raw_token = AppSendToken.issue(app, "tests")
 
     response = client.get(
         "/api/v1/notifications/app/",
