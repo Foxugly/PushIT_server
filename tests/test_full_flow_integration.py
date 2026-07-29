@@ -42,6 +42,11 @@ def test_fresh_db_migrate_and_full_flow(tmp_path):
 
     env = os.environ.copy()
     env["DJANGO_SETTINGS_MODULE"] = "config.settings"
+    # `python scripts/full_flow.py` met scripts/ en tete de sys.path, pas la
+    # racine : sans PYTHONPATH, le sous-processus echoue sur `import config` des
+    # le django.setup(). Le test etait casse en local et exclu de la CI par son
+    # marqueur, donc personne ne le voyait echouer.
+    env["PYTHONPATH"] = str(REPO_ROOT)
     env["SQLITE_NAME"] = str(db_path)
     env["STATE"] = "DEV"
     env["ALLOWED_HOSTS"] = f"localhost,127.0.0.1,[::1],testserver"
@@ -78,7 +83,10 @@ def test_fresh_db_migrate_and_full_flow(tmp_path):
             timeout=120,
         )
         assert flow.returncode == 0, flow.stdout + "\n" + flow.stderr
-        assert "=== TERMINE ===" in flow.stdout or "=== TERMIN" in flow.stdout
+        # Le marqueur final du script. Il cherchait « === TERMINE === », reste
+        # d'une version francaise que `full_flow.py` n'imprime plus : le test ne
+        # tournant nulle part, le decalage a survecu a la traduction.
+        assert "=== DONE ===" in flow.stdout, flow.stdout[-500:]
     finally:
         server.terminate()
         try:

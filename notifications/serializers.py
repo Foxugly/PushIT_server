@@ -1,3 +1,5 @@
+import logging
+
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from django.conf import settings
 from django.utils import timezone
@@ -14,6 +16,8 @@ from devices.models import Device, DeviceTokenStatus
 from .inbound_email import extract_subject_schedule
 from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus, NotificationTemplate
 from .scheduling import compute_effective_scheduled_for
+
+logger = logging.getLogger("pushit")
 
 NotificationQueuedResponseSerializer = inline_serializer(
     name="NotificationQueuedResponse",
@@ -522,18 +526,33 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         # SPF/DKIM/DMARC). Only enforced when explicitly enabled, and only when we
         # would otherwise trust this sender (a known user), so it can never *grant*
         # access — only deny a forged `From` that passed the user/owner checks.
-        if (
-            getattr(settings, "INBOUND_EMAIL_REQUIRE_DMARC", False)
-            and user is not None
-            and "sender" not in errors
-        ):
+        if user is not None and "sender" not in errors:
             try:
                 _, sender_domain = sender.split("@", 1)
             except ValueError:
                 sender_domain = ""
-            if not _dmarc_passes(attrs.get("authentication_results", ""), sender_domain):
-                errors.setdefault("sender", []).append(
-                    "Sender failed DMARC authentication."
+            passe = _dmarc_passes(attrs.get("authentication_results", ""), sender_domain)
+
+            if getattr(settings, "INBOUND_EMAIL_REQUIRE_DMARC", False):
+                if not passe:
+                    errors.setdefault("sender", []).append(
+                        "Sender failed DMARC authentication."
+                    )
+            elif not passe:
+                # Mode observation, comme un Content-Security-Policy-Report-Only :
+                # on journalise ce que l'activation refuserait, sans rien refuser.
+                #
+                # Activer à l'aveugle est un piège : un message interne au tenant
+                # M365 n'a souvent AUCUN en-tête Authentication-Results (il ne
+                # franchit pas la frontière SMTP), et c'est justement le cas
+                # d'usage principal — le propriétaire écrit depuis son compte.
+                # Il faut donc d'abord regarder ce journal sur du trafic réel.
+                logger.info(
+                    "inbound_dmarc_would_reject",
+                    extra={
+                        "sender": sender,
+                        "has_auth_results": bool(attrs.get("authentication_results", "")),
+                    },
                 )
 
         if errors:

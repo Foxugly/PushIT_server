@@ -16,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from applications.graph_mail import send_email
-from .models import MagicLinkToken
+from .models import MagicLinkToken, generate_magic_token
 
 logger = logging.getLogger("pushit.api")
 User = get_user_model()
@@ -37,8 +37,12 @@ def request_magic_link(email: str) -> None:
         return
 
     ttl_minutes = getattr(settings, "MAGIC_LINK_TTL_MINUTES", 15)
+    # La valeur brute ne vit que dans le lien envoyé ; la base n'en garde que
+    # l'empreinte. Un dump ne livre donc plus des connexions prêtes à l'emploi.
+    raw_token = generate_magic_token()
     link_token = MagicLinkToken.objects.create(
         user=user,
+        token_hash=MagicLinkToken.hash_raw(raw_token),
         expires_at=timezone.now() + timezone.timedelta(minutes=ttl_minutes),
     )
     subject = "Your PushIT sign-in link"
@@ -46,7 +50,7 @@ def request_magic_link(email: str) -> None:
         "Hello,\n\n"
         "Use the link below to sign in to PushIT (valid for "
         f"{ttl_minutes} minutes, single use):\n\n"
-        f"{_magic_link(link_token.token)}\n\n"
+        f"{_magic_link(raw_token)}\n\n"
         "If you didn't request this, you can safely ignore this email.\n"
     )
     send_email(to=user.email, subject=subject, body=body)
@@ -57,7 +61,9 @@ def verify_magic_link(token: str):
     """Consume the token and return the user, or None if it is
     invalid/expired/already used."""
     link_token = (
-        MagicLinkToken.objects.select_related("user").filter(token=token or "").first()
+        MagicLinkToken.objects.select_related("user")
+        .filter(token_hash=MagicLinkToken.hash_raw(token))
+        .first()
     )
     if link_token is None or not link_token.is_valid:
         return None

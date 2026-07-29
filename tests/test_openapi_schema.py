@@ -1,13 +1,31 @@
 import pytest
 import yaml
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from accounts.models import User
 
 
 def _load_schema() -> dict:
+    """Le schéma exige une session authentifiée.
+
+    Il était servi à tout le monde : aucun secret dedans, mais la surface
+    complète de l'API — chaque route, chaque champ, chaque code d'erreur. Les
+    clients légitimes (la console, le générateur de client) sont authentifiés.
+    """
     client = APIClient()
+    lecteur = User.objects.create_user(email="schema@example.com", password="1234Test!!")
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(lecteur).access_token}")
     response = client.get("/api/schema/")
     assert response.status_code == 200
     return yaml.safe_load(response.content)
+
+
+@pytest.mark.django_db
+def test_the_schema_is_not_public():
+    """Le geste que ce lot ferme : un inconnu ne repart plus avec la carte
+    complete de l'API."""
+    assert APIClient().get("/api/schema/").status_code in (401, 403)
 
 
 def _assert_json_response_ref(operation: dict, status_code: str, component_name: str) -> None:

@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from rest_framework import permissions
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -34,8 +35,28 @@ urlpatterns = [
     path("api/v1/notifications/", include("notifications.api_urls")),
     path("api/v1/billing/", include("billing.api_urls")),
     path("api/v1/staff/", include("accounts.api_staff_urls")),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    # Redoc (optionnel, plus clean)
-    path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    # Le schema et ses deux visionneuses demandent une session authentifiee.
+    # Ils etaient servis a tout le monde : ca ne livre pas de secret, mais ca
+    # donne la surface complete de l'API -- chaque route, chaque champ, chaque
+    # code d'erreur -- a qui passe par la. Les clients legitimes (la console, le
+    # generateur de client) sont authentifies de toute facon.
+    path(
+        "api/schema/",
+        SpectacularAPIView.as_view(permission_classes=[permissions.IsAuthenticated]),
+        name="schema",
+    ),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(
+            url_name="schema", permission_classes=[permissions.IsAuthenticated]
+        ),
+        name="swagger-ui",
+    ),
+    path(
+        "api/redoc/",
+        SpectacularRedocView.as_view(
+            url_name="schema", permission_classes=[permissions.IsAuthenticated]
+        ),
+        name="redoc",
+    ),
 ]

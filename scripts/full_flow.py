@@ -217,6 +217,20 @@ def main() -> None:
         print("App token regenerated")
         dump_response(regenerate_response)
 
+    print("\n=== 3c. Create a send token ===")
+    # Le jeton historique n'emet plus (extinction du 2026-07-29) : l'emission
+    # passe desormais par un jeton dedie. L'enrolement, lui, continue d'accepter
+    # `app_token` -- c'est pourquoi l'etape 4b plus bas le presente encore.
+    send_token_response = post(
+        f"{BASE_URL}/apps/{app_id}/send-tokens/",
+        {"name": "full-flow"},
+        bearer_token=access_token,
+    )
+    ensure_status(send_token_response, (201,), "create send token")
+    send_token = send_token_response.json()["token"]
+    print("Send token created")
+    dump_response(send_token_response)
+
     print("\n=== 4. Identify authenticated device ===")
     identify_device_response = post(
         f"{BASE_URL}/devices/identify/",
@@ -387,7 +401,7 @@ def main() -> None:
             "has_quiet_period_shift": "true",
             "ordering": "-effective_scheduled_for",
         },
-        app_token=app_token,
+        app_token=send_token,
     )
     ensure_status(
         list_app_notifications_response,

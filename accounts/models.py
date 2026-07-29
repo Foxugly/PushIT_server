@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import uuid
 from django.conf import settings
@@ -85,15 +86,24 @@ class MagicLinkToken(models.Model):
     The raw token travels only in the emailed link; verification consumes it
     (sets ``used_at``) and issues the JWT pair like a normal login. Mirrors the
     fleet magic-link pattern (Poker_server). Unlike the stateless password-reset
-    tokens, this is a dedicated row so single-use can be enforced server-side."""
+    tokens, this is a dedicated row so single-use can be enforced server-side.
+
+    Only the SHA-256 of the token is stored. It used to be kept in clear, which
+    made a database dump a set of ready-to-use sign-in links for the next 15
+    minutes — the same reasoning that has application tokens stored hashed.
+    """
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="magic_links"
     )
-    token = models.CharField(max_length=64, unique=True, default=generate_magic_token)
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
+
+    @staticmethod
+    def hash_raw(raw: str) -> str:
+        return hashlib.sha256((raw or "").encode("utf-8")).hexdigest()
 
     @property
     def is_valid(self) -> bool:
