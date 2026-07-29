@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -6,6 +7,8 @@ from rest_framework import authentication, exceptions
 
 from config.metrics import increment_counter
 from .models import Application
+
+logger = logging.getLogger("pushit")
 
 
 @dataclass(frozen=True)
@@ -96,14 +99,24 @@ def get_application_for_enrolment(raw_code: str | None) -> Application:
             raise exceptions.AuthenticationFailed(
                 "Inactive application.", code="app_token_inactive"
             )
+        increment_counter("pushit_app_token_auth_total", labels={"outcome": "enrolment_code"})
         return application
 
     # Repli hérité, et hérité SEULEMENT : surtout pas via le résolveur
     # d'émission, qui accepte maintenant les jetons `apt_` dédiés. Y retomber
     # laisserait un jeton d'émission rattacher un terminal — donc le
     # redistribuer aux téléphones, et recréer le défaut qu'on corrige.
-    # À retirer quand plus aucune installation ne présente l'ancien jeton.
-    return _legacy_application(raw_code)
+    application = _legacy_application(raw_code)
+
+    # LA mesure qui conditionne la suppression des colonnes `app_token_*`
+    # (BACKLOG B3). Jusqu'ici, seuls les ECHECS de ce chemin étaient comptés :
+    # un enrôlement hérité réussi ne laissait aucune trace, donc la condition
+    # « plus aucun terminal n'en dépend » ne pouvait jamais être déclarée vraie.
+    # Un backlog dont la condition n'est pas mesurable n'est pas un backlog,
+    # c'est un vœu.
+    increment_counter("pushit_app_token_auth_total", labels={"outcome": "legacy_enrolment"})
+    logger.info("legacy_enrolment_used", extra={"app": application.id})
+    return application
 
 
 def get_application_for_raw_app_token(raw_token: str | None) -> Application:
