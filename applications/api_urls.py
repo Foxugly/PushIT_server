@@ -4,6 +4,8 @@ from .api_views_send_tokens import (
     SendTokenListCreateApiView,
     SendTokenRevealApiView,
     SendTokenRevokeApiView,
+    WebhookSecretRevealApiView,
+    WebhookSecretRotateApiView,
 )
 from notifications.api_views_templates import (
     NotificationTemplateListCreateApiView,
@@ -36,6 +38,8 @@ urlpatterns = [
     path("<int:app_id>/send-tokens/", SendTokenListCreateApiView.as_view(), name="app-send-token-list"),
     path("<int:app_id>/send-tokens/<int:token_id>/", SendTokenRevokeApiView.as_view(), name="app-send-token-revoke"),
     path("<int:app_id>/send-tokens/<int:token_id>/reveal/", SendTokenRevealApiView.as_view(), name="app-send-token-reveal"),
+    path("<int:app_id>/webhook-secret/reveal/", WebhookSecretRevealApiView.as_view(), name="app-webhook-secret-reveal"),
+    path("<int:app_id>/webhook-secret/rotate/", WebhookSecretRotateApiView.as_view(), name="app-webhook-secret-rotate"),
     path("<int:app_id>/quiet-periods/", ApplicationQuietPeriodListCreateApiView.as_view(), name="app-quiet-period-list-create"),
     path("<int:app_id>/quiet-periods/<int:quiet_period_id>/", ApplicationQuietPeriodDetailApiView.as_view(), name="app-quiet-period-detail"),
     path("<int:app_id>/templates/", NotificationTemplateListCreateApiView.as_view(), name="app-template-list-create"),

@@ -87,7 +87,10 @@ def send_webhook_callback_task(
     }
 
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    signature = _sign_payload(payload_bytes, application.app_token_hash)
+    # Le secret propre a l'application, et surtout PAS `app_token_hash` : celui-ci
+    # est l'empreinte du jeton qui partait dans le QR vers chaque destinataire,
+    # donc recalculable par n'importe lequel d'entre eux.
+    signature = _sign_payload(payload_bytes, application.webhook_secret)
 
     try:
         response = requests.post(

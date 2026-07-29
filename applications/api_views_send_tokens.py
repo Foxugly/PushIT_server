@@ -96,6 +96,50 @@ class SendTokenRevokeApiView(_OwnedApplicationMixin, APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class WebhookSecretRevealApiView(_OwnedApplicationMixin, APIView):
+    """POST {password} : renvoie le secret qui signe les callbacks.
+
+    Le propriétaire doit pouvoir le lire — sans lui, il ne peut pas vérifier la
+    signature de son côté. Même exigence que pour un jeton d'émission : une
+    session ouverte ne suffit pas à relire un secret.
+    """
+
+    serializer_class = RevealSerializer
+
+    def post(self, request, app_id):
+        serializer = RevealSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        application = self.get_application()
+        if authenticate(request=request, username=request.user.email,
+                        password=serializer.validated_data["password"]) is None:
+            logger.warning("webhook_secret_reveal_denied", extra={"app": app_id})
+            return error_response(
+                code="invalid_password",
+                detail="Mot de passe incorrect.",
+                http_status=status.HTTP_403_FORBIDDEN,
+            )
+
+        logger.info("webhook_secret_revealed", extra={"app": application.id})
+        return Response({"webhook_secret": application.webhook_secret})
+
+
+class WebhookSecretRotateApiView(_OwnedApplicationMixin, APIView):
+    """POST : tire un nouveau secret de signature.
+
+    Le geste d'urgence si le secret a fuité. Les callbacks suivants sont signés
+    avec le nouveau : mettre à jour l'endpoint **d'abord**, sinon ils seront
+    rejetés le temps du décalage.
+    """
+
+    def post(self, request, app_id):
+        application = self.get_application()
+        application.rotate_webhook_secret()
+        application.save(update_fields=["webhook_secret"])
+        logger.info("webhook_secret_rotated", extra={"app": application.id})
+        return Response({"app_id": application.id, "webhook_secret": application.webhook_secret})
+
+
 class SendTokenRevealApiView(_OwnedApplicationMixin, APIView):
     """POST {password} : renvoie la valeur en clair, et le journalise."""
 

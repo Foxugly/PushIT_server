@@ -42,6 +42,17 @@ class Application(models.Model):
     # queryable (the alias is "app_<slug>_<suffix>"). Populated on save().
     inbound_email_suffix = models.CharField(max_length=32, unique=True)
     webhook_url = models.URLField(max_length=500, blank=True, validators=[validate_webhook_url])
+    # Secret de signature des callbacks, propre a cette application.
+    #
+    # Il etait auparavant `app_token_hash`, c'est-a-dire l'empreinte du jeton
+    # distribue dans le QR a chaque destinataire : n'importe lequel d'entre eux
+    # pouvait donc la recalculer et forger un callback signe.
+    #
+    # Stocke en clair, faute de mieux : le serveur doit le connaitre pour signer.
+    # Le chiffrer ne protegerait de rien (la cle vivrait a cote) et ferait perdre
+    # la signature le jour ou la cle change -- mauvais sens de la panne. C'est le
+    # meme arbitrage que les secrets de signature Stripe, relisibles en console.
+    webhook_secret = models.CharField(max_length=64, blank=True)
 
     is_active = models.BooleanField(default=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
@@ -66,6 +77,17 @@ class Application(models.Model):
     @staticmethod
     def generate_raw_app_token() -> str:
         return f"apt_{secrets.token_hex(24)}"
+
+    @staticmethod
+    def generate_webhook_secret() -> str:
+        """Secret partage avec l'endpoint du proprietaire. 32 octets d'entropie."""
+        return f"whs_{secrets.token_urlsafe(32)}"
+
+    def rotate_webhook_secret(self) -> str:
+        """Le geste d'urgence si le secret a fuite. Les callbacks suivants sont
+        signes avec le nouveau : l'endpoint doit etre mis a jour d'abord."""
+        self.webhook_secret = self.generate_webhook_secret()
+        return self.webhook_secret
 
     @staticmethod
     def generate_enrolment_code() -> str:
@@ -139,6 +161,8 @@ class Application(models.Model):
             self.set_new_app_token()
         if not self.enrolment_code:
             self.enrolment_code = self.generate_enrolment_code()
+        if not self.webhook_secret:
+            self.webhook_secret = self.generate_webhook_secret()
 
         if self.inbound_email_alias:
             # Alias already assigned (update path): keep the stored suffix in sync.

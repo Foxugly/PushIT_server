@@ -2,7 +2,9 @@
 
 External contract (consumed by customer endpoints):
   - POST is skipped entirely when webhook_url is empty.
-  - X-PushIT-Signature = HMAC-SHA256(secret=app_token_hash) over the exact body.
+  - X-PushIT-Signature = HMAC-SHA256(secret=webhook_secret) over the exact body.
+    (It used to be app_token_hash — the fingerprint of the token handed to every
+    recipient in the QR, so any of them could forge a signed callback.)
   - The JSON body has a fixed, sorted, compact layout.
   - A webhook_url that resolves to a private/loopback/IMDS address is never hit
     (SSRF guard, incl. anti-DNS-rebinding at send time).
@@ -56,7 +58,7 @@ def test_signature_matches_recomputed_hmac(mock_post, _mock_safe):
     header_sig = kwargs["headers"]["X-PushIT-Signature"]
 
     expected = hmac.new(
-        app.app_token_hash.encode("utf-8"), sent_body, hashlib.sha256
+        app.webhook_secret.encode("utf-8"), sent_body, hashlib.sha256
     ).hexdigest()
     assert header_sig == expected
 

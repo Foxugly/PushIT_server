@@ -46,6 +46,10 @@ def create_notification_with_optional_idempotency(
             conflict=False,
         )
 
+    # Chemin SQLite : mort en PRODUCTION (PostgreSQL depuis 2026-06) mais bien
+    # vivant sous les tests, qui tournent sur SQLite. Ne pas le supprimer en
+    # croyant nettoyer : c'est lui qui fait passer la course sur une meme cle
+    # d'idempotence a un 409 plutot qu'a un 500.
     if connection.vendor == "sqlite":
         defaults = {
             "title": title,
@@ -96,16 +100,10 @@ def create_notification_with_optional_idempotency(
             pass
 
     if created:
-        if notification.pk is None and idempotency_key:
-            notification = Notification.objects.get(
-                application=application,
-                idempotency_key=idempotency_key,
-            )
-            return NotificationCreationOutcome(
-                notification=notification,
-                created=False,
-                conflict=notification.request_fingerprint != request_fingerprint,
-            )
+        # `created` n'est vrai qu'apres un create() qui a rendu la main sans
+        # lever : la ligne existe donc et porte une pk. Le code verifiait
+        # `notification.pk is None` ici et refaisait un get() -- une branche
+        # inatteignable, qui donnait a lire une incertitude qui n'existe pas.
         return NotificationCreationOutcome(
             notification=notification,
             created=True,

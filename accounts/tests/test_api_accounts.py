@@ -572,9 +572,11 @@ def test_magic_link_request_confirmed_user_sends_link(monkeypatch):
 
     assert response.status_code == 200
     assert MagicLinkToken.objects.count() == 1
-    token = MagicLinkToken.objects.get().token
     assert sent["to"] == "renaud@example.com"
-    assert f"/auth/magic-link/{token}" in sent["body"]
+    # La base ne garde que l'empreinte : on relit la valeur brute dans le lien
+    # envoye, et on verifie qu'elle correspond a la ligne stockee.
+    envoye = sent["body"].split("/auth/magic-link/")[1].split()[0]
+    assert MagicLinkToken.objects.get().token_hash == MagicLinkToken.hash_raw(envoye)
 
 
 @pytest.mark.django_db
@@ -600,12 +602,15 @@ def test_magic_link_verify_issues_tokens_and_is_single_use():
     user = User.objects.create_user(
         email="renaud@example.com", password="MotDePasseTresSolide123!", email_confirmed=True
     )
+    brut = "jeton-de-test-en-clair"
     link = MagicLinkToken.objects.create(
-        user=user, expires_at=timezone.now() + timezone.timedelta(minutes=15)
+        user=user,
+        token_hash=MagicLinkToken.hash_raw(brut),
+        expires_at=timezone.now() + timezone.timedelta(minutes=15),
     )
     client = APIClient()
 
-    ok = client.post(MAGIC_VERIFY_URL, {"token": link.token}, format="json")
+    ok = client.post(MAGIC_VERIFY_URL, {"token": brut}, format="json")
     assert ok.status_code == 200
     assert "access" in ok.data and "refresh" in ok.data
     assert ok.data["user"]["email"] == "renaud@example.com"
@@ -613,7 +618,7 @@ def test_magic_link_verify_issues_tokens_and_is_single_use():
     assert link.used_at is not None
 
     # Single-use: a second attempt with the same token is rejected.
-    again = client.post(MAGIC_VERIFY_URL, {"token": link.token}, format="json")
+    again = client.post(MAGIC_VERIFY_URL, {"token": brut}, format="json")
     assert again.status_code == 400
     assert again.data["code"] == "magic_link_invalid"
 
@@ -623,11 +628,14 @@ def test_magic_link_verify_rejects_expired_token():
     user = User.objects.create_user(
         email="renaud@example.com", password="MotDePasseTresSolide123!", email_confirmed=True
     )
-    link = MagicLinkToken.objects.create(
-        user=user, expires_at=timezone.now() - timezone.timedelta(minutes=1)
+    brut = "jeton-de-test-expire"
+    MagicLinkToken.objects.create(
+        user=user,
+        token_hash=MagicLinkToken.hash_raw(brut),
+        expires_at=timezone.now() - timezone.timedelta(minutes=1),
     )
     client = APIClient()
-    response = client.post(MAGIC_VERIFY_URL, {"token": link.token}, format="json")
+    response = client.post(MAGIC_VERIFY_URL, {"token": brut}, format="json")
     assert response.status_code == 400
     assert response.data["code"] == "magic_link_invalid"
 

@@ -3,6 +3,7 @@ from datetime import timedelta
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import Notification, NotificationDelivery, NotificationStatus
@@ -151,6 +152,8 @@ def flush_expired_tokens_task():
         OutstandingToken,
     )
 
+    from accounts.models import MagicLinkToken
+
     now = timezone.now()
     blacklisted_deleted, _ = BlacklistedToken.objects.filter(
         token__expires_at__lt=now
@@ -158,7 +161,14 @@ def flush_expired_tokens_task():
     outstanding_deleted, _ = OutstandingToken.objects.filter(
         expires_at__lt=now
     ).delete()
+    # Meme hygiene pour les liens magiques : une ligne par demande, jamais
+    # reclamee. Un jeton expire ou deja consomme n'ouvre plus rien -- le garder
+    # ne fait que grossir la table.
+    magic_links_deleted, _ = MagicLinkToken.objects.filter(
+        Q(expires_at__lt=now) | Q(used_at__isnull=False)
+    ).delete()
     return {
         "blacklisted_deleted": blacklisted_deleted,
         "outstanding_deleted": outstanding_deleted,
+        "magic_links_deleted": magic_links_deleted,
     }

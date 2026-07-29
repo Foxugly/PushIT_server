@@ -319,7 +319,12 @@ class EntitlementView(APIView):
         if not delivery_id:
             return error_response(code="missing_delivery_id", detail="delivery_id requis.", http_status=400)
 
-        if DeliveryReceipt.objects.filter(pk=delivery_id).exists():
+        # get_or_create plutot qu'un exists() suivi d'un create : entre les deux,
+        # un second rejeu du central passait le test et les deux appliquaient le
+        # droit, le perdant finissant sur une IntegrityError -- donc un 500 la ou
+        # le central attend un 409. La contrainte d'unicite tranche maintenant.
+        _, cree = DeliveryReceipt.objects.get_or_create(pk=delivery_id)
+        if not cree:
             # 409 : le central compte cette reponse comme une livraison reussie.
             return Response(status=status.HTTP_409_CONFLICT)
 
@@ -327,14 +332,12 @@ class EntitlementView(APIView):
 
         user = get_user_model().objects.filter(pk=payload.get("external_user_id")).first()
         if user is None:
-            # Utilisateur supprime cote PushIT : accuser reception pour que le
-            # central cesse de reessayer indefiniment.
-            DeliveryReceipt.objects.create(pk=delivery_id)
+            # Utilisateur supprime cote PushIT : le recu est deja pose ci-dessus,
+            # le central cessera de reessayer.
             logger.info("entitlement_unknown_user", extra={"id": payload.get("external_user_id")})
             return Response(status=status.HTTP_200_OK)
 
         apply_entitlement(user, payload)
-        DeliveryReceipt.objects.create(pk=delivery_id)
         logger.info(
             "entitlement_applied",
             extra={"user_id": user.id, "is_paid": payload.get("is_paid"), "quotas": payload.get("quotas")},
