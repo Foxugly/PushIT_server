@@ -19,6 +19,26 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # La suite tournait sur SQLite alors que la production tourne sur
+    # PostgreSQL 16. Ce n'est pas un detail ici : `DB_SUPPORTS_ROW_LOCKING`
+    # (config/settings/base.py) est calcule depuis le moteur, et NEUF sites de
+    # code branchent dessus — tous les chemins `select_for_update` n'etaient
+    # donc jamais exerces. C'est exactement cette famille qui a produit deux
+    # incidents de production sur QuizOnline (PR #152 et #153 la-bas).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pushit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
 
@@ -34,6 +54,13 @@ jobs:
           STATE: TEST
           SECRET_KEY: test-secret-key
           MEDIA_ROOT_DIR: media
+          # Convention DB_* 6 variables de la flotte (OPERATIONS.md §3.13).
+          DB_ENGINE: postgresql
+          DB_NAME: pushit
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: postgres
+          DB_PASSWORD: postgres
         run: pytest -q -m "not integration"
 
   # Le parcours complet sur base neuve : migrations, inscription, application,
@@ -45,6 +72,23 @@ jobs:
   # hérité, éteint depuis.
   integration:
     runs-on: ubuntu-latest
+    # « Base neuve » ne veut rien dire sur SQLite : ce qu'on veut prouver, c'est
+    # que les migrations s'appliquent sur le moteur de production. La fixture
+    # `fresh_database_env` cree et detruit une base PostgreSQL jetable.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pushit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
 
@@ -60,6 +104,12 @@ jobs:
           STATE: DEV
           SECRET_KEY: test-secret-key
           MEDIA_ROOT_DIR: media
+          DB_ENGINE: postgresql
+          DB_NAME: pushit
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: postgres
+          DB_PASSWORD: postgres
         run: pytest -q -m integration
 
   deploy:

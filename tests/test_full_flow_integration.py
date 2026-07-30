@@ -34,9 +34,54 @@ def _wait_for_server(base_url: str, timeout_seconds: int = 30) -> None:
     raise AssertionError(f"Server did not start in time: {last_error}")
 
 
+@pytest.fixture
+def fresh_database_env(tmp_path):
+    """
+    Variables d'env pointant vers une base VIDE, sur le moteur de production.
+
+    Tout l'interet de ce test est de prouver que les migrations s'appliquent sur
+    une base vierge. Sur SQLite cette preuve ne vaut rien pour la production :
+    c'est PostgreSQL qui tourne sur la box, et c'est lui qui refuse ce que
+    SQLite accepte. On cree donc une base PostgreSQL jetable, qu'on detruit
+    ensuite. Repli sur un fichier SQLite temporaire quand DB_ENGINE n'est pas
+    PostgreSQL, pour qu'un checkout nu reste executable.
+    """
+    if "postgres" not in os.environ.get("DB_ENGINE", "sqlite3"):
+        yield {"SQLITE_NAME": str(tmp_path / "full_flow.sqlite3")}
+        return
+
+    import psycopg
+
+    name = f"pushit_flow_{os.getpid()}"
+    params = {
+        "host": os.environ.get("DB_HOST") or "localhost",
+        "port": os.environ.get("DB_PORT") or "5432",
+        "user": os.environ.get("DB_USER") or "postgres",
+        "password": os.environ.get("DB_PASSWORD") or "",
+        "dbname": "postgres",
+    }
+
+    def _drop(conn):
+        # Un serveur de test encore connecte empecherait le DROP.
+        conn.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            (name,),
+        )
+        conn.execute(f'DROP DATABASE IF EXISTS "{name}"')
+
+    with psycopg.connect(autocommit=True, **params) as conn:
+        _drop(conn)
+        conn.execute(f'CREATE DATABASE "{name}"')
+    try:
+        yield {"DB_NAME": name}
+    finally:
+        with psycopg.connect(autocommit=True, **params) as conn:
+            _drop(conn)
+
+
 @pytest.mark.integration
-def test_fresh_db_migrate_and_full_flow(tmp_path):
-    db_path = tmp_path / "full_flow.sqlite3"
+def test_fresh_db_migrate_and_full_flow(tmp_path, fresh_database_env):
     port = _get_free_port()
     base_url = f"http://127.0.0.1:{port}/api/v1"
 
@@ -47,7 +92,7 @@ def test_fresh_db_migrate_and_full_flow(tmp_path):
     # le django.setup(). Le test etait casse en local et exclu de la CI par son
     # marqueur, donc personne ne le voyait echouer.
     env["PYTHONPATH"] = str(REPO_ROOT)
-    env["SQLITE_NAME"] = str(db_path)
+    env.update(fresh_database_env)
     env["STATE"] = "DEV"
     env["ALLOWED_HOSTS"] = f"localhost,127.0.0.1,[::1],testserver"
     env["PUSHIT_FORCE_MOCK_PUSH"] = "true"

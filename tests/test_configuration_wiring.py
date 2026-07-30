@@ -95,6 +95,13 @@ def test_sqlite_name_environment_override_is_applied(tmp_path):
     db_path = tmp_path / "config-check.sqlite3"
     env = os.environ.copy()
     env["DJANGO_SETTINGS_MODULE"] = "config.settings"
+    # Ce test porte sur la resolution du chemin SQLite : il doit donc epingler
+    # le moteur au lieu d'heriter de l'environnement. Depuis que la CI tourne
+    # sur PostgreSQL, os.environ porte DB_ENGINE/DB_NAME, et DATABASE_NAME
+    # valait le nom de la base PostgreSQL — le test echouait en mesurant autre
+    # chose que ce qu'il annonce.
+    env["DB_ENGINE"] = "sqlite3"
+    env.pop("DB_NAME", None)
     env["SQLITE_NAME"] = str(db_path)
 
     result = subprocess.run(
