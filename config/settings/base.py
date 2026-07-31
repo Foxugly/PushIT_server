@@ -366,7 +366,21 @@ _SENTRY_PROD_ACTIVE = (
     or STATE.strip().upper() == "PROD"
 )
 SENTRY_DSN = env("SENTRY_DSN", default="")
-if SENTRY_DSN and _SENTRY_PROD_ACTIVE:
+
+# L'etiquette et la garde doivent decouler de la MEME valeur. Elles divergeaient :
+# la garde acceptait `DJANGO_ENV=prod` OU `STATE=PROD`, mais l'etiquette valait
+# `STATE`. Un poste local avec DJANGO_ENV=prod et STATE=DEV passait donc la garde
+# et envoyait dans le projet Sentry DE PRODUCTION des evenements etiquetes DEV —
+# 33 occurrences depuis juin (PUSHIT-BACKEND-H), alors que le commentaire
+# ci-dessus affirmait exactement le contraire.
+#
+# En exigeant que l'etiquette resolue soit elle-meme un marqueur de production,
+# emettre un evenement etiquete autrement devient impossible. En production rien
+# ne change : STATE=PROD est bien pose dans /run/pushit/.env.
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="") or STATE
+_SENTRY_ENV_IS_PROD = SENTRY_ENVIRONMENT.strip().upper() in {"PROD", "PRODUCTION"}
+
+if SENTRY_DSN and _SENTRY_PROD_ACTIVE and _SENTRY_ENV_IS_PROD:
     import sentry_sdk
     from django.core.exceptions import DisallowedHost
 
@@ -382,7 +396,7 @@ if SENTRY_DSN and _SENTRY_PROD_ACTIVE:
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        environment=STATE,
+        environment=SENTRY_ENVIRONMENT,
         traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
         send_default_pii=env.bool("SENTRY_SEND_PII", default=False),
         before_send=_sentry_before_send,
