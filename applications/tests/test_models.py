@@ -87,7 +87,7 @@ def test_suffix_of_handles_both_alias_formats():
 @pytest.mark.django_db
 def test_inbound_alias_local_part_fits_rfc_limit_for_long_names():
     user = User.objects.create_user(email="long@example.com", password="secret123")
-    app = Application.objects.create(owner=user, name="Une application au nom vraiment " * 6)
+    app = Application.objects.create(owner=user, name=("Une application au nom vraiment long " * 4)[:120])
     assert len(app.inbound_email_alias) <= 64
     assert re.fullmatch(r"[a-z0-9-]+-[0-9a-f]{8}\.pushit", app.inbound_email_alias)
 
