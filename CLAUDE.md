@@ -49,7 +49,7 @@ Settings are in `config/settings/` with `base.py`, `dev.py`, `test.py`, `prod.py
 
 **Caveat:** `STATE=TEST` alone does **not** activate test settings — you need `DJANGO_ENV=test` for that. The `else` branch falls through to dev.
 
-Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DB_ENGINE`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` (fleet DB_* convention, OPERATIONS.md §3.13), `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_SENDER` (canonical fleet name, §3.14 — read into `settings.GRAPH_MAILBOX_USER_ID`), `INBOUND_EMAIL_DOMAIN`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
+Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DB_ENGINE`, `DB_NAME`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` (fleet DB_* convention, OPERATIONS.md §3.13), `REDIS_URL`, `FCM_SERVICE_ACCOUNT_PATH`, `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_SENDER` (canonical fleet name, §3.14 — read into `settings.GRAPH_MAILBOX_USER_ID`), `INBOUND_EMAIL_DOMAIN`, `INBOUND_EMAIL_ALIAS_SUFFIX`, `CACHE_URL`, `METRICS_AUTH_TOKEN`. See `.env_template` for the full list.
 
 **DEV/TEST behavior:** Celery runs eagerly (synchronous, no broker needed), passwords use MD5 for speed. Graph API calls are silently skipped when `GRAPH_CLIENT_ID` is empty. FCM uses a mock when `FCM_SERVICE_ACCOUNT_PATH` is empty.
 
@@ -95,6 +95,8 @@ Quiet periods (one-time or recurring) can shift `scheduled_for` → `effective_s
 - `send_email` — send auto-reply when a known user emails an unknown address
 
 **Alias management lives in the `exchange` app, not here** (it moved off Graph `proxyAddresses` onto the PowerShell `ExchangeAliasService`). `Application.save()` calls `exchange.integration.provision_alias_for_application`, `Application.delete()` calls `deprovision_alias_for_application`, and the owner can verify an alias is live via `GET apps/<id>/alias-status/` (→ `exchange.integration.alias_status`, which lists the mailbox aliases and checks membership). Inbox polling is driven by `notifications/inbound_mailbox.py`.
+
+**Inbound alias format** (`applications/inbound_alias.py`): `<name-slug>-<8 hex><INBOUND_EMAIL_ALIAS_SUFFIX>@INBOUND_EMAIL_DOMAIN`, e.g. `mon-app-3f9a2c1b.pushit@foxugly.com` (local part capped at 64 chars). Legacy `app_<slug>_<hex>` aliases still route; `manage.py regenerate_inbound_aliases [--include-app-prefix] [--dry-run]` migrates them (the old address then stops working). Matching is case-insensitive and only alias-shaped local parts (`*<suffix>` or `app_*`) on the inbound domain, never the mailbox's own address, can route. The poller picks the recipient from To/Cc/Delivered-To/X-Original-To/Resent-To; mail with no alias-shaped recipient is marked read and ignored silently (no journal row). The "unknown address" auto-reply is skipped for automated/list/bounce mail (RFC 3834 headers, robot senders, own mailbox) and rate-limited to one per sender per `INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS`. `poll_inbound_mailbox_task` holds a cache lock (`INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS`); a mail failing `INBOUND_EMAIL_MAX_PROCESSING_ATTEMPTS` times is marked read. Lock and rate limit only span processes when `CACHE_URL` points at Redis (otherwise per-process LocMemCache).
 
 ### Sessions & admin access
 
