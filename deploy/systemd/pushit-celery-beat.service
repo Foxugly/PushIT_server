@@ -11,6 +11,15 @@ UMask=0027
 WorkingDirectory=/var/www/django_websites/PushIT_server
 EnvironmentFile=/run/pushit/.env
 ExecStart=/var/www/django_websites/PushIT_server/.venv/bin/celery -A config beat --loglevel=info --schedule=/var/www/django_websites/PushIT_server/celerybeat-schedule
+# Hardening (OPERATIONS.md §3.22): no privilege escalation, private /tmp, read-only
+# system (/usr, /boot, /etc). Never ProtectSystem=strict: /var/www (media, beat schedule)
+# must stay writable.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
 Restart=on-failure
 RestartSec=10
 KillMode=mixed
