@@ -1,13 +1,12 @@
 import hashlib
 import hmac
-import re
 import secrets
 
 from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
-from django.utils.text import slugify
 
+from . import inbound_alias
 from .url_safety import validate_webhook_url
 
 
@@ -39,7 +38,8 @@ class Application(models.Model):
     legacy_send_last_used_at = models.DateTimeField(null=True, blank=True)
     inbound_email_alias = models.CharField(max_length=120, unique=True, db_index=True)
     # The random suffix of the alias, stored + DB-unique so it's race-proof and
-    # queryable (the alias is "app_<slug>_<suffix>"). Populated on save().
+    # queryable (alias "<slug>-<suffix>.pushit", legacy "app_<slug>_<suffix>").
+    # Populated on save().
     inbound_email_suffix = models.CharField(max_length=32, unique=True)
     webhook_url = models.URLField(max_length=500, blank=True, validators=[validate_webhook_url])
     # Secret de signature des callbacks, propre a cette application.
@@ -111,27 +111,22 @@ class Application(models.Model):
         self.enrolment_code_rotated_at = timezone.now()
         return self.enrolment_code
 
-    # Inbound-alias format: "app_<name-slug>_<random>", e.g. app_my_resto_3f9a2c1b.
-    # The random suffix makes the address unique AND non-guessable (so the inbound
-    # endpoint can't be spammed by guessing app_<name>@domain). Underscore-separated
-    # to match the app_/apt_ token convention.
-    ALIAS_PREFIX = "app_"
-    ALIAS_SUFFIX_BYTES = 4  # -> 8 hex chars
+    # Inbound-alias format: "<name-slug>-<random><suffix>", e.g.
+    # mon-app-3f9a2c1b.pushit (suffix = settings.INBOUND_EMAIL_ALIAS_SUFFIX).
+    # The random part makes the address unique AND non-guessable (so the inbound
+    # endpoint can't be spammed by guessing <name>@domain). Legacy
+    # "app_<slug>_<random>" aliases stay valid; see applications/inbound_alias.py.
+    ALIAS_PREFIX = inbound_alias.LEGACY_ALIAS_PREFIX
+    ALIAS_SUFFIX_BYTES = inbound_alias.ALIAS_RANDOM_BYTES  # -> 8 hex chars
 
     @staticmethod
     def generate_inbound_email_alias(name: str) -> str:
-        slug = slugify(name).replace("-", "_")
-        slug = re.sub(r"_+", "_", slug).strip("_")
-        suffix = secrets.token_hex(Application.ALIAS_SUFFIX_BYTES)
-        base = f"{Application.ALIAS_PREFIX}{slug}" if slug else Application.ALIAS_PREFIX.rstrip("_")
-        # Keep the whole alias within the field's 120 chars (base + "_" + suffix).
-        base = base[: 120 - 1 - len(suffix)].strip("_") or Application.ALIAS_PREFIX.rstrip("_")
-        return f"{base}_{suffix}"
+        return inbound_alias.generate_alias(name)
 
     @staticmethod
     def _suffix_of(alias: str) -> str:
-        """The random suffix is always the final `_`-segment of the alias."""
-        return alias.rsplit("_", 1)[-1]
+        """The random, DB-unique part of the alias (current or legacy format)."""
+        return inbound_alias.random_part_of(alias)
 
     def check_app_token(self, raw_token: str) -> bool:
         # Constant-time compare of the stored hash vs the candidate hash, to avoid
@@ -177,6 +172,9 @@ class Application(models.Model):
         last_error: IntegrityError | None = None
         for _ in range(12):
             alias = self.generate_inbound_email_alias(self.name)
+            if f"{alias}@{inbound_alias.inbound_domain()}" in inbound_alias.mailbox_addresses():
+                # Never hand out the polled mailbox's own address as an alias.
+                continue
             self.inbound_email_alias = alias
             self.inbound_email_suffix = self._suffix_of(alias)
             try:
@@ -189,6 +187,8 @@ class Application(models.Model):
                 continue
             self._provision_exchange_alias()
             return
+        if last_error is None:
+            raise RuntimeError("Could not allocate an inbound email alias.")
         raise last_error
 
     def regenerate_inbound_email(self) -> None:

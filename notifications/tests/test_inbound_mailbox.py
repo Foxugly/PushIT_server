@@ -116,7 +116,7 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
         GraphEmail(
             graph_id="graph-201",
             sender=owner.email,
-            recipient="nonexistent@pushit.com",
+            recipient="nonexistent-deadbeef.pushit@pushit.com",
             subject="Test",
             text="Some content.",
             message_id="mail-201@example.com",
@@ -128,7 +128,7 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
     assert result["status"] == "ok"
     assert result["rejected_count"] == 1
     assert Notification.objects.count() == 0
-    mock_send_reply.assert_called_once_with("owner@example.com", "nonexistent@pushit.com")
+    mock_send_reply.assert_called_once_with("owner@example.com", "nonexistent-deadbeef.pushit@pushit.com")
 
 
 @pytest.mark.django_db
@@ -192,7 +192,7 @@ def test_poll_does_not_send_reply_for_unknown_sender(
         GraphEmail(
             graph_id="graph-401",
             sender="stranger@example.com",
-            recipient="nonexistent@pushit.com",
+            recipient="nonexistent-deadbeef.pushit@pushit.com",
             subject="Test",
             text="Some content.",
             message_id="mail-401@example.com",

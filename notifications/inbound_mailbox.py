@@ -5,23 +5,56 @@ import logging
 from django.conf import settings
 from rest_framework import serializers
 
+from applications import inbound_alias
 from applications.graph_mail import (
     GraphEmail,
+    _is_configured,
     fetch_unread_emails,
     mark_email_read,
-    _is_configured,
 )
+
 from .creation import create_notification_with_optional_idempotency
 from .inbound_journal import record_inbound_email_ingestion
-from .inbound_reply import send_unknown_address_reply
-from .models import InboundEmailIngestionStatus, InboundEmailSource
+from .inbound_reply import (
+    auto_reply_block_reason,
+    claim_auto_reply_slot,
+    send_unknown_address_reply,
+)
+from .models import (
+    InboundEmailIngestionLog,
+    InboundEmailIngestionStatus,
+    InboundEmailSource,
+)
 from .serializers import NotificationInboundEmailSerializer
 from .utils import compute_request_fingerprint
 
 logger = logging.getLogger(__name__)
 
 
+def _maybe_send_unknown_address_reply(email: GraphEmail) -> None:
+    reason = auto_reply_block_reason(email)
+    if not reason and not claim_auto_reply_slot(email.sender):
+        reason = "rate_limited"
+    if reason:
+        logger.info(
+            "inbound_email_auto_reply_skipped",
+            extra={"reason": reason, "mailbox_uid": email.graph_id},
+        )
+        return
+    send_unknown_address_reply(email.sender.strip().lower(), email.recipient)
+
+
 def _process_email(email: GraphEmail) -> tuple[bool, str]:
+    # Mail that targets no PushIT alias (newsletters, replies to the mailbox,
+    # spam to random addresses...) is not ours to judge: mark it read and move
+    # on, without polluting the ingestion journal or auto-replying.
+    if not inbound_alias.is_inbound_alias_address(email.recipient):
+        logger.debug(
+            "inbound_email_ignored_no_alias",
+            extra={"mailbox_uid": email.graph_id, "recipient": email.recipient},
+        )
+        return True, "ignored"
+
     serializer = NotificationInboundEmailSerializer(
         data={
             "sender": email.sender,
@@ -41,7 +74,6 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
         errors = serializer.errors
 
         # Check if this is a known user sending to an unknown/unauthorized address
-        sender = email.sender.strip().lower()
         recipient_errors = errors.get("recipient", [])
         sender_errors = errors.get("sender", [])
 
@@ -51,7 +83,7 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
         ) and not any("No user matches" in str(e) for e in sender_errors)
 
         if is_known_user_wrong_address:
-            send_unknown_address_reply(sender, email.recipient)
+            _maybe_send_unknown_address_reply(email)
 
         record_inbound_email_ingestion(
             source=InboundEmailSource.POLLING,
@@ -134,6 +166,39 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
     return True, "created" if outcome.created else "existing"
 
 
+def _record_processing_failure(email: GraphEmail, exc: Exception) -> None:
+    """Journal an ERROR; past the retry cap, mark the mail read so a poison
+    message stops being retried every minute forever."""
+    logger.exception("inbound_mailbox_processing_failed", extra={"error": str(exc)})
+    log = record_inbound_email_ingestion(
+        source=InboundEmailSource.POLLING,
+        status=InboundEmailIngestionStatus.ERROR,
+        sender=email.sender,
+        recipient=email.recipient,
+        subject=email.subject,
+        message_id=email.message_id,
+        mailbox_uid=email.graph_id,
+        error_message=str(exc),
+    )
+    if not email.graph_id:
+        return
+    max_attempts = int(getattr(settings, "INBOUND_EMAIL_MAX_PROCESSING_ATTEMPTS", 5))
+    attempts = InboundEmailIngestionLog.objects.filter(
+        source=InboundEmailSource.POLLING,
+        status=InboundEmailIngestionStatus.ERROR,
+        mailbox_uid=email.graph_id,
+    ).count()
+    if max_attempts <= 0 or attempts < max_attempts:
+        return
+    log.error_message = f"Giving up after {attempts} failed attempts (marked read): {exc}"
+    log.save(update_fields=["error_message"])
+    logger.error(
+        "inbound_mailbox_retry_cap_reached",
+        extra={"mailbox_uid": email.graph_id, "attempts": attempts, "error": str(exc)},
+    )
+    mark_email_read(email.graph_id)
+
+
 def poll_inbound_mailbox() -> dict:
     if not _is_configured():
         return {"status": "skipped", "reason": "not configured", "processed_count": 0}
@@ -147,22 +212,15 @@ def poll_inbound_mailbox() -> dict:
     processed_count = 0
     created_count = 0
     rejected_count = 0
+    ignored_count = 0
+    failed_count = 0
 
     for email in emails:
         try:
             mark_seen, outcome = _process_email(email)
         except Exception as exc:
-            record_inbound_email_ingestion(
-                source=InboundEmailSource.POLLING,
-                status=InboundEmailIngestionStatus.ERROR,
-                sender=email.sender,
-                recipient=email.recipient,
-                subject=email.subject,
-                message_id=email.message_id,
-                mailbox_uid=email.graph_id,
-                error_message=str(exc),
-            )
-            logger.exception("inbound_mailbox_processing_failed", extra={"error": str(exc)})
+            failed_count += 1
+            _record_processing_failure(email, exc)
             continue
 
         processed_count += 1
@@ -170,6 +228,8 @@ def poll_inbound_mailbox() -> dict:
             rejected_count += 1
         elif outcome == "created":
             created_count += 1
+        elif outcome == "ignored":
+            ignored_count += 1
 
         if mark_seen:
             mark_email_read(email.graph_id)
@@ -179,4 +239,6 @@ def poll_inbound_mailbox() -> dict:
         "processed_count": processed_count,
         "created_count": created_count,
         "rejected_count": rejected_count,
+        "ignored_count": ignored_count,
+        "failed_count": failed_count,
     }
