@@ -93,7 +93,7 @@ def test_regenerate_inbound_email_allocates_a_new_alias():
     assert response.status_code == 200
     assert response.data["app_id"] == app.id
     assert response.data["inbound_email_alias"] != old_alias
-    assert response.data["inbound_email_alias"].startswith(Application.ALIAS_PREFIX)
+    assert response.data["inbound_email_alias"].endswith(settings.INBOUND_EMAIL_ALIAS_SUFFIX)
     assert response.data["inbound_email_address"].endswith(f"@{settings.INBOUND_EMAIL_DOMAIN}")
     assert response.data["inbound_email_address"].startswith(response.data["inbound_email_alias"])
 

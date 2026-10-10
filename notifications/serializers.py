@@ -7,6 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.models import User
+from applications import inbound_alias
 from applications.models import Application
 from config.api_errors import (
     ErrorResponseSerializer as DetailResponseSerializer,
@@ -502,15 +503,22 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         if scheduled_for is not None and scheduled_for <= timezone.now():
             errors.setdefault("subject", []).append("Scheduled date must be in the future.")
 
-        application = (
-            Application.objects.filter(
-                inbound_email_alias=local_part,
-                is_active=True,
-                revoked_at__isnull=True,
+        # Only alias-shaped local parts ("*.pushit", legacy "app_*") can route
+        # to an application, and never the polled mailbox's own address.
+        application = None
+        if (
+            inbound_alias.is_alias_local_part(local_part)
+            and recipient not in inbound_alias.mailbox_addresses()
+        ):
+            application = (
+                Application.objects.filter(
+                    inbound_email_alias__iexact=local_part,
+                    is_active=True,
+                    revoked_at__isnull=True,
+                )
+                .order_by("id")
+                .first()
             )
-            .order_by("id")
-            .first()
-        )
         if application is None:
             errors.setdefault("recipient", []).append("No application matches this email address.")
 

@@ -180,6 +180,21 @@ LOGGING = {
     },
 }
 
+# Shared cache. Unset = Django's default per-process LocMemCache, which is NOT
+# shared between gunicorn workers / Celery children: DRF throttles, the inbound
+# poll overlap lock and the auto-reply rate limit are then only per-process.
+# In prod point it at its own Redis DB: redis://127.0.0.1:6379/8 (fleet allocation,
+# OPERATIONS.md §3.4 -- DB 3 is poker's, never reuse another site's DB).
+CACHE_URL = env("CACHE_URL", default="")
+if CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": CACHE_URL,
+            "KEY_PREFIX": "pushit",
+        }
+    }
+
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=env("REDIS_URL", default="redis://127.0.0.1:6379/0"))
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=env("REDIS_URL", default="redis://127.0.0.1:6379/0"))
 CELERY_ACCEPT_CONTENT = ["json"]
@@ -277,6 +292,22 @@ FCM_SERVICE_ACCOUNT_PATH = env("FCM_SERVICE_ACCOUNT_PATH", default="")
 PUSHIT_FORCE_MOCK_PUSH = env.bool("PUSHIT_FORCE_MOCK_PUSH", default=False)
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
 INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="foxugly.com")
+# Inbound alias format: "<name-slug>-<8 hex><suffix>@INBOUND_EMAIL_DOMAIN",
+# e.g. mon-app-3f9a2c1b.pushit@foxugly.com. The suffix tags the address as a
+# PushIT ingestion alias, so the poller can tell it apart from any other mail
+# landing on the shared mailbox. Changing it after aliases were issued orphans
+# those aliases (they no longer match), so treat it as fixed once in prod.
+# Legacy "app_<slug>_<hex>" aliases keep being accepted.
+INBOUND_EMAIL_ALIAS_SUFFIX = env("INBOUND_EMAIL_ALIAS_SUFFIX", default=".pushit")
+# After this many ERROR rows for the same Graph message id, the poller marks the
+# mail read and stops retrying it (a poison message would otherwise be retried
+# every minute forever).
+INBOUND_EMAIL_MAX_PROCESSING_ATTEMPTS = env.int("INBOUND_EMAIL_MAX_PROCESSING_ATTEMPTS", default=5)
+# At most one "unknown address" auto-reply per sender per this many seconds.
+INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS = env.int("INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS", default=3600)
+# TTL of the overlap lock taken by poll_inbound_mailbox_task. Must exceed a
+# normal run; it only bounds how long a crashed run can block the next ones.
+INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS = env.int("INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS", default=300)
 
 # Anti-spoofing for inbound email notifications.
 #

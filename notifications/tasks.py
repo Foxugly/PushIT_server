@@ -1,7 +1,10 @@
+import logging
+import secrets
 from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -12,6 +15,8 @@ from .services import send_notification
 # Re-exported so Celery's autodiscover (which scans each app's tasks module)
 # reliably registers the webhook callback task defined in webhooks.py.
 from .webhooks import send_webhook_callback_task  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 # A notification that has been PROCESSING longer than this is considered stranded
 # (the worker child was recycled/crashed mid-send) and is requeued. Generous by
@@ -132,9 +137,27 @@ def requeue_stuck_processing_notifications_task():
     return {"requeued_count": requeued_count}
 
 
+INBOUND_POLL_LOCK_KEY = "inbound:poll-mailbox:lock"
+
+
 @shared_task
 def poll_inbound_mailbox_task():
-    return poll_inbound_mailbox()
+    """Beat fires this every minute; a slow Graph round-trip must not let two
+    runs process the same unread mails concurrently. The lock lives in the
+    shared cache (Redis when CACHE_URL is set) with a TTL, so a crashed run
+    cannot block polling for longer than INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS."""
+    token = secrets.token_hex(8)
+    ttl = int(getattr(settings, "INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS", 300))
+    if not cache.add(INBOUND_POLL_LOCK_KEY, token, timeout=ttl):
+        logger.info("inbound_mailbox_poll_skipped_locked")
+        return {"status": "skipped", "reason": "locked", "processed_count": 0}
+    try:
+        return poll_inbound_mailbox()
+    finally:
+        # Only release our own lock: if the TTL expired and another run took
+        # it, deleting it would let a third run overlap.
+        if cache.get(INBOUND_POLL_LOCK_KEY) == token:
+            cache.delete(INBOUND_POLL_LOCK_KEY)
 
 
 @shared_task
