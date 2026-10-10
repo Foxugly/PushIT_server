@@ -183,8 +183,8 @@ LOGGING = {
 # Shared cache. Unset = Django's default per-process LocMemCache, which is NOT
 # shared between gunicorn workers / Celery children: DRF throttles, the inbound
 # poll overlap lock and the auto-reply rate limit are then only per-process.
-# In prod point it at Redis (e.g. redis://127.0.0.1:6379/3); keys are prefixed
-# "pushit" so they can share a DB with the Celery result backend.
+# In prod point it at its own Redis DB: redis://127.0.0.1:6379/8 (fleet allocation,
+# OPERATIONS.md §3.4 -- DB 3 is poker's, never reuse another site's DB).
 CACHE_URL = env("CACHE_URL", default="")
 if CACHE_URL:
     CACHES = {
