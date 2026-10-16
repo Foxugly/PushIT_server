@@ -30,6 +30,17 @@ def test_health_ready_returns_ok():
 
 
 @pytest.mark.django_db
+def test_health_root_is_the_ready_check():
+    client = APIClient()
+
+    response = client.get("/health/")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["check"] == "ready"
+
+
+@pytest.mark.django_db
 def test_metrics_endpoint_returns_prometheus_payload():
     reset_metrics()
     client = APIClient()
