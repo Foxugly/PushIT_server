@@ -105,6 +105,34 @@ def post(path: str, payload: dict) -> dict:
     return response.json()
 
 
+def erase_user(external_user_id: str) -> None:
+    """Efface l'utilisateur au central AVANT la suppression locale du compte.
+
+    `POST /api/v1/erase/` (billing_server #52) résilie immédiatement ses
+    abonnements, supprime le client Stripe et pseudonymise ses traces.
+    Idempotent : 200 (effacé) ou 204 (rien à faire) valent succès.
+
+    Tout le reste lève `BillingUnavailable` -- y compris un 4xx (signature
+    refusée, corps rejeté) : le central n'a alors rien effacé, et supprimer le
+    compte local laisserait un payeur prélevé sans plus aucun accès au portail.
+    L'utilisateur réessaie ; une mauvaise configuration se voit dans les logs.
+    """
+    path = "erase/"
+    body = json.dumps({"external_user_id": str(external_user_id)}).encode()
+    try:
+        response = requests.post(
+            _url(path), data=body, headers=_headers("POST", _path(path), body), timeout=TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.warning("billing_unreachable", extra={"path": path, "error": str(exc)})
+        raise BillingUnavailable(str(exc)) from exc
+
+    if response.status_code in (200, 204):
+        return
+    logger.warning("billing_erase_failed", extra={"path": path, "code": response.status_code})
+    raise BillingUnavailable(f"HTTP {response.status_code}")
+
+
 def get(path: str) -> dict:
     # Un GET signe le corps vide : l'horodatage suffit à borner la signature.
     try:

@@ -7,7 +7,9 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from config.api_errors import error_response
+from billing import client as billing_client
+from billing.service import billing_configured
+from config.api_errors import ErrorResponseSerializer, error_response
 from .email_confirmation import (
     confirm_email,
     resend_confirmation_email,
@@ -494,6 +496,13 @@ class LogoutApiView(APIView):
                     "(code=current_password_invalid). Nothing is deleted."
                 ),
             ),
+            503: OpenApiResponse(
+                response=ErrorResponseSerializer,
+                description=(
+                    "The central billing service could not erase the user's billing "
+                    "data (code=billing_unavailable). Nothing is deleted; retry later."
+                ),
+            ),
         },
         summary="Delete my account",
         description=(
@@ -501,7 +510,10 @@ class LogoutApiView(APIView):
             "current password. Cascades every application the user owns (with its "
             "notifications, deliveries, templates, send tokens and device links) even "
             "when other users' devices are subscribed to it, deletes the user's own "
-            "devices, and blacklists every refresh token issued to the user."
+            "devices, and blacklists every refresh token issued to the user. When "
+            "billing is configured, the user is first erased at the central billing "
+            "service (subscriptions cancelled immediately, Stripe customer deleted); "
+            "if that fails, nothing is deleted (503 billing_unavailable)."
         ),
         tags=["Accounts"],
         auth=[{"BearerAuth": []}],
@@ -529,6 +541,20 @@ class MeApiView(APIView):
                 detail="Current password is incorrect.",
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
+        # Billing first: if the central cannot erase (cancel + delete the Stripe
+        # customer), keep the local account so the user can retry.
+        if billing_configured():
+            try:
+                billing_client.erase_user(str(request.user.pk))
+            except billing_client.BillingUnavailable:
+                return error_response(
+                    code="billing_unavailable",
+                    detail=(
+                        "The billing service is temporarily unavailable; your account "
+                        "was not deleted. Please try again later."
+                    ),
+                    http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
         delete_user_account(request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
