@@ -8,6 +8,7 @@ from config.api_errors import (
     build_validation_error_serializer,
 )
 from .models import User, UserLanguage
+from .refresh_cookie import PERSIST_CLAIM
 
 
 RegisterValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -96,6 +97,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    remember_me = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text=(
+            "Cookie mode only (`X-Auth-Mode: cookie`): false makes the refresh "
+            "cookie a browser-session cookie (no Max-Age). Ignored in body mode."
+        ),
+    )
 
     def validate(self, attrs):
         email = attrs["email"].strip().lower()
@@ -186,9 +195,15 @@ class UserLanguageUpdateSerializer(serializers.ModelSerializer):
         fields = ["language"]
 
 
+REFRESH_COOKIE_NOTE = (
+    " Omitted when the request sent `X-Auth-Mode: cookie`: the token is then "
+    "set in the HttpOnly refresh cookie instead."
+)
+
+
 class LoginResponseSerializer(serializers.Serializer):
     access = serializers.CharField()
-    refresh = serializers.CharField()
+    refresh = serializers.CharField(required=False, help_text="Refresh token." + REFRESH_COOKIE_NOTE)
     user = UserMeSerializer()
 
 
@@ -197,11 +212,17 @@ class TokenRefreshResponseSerializer(serializers.Serializer):
     # With ROTATE_REFRESH_TOKENS the refresh endpoint also returns a freshly
     # rotated refresh token; declare it so the OpenAPI schema matches runtime and
     # SPA/mobile clients persist the rotated token (see fleet JWT-rotation memo).
-    refresh = serializers.CharField()
+    refresh = serializers.CharField(
+        required=False, help_text="Rotated refresh token." + REFRESH_COOKIE_NOTE
+    )
 
 
-def build_token_response_for_user(user: User) -> dict:
+def build_token_response_for_user(user: User, *, persist: bool = True) -> dict:
     refresh = RefreshToken.for_user(user)
+    if not persist:
+        # Survives rotation (simplejwt rotates the same token object), so the
+        # refresh cookie stays a session cookie for the whole session.
+        refresh[PERSIST_CLAIM] = False
     return {
         "access": str(refresh.access_token),
         "refresh": str(refresh),
@@ -212,7 +233,22 @@ def build_token_response_for_user(user: User) -> dict:
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(
         write_only=True,
-        help_text="Refresh token to invalidate"
+        required=False,
+        help_text=(
+            "Refresh token to invalidate. Required in body mode; in cookie mode "
+            "(`X-Auth-Mode: cookie`) the HttpOnly refresh cookie is used when omitted."
+        ),
+    )
+
+
+class TokenRefreshRequestSerializer(serializers.Serializer):
+    refresh = serializers.CharField(
+        write_only=True,
+        required=False,
+        help_text=(
+            "Refresh token. Required in body mode; in cookie mode "
+            "(`X-Auth-Mode: cookie`) the HttpOnly refresh cookie is used when omitted."
+        ),
     )
 
 
@@ -274,9 +310,10 @@ class PasswordChangeResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
     access = serializers.CharField(help_text="Fresh access token for the calling session")
     refresh = serializers.CharField(
+        required=False,
         help_text=(
             "Fresh refresh token: every previously issued refresh token is now "
-            "blacklisted, so the client MUST persist this one"
-        )
+            "blacklisted, so the client MUST persist this one." + REFRESH_COOKIE_NOTE
+        ),
     )
     user = UserMeSerializer()

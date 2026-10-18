@@ -33,7 +33,19 @@ CORS_ALLOWED_ORIGINS = env.list(
 # pushit-api in tracePropagationTargets, so it attaches `sentry-trace` + `baggage`
 # to every cross-origin API request. They must be allow-listed or the CORS
 # preflight fails and login/register break ("Une erreur est survenue").
-CORS_ALLOW_HEADERS = (*default_headers, "x-app-token", "sentry-trace", "baggage")
+# `x-auth-mode`: the SPA's opt-in to the HttpOnly refresh cookie (accounts/refresh_cookie.py).
+CORS_ALLOW_HEADERS = (*default_headers, "x-app-token", "sentry-trace", "baggage", "x-auth-mode")
+# Credentials (the refresh cookie) are only ever allowed for the explicit list
+# above — never with CORS_ALLOW_ALL_ORIGINS / a wildcard (asserted at import).
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+if "*" in CORS_ALLOWED_ORIGINS:
+    raise ValueError("CORS_ALLOWED_ORIGINS must list explicit origins (credentials are allowed).")
+# HttpOnly refresh cookie (web SPA only, opt-in via `X-Auth-Mode: cookie`).
+# Host-only on the API (no Domain), scoped to the auth endpoints, SameSite=Lax.
+AUTH_REFRESH_COOKIE_NAME = env("AUTH_REFRESH_COOKIE_NAME", default="pushit_refresh")
+AUTH_REFRESH_COOKIE_PATH = "/api/v1/auth/"
+AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=True)
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # Public base URL of the Angular SPA, used to build the password-reset link
