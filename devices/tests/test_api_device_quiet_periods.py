@@ -22,6 +22,7 @@ def test_create_update_and_delete_device_quiet_period():
     )
     app = Application.objects.create(owner=user, name="App")
     device = Device.objects.create(
+        user=user,
         push_token=VALID_PUSH_TOKEN,
         push_token_status=DeviceTokenStatus.ACTIVE,
     )
@@ -78,6 +79,7 @@ def test_device_quiet_period_validation_error_contract():
     )
     app = Application.objects.create(owner=user, name="App")
     device = Device.objects.create(
+        user=user,
         push_token="token_22345678901234567890",
         push_token_status=DeviceTokenStatus.ACTIVE,
     )

@@ -114,23 +114,31 @@ class DeviceReadSerializer(serializers.ModelSerializer):
             "unlinked_applications",
         ]
 
+    def _visible_links(self, obj):
+        """Links the requesting user may see. The device's own user sees all of
+        them; an application owner (who sees subscriber devices in the console)
+        only sees links to their own applications — never other owners' apps.
+        Fails closed (no links) without a request user."""
+        request = self.context.get("request")
+        user_id = getattr(getattr(request, "user", None), "id", None)
+        links = obj.application_links.all()
+        if user_id is not None and obj.user_id == user_id:
+            return list(links)
+        return [link for link in links if user_id is not None and link.application.owner_id == user_id]
+
     @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_application_ids(self, obj) -> list[int]:
         # Read from the prefetched link set (DeviceListApiView prefetches
         # application_links) and filter is_active in Python — avoids an N+1 per
         # device on list. On detail (no prefetch) this is one query for one device.
-        return [
-            link.application_id
-            for link in obj.application_links.all()
-            if link.is_active
-        ]
+        return [link.application_id for link in self._visible_links(obj) if link.is_active]
 
     @extend_schema_field(DeviceUnlinkedApplicationSerializer(many=True))
     def get_unlinked_applications(self, obj) -> list[dict]:
         # Past links (is_active=False), so the console can explain a device that
         # received notifications from an app it's no longer linked to. The view
         # prefetches application_links__application, so .application is N+1-free.
-        links = [link for link in obj.application_links.all() if not link.is_active]
+        links = [link for link in self._visible_links(obj) if not link.is_active]
         links.sort(key=lambda link: link.application.name.lower())
         return [
             {
