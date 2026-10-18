@@ -2385,7 +2385,7 @@ paths:
         schema:
           type: string
         description: Required idempotency key to deduplicate creations on the application
-          side.
+          side (max 255 characters).
         required: true
       tags:
       - Notifications
@@ -2506,7 +2506,7 @@ paths:
         schema:
           type: string
         description: Required idempotency key to deduplicate sends on the application
-          side.
+          side (max 255 characters).
         required: true
       tags:
       - Notifications
@@ -2997,7 +2997,8 @@ paths:
                     check: metrics
                     detail: metrics_token_invalid
                   summary: Metrics forbidden
-          description: Invalid metrics token
+          description: Invalid metrics token, or no token configured where one is
+            required (prod)
   /health/ready/:
     get:
       operationId: health_ready_retrieve
@@ -3031,7 +3032,7 @@ paths:
                     status: error
                     service: pushit
                     check: ready
-                    detail: 'database_unavailable: database is locked'
+                    detail: database_unavailable
                   summary: Database unavailable
           description: Dependency unavailable
 components:
@@ -3470,6 +3471,8 @@ components:
           type: array
           items:
             type: integer
+            minimum: 1
+          maxItems: 500
       required:
       - notification_ids
     BulkSendRequestRequest:
@@ -3479,6 +3482,8 @@ components:
           type: array
           items:
             type: integer
+            minimum: 1
+          maxItems: 500
       required:
       - notification_ids
     DeliveryStatusEnum:
