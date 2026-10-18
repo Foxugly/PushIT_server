@@ -13,6 +13,8 @@ from .api_views import device_ids_prefetch
 from .creation import create_notification_with_optional_idempotency
 from .models import Notification, NotificationStatus
 from .serializers import (
+    BulkSendRequestSerializer,
+    bulk_send_ids_field,
     DetailResponseSerializer,
     NotificationCreateWithAppTokenSerializer,
     NotificationCreateWithAppTokenValidationErrorResponseSerializer,
@@ -472,7 +474,7 @@ class NotificationBulkSendWithAppTokenApiView(APIView):
         auth=[{"AppTokenAuth": []}],
         request=inline_serializer(
             name="BulkSendAppTokenRequest",
-            fields={"notification_ids": serializers.ListField(child=serializers.IntegerField())},
+            fields={"notification_ids": bulk_send_ids_field()},
         ),
         responses={
             200: OpenApiResponse(description="Bulk send result with queued and errors"),
@@ -482,13 +484,9 @@ class NotificationBulkSendWithAppTokenApiView(APIView):
     def post(self, request):
         from .api_views import _try_queue_notification
 
-        notification_ids = request.data.get("notification_ids", [])
-        if not notification_ids:
-            return error_response(
-                code="validation_error",
-                detail="notification_ids is required and cannot be empty.",
-                http_status=status.HTTP_400_BAD_REQUEST,
-            )
+        request_serializer = BulkSendRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        notification_ids = request_serializer.validated_data["notification_ids"]
 
         application = request.auth_application
         use_owner_in_queue = not settings.DB_SUPPORTS_ROW_LOCKING

@@ -683,3 +683,19 @@ class NotificationTemplateWriteSerializer(serializers.ModelSerializer):
             application=self.context["application"],
             **validated_data,
         )
+
+
+BULK_SEND_MAX_IDS = 500
+
+
+def bulk_send_ids_field():
+    """``notification_ids`` of the bulk-send endpoints: 1..500 integer ids."""
+    return serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=BULK_SEND_MAX_IDS,
+    )
+
+
+class BulkSendRequestSerializer(serializers.Serializer):
+    notification_ids = bulk_send_ids_field()
