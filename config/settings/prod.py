@@ -18,6 +18,10 @@ if not ALLOWED_HOSTS:
 # denied (403), not open.
 METRICS_REQUIRE_TOKEN = True
 
+# Inbound e-mail: a forged `From` must not push to every subscriber (audit S-I4).
+# Enforced unless SSM explicitly sets INBOUND_EMAIL_REQUIRE_DMARC=False.
+INBOUND_EMAIL_REQUIRE_DMARC = env.bool("INBOUND_EMAIL_REQUIRE_DMARC", default=True)
+
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
