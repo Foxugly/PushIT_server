@@ -1,4 +1,4 @@
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 
 class LoginRateThrottle(AnonRateThrottle):
@@ -19,3 +19,8 @@ class ResendEmailRateThrottle(AnonRateThrottle):
 
 class MagicLinkRateThrottle(AnonRateThrottle):
     scope = "magic_link"
+
+class PasswordChangeRateThrottle(UserRateThrottle):
+    """Per-user: a stolen access token must not be a current-password oracle."""
+
+    scope = "password_change"

@@ -247,3 +247,36 @@ class StaffUserSerializer(serializers.ModelSerializer):
             "subscription_bypass", "bypass_note", "bypass_granted_at",
         ]
         read_only_fields = ["id", "email", "userkey", "is_active", "email_confirmed", "bypass_granted_at"]
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """Body of POST /api/v1/auth/password/change/. The view does the checks so
+    each failure gets its own stable `code`."""
+
+    current_password = serializers.CharField(
+        write_only=True, trim_whitespace=False, help_text="Current password"
+    )
+    new_password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        help_text="New password, checked against Django's password validators",
+    )
+
+
+PasswordChangeValidationErrorResponseSerializer = build_validation_error_serializer(
+    "PasswordChangeValidationErrorResponse",
+    ["current_password", "new_password"],
+)
+
+
+class PasswordChangeResponseSerializer(serializers.Serializer):
+    code = serializers.CharField(help_text="Always `password_changed`")
+    detail = serializers.CharField()
+    access = serializers.CharField(help_text="Fresh access token for the calling session")
+    refresh = serializers.CharField(
+        help_text=(
+            "Fresh refresh token: every previously issued refresh token is now "
+            "blacklisted, so the client MUST persist this one"
+        )
+    )
+    user = UserMeSerializer()
