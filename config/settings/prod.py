@@ -14,6 +14,10 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 if not ALLOWED_HOSTS:
     raise ImproperlyConfigured("ALLOWED_HOSTS must be explicitly set in PROD.")
 
+# /health/metrics/ is never public in prod: without METRICS_AUTH_TOKEN it is
+# denied (403), not open.
+METRICS_REQUIRE_TOKEN = True
+
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True

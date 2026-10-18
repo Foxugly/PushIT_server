@@ -144,7 +144,7 @@ class HealthReadyApiView(APIView):
             ),
             403: OpenApiResponse(
                 response=HealthErrorSerializer,
-                description="Invalid metrics token",
+                description="Invalid metrics token, or no token configured where one is required (prod)",
                 examples=[
                     OpenApiExample(
                         "Metrics forbidden",
@@ -167,6 +167,16 @@ class MetricsApiView(APIView):
 
     def get(self, request):
         expected_token = settings.METRICS_AUTH_TOKEN
+        if not expected_token and getattr(settings, "METRICS_REQUIRE_TOKEN", False):
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "service": "pushit",
+                    "check": "metrics",
+                    "detail": "metrics_disabled",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if expected_token:
             provided_token = request.headers.get("X-Metrics-Token", "").strip()
             if not hmac.compare_digest(provided_token, expected_token):

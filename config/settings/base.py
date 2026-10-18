@@ -296,6 +296,9 @@ SIMPLE_JWT = {
 FCM_SERVICE_ACCOUNT_PATH = env("FCM_SERVICE_ACCOUNT_PATH", default="")
 PUSHIT_FORCE_MOCK_PUSH = env.bool("PUSHIT_FORCE_MOCK_PUSH", default=False)
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
+# When True, an empty METRICS_AUTH_TOKEN means /health/metrics/ is denied
+# instead of public. Forced on in prod.py; dev/test keep the open endpoint.
+METRICS_REQUIRE_TOKEN = env.bool("METRICS_REQUIRE_TOKEN", default=False)
 INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="foxugly.com")
 # Inbound alias format: "<name-slug>-<8 hex><suffix>@INBOUND_EMAIL_DOMAIN",
 # e.g. mon-app-3f9a2c1b.pushit@foxugly.com. The suffix tags the address as a
