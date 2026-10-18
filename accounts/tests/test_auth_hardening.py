@@ -102,3 +102,30 @@ def test_confirmation_of_already_confirmed_account_issues_no_tokens():
     response = APIClient().post(CONFIRM_URL, {"uid": _uid(user), "token": token}, format="json")
     assert response.status_code == 400
     assert "access" not in response.data
+
+
+# --- M6: atomic magic-link consumption --------------------------------------
+
+
+@pytest.mark.django_db
+def test_magic_link_not_consumed_twice_when_row_already_used_concurrently(monkeypatch):
+    """Simulate a concurrent request consuming the row between our read and our
+    write: the second consumer must get None, not a session."""
+    user = User.objects.create_user(email="renaud@example.com", password=PASSWORD, email_confirmed=True)
+    raw = "jeton-concurrent"
+    link = MagicLinkToken.objects.create(
+        user=user,
+        token_hash=MagicLinkToken.hash_raw(raw),
+        expires_at=timezone.now() + timezone.timedelta(minutes=15),
+    )
+
+    original_first = MagicLinkToken.objects.none().__class__.first
+
+    def first_then_race(qs):
+        obj = original_first(qs)
+        # Another request wins the race right after our read.
+        MagicLinkToken.objects.filter(pk=link.pk).update(used_at=timezone.now())
+        return obj
+
+    monkeypatch.setattr(MagicLinkToken.objects.none().__class__, "first", first_then_race)
+    assert verify_magic_link(raw) is None
