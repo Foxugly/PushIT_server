@@ -1191,7 +1191,9 @@ paths:
         the current password. Cascades every application the user owns (with its notifications,
         deliveries, templates, send tokens and device links) even when other users'
         devices are subscribed to it, deletes the user's own devices, and blacklists
-        every refresh token issued to the user.
+        every refresh token issued to the user. When billing is configured, the user
+        is first erased at the central billing service (subscriptions cancelled immediately,
+        Stripe customer deleted); if that fails, nothing is deleted (503 billing_unavailable).
       summary: Delete my account
       tags:
       - Accounts
@@ -1213,6 +1215,13 @@ paths:
                 $ref: '#/components/schemas/AccountDeleteValidationErrorResponse'
           description: '`current_password` missing (code=validation_error) or wrong
             (code=current_password_invalid). Nothing is deleted.'
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: The central billing service could not erase the user's billing
+            data (code=billing_unavailable). Nothing is deleted; retry later.
   /api/v1/auth/password/change/:
     post:
       operationId: api_v1_auth_password_change_create
