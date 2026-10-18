@@ -264,6 +264,11 @@ REST_FRAMEWORK = {
         "magic_link": "5/min",
         "app_token": "300/min",
     },
+    # nginx is the single reverse proxy: trust only the last X-Forwarded-For
+    # entry (the peer nginx saw), never what the client put there itself.
+    # Without this, DRF keys anonymous throttles on the whole client-controlled
+    # header.
+    "NUM_PROXIES": 1,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
