@@ -327,21 +327,32 @@ INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS = env.int("INBOUND_EMAIL_AUTO_REPLY_IN
 # normal run; it only bounds how long a crashed run can block the next ones.
 INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS = env.int("INBOUND_EMAIL_POLL_LOCK_TTL_SECONDS", default=300)
 
-# Anti-spoofing for inbound email notifications.
+# Anti-spoofing for inbound email notifications (audit S-I4).
 #
 # Inbound mail authorizes the creating user via its `From` address, which is
-# trivially forgeable at the SMTP layer. Our first line of defense is that mail
-# is *not* accepted over open SMTP: it is polled from a managed Microsoft 365 /
-# Exchange Online mailbox via Graph API, and M365 already enforces
-# SPF/DKIM/DMARC inbound — a hard DMARC failure is junked/quarantined and never
-# lands in the Inbox we poll, so it never reaches this code.
-#
-# When True, we additionally require an aligned `dmarc=pass` in the message's
-# Authentication-Results header (when that header is captured) before trusting
-# the `From`. Default False = rely on M365's upstream enforcement (the header is
-# not fetched by the poller by default); flip to True once the poller is
-# configured to fetch internetMessageHeaders so the check has data to act on.
+# trivially forgeable at the SMTP layer, and M365 only junks a DMARC failure when
+# the sender's domain publishes p=quarantine/reject. When True, a mail becomes a
+# notification only if Exchange's verdicts authenticate the sender (see
+# notifications/inbound_auth.py): aligned dmarc=pass, dmarc=bestguesspass, or
+# X-MS-Exchange-Organization-AuthAs=Internal (our own tenant). Refused mail is
+# journaled (REJECTED), logged with a masked address, and the owner is warned.
+# Off = observation mode: `inbound_dmarc_would_reject` is logged, nothing refused.
+# Default False here (dev/test); prod.py defaults it to True.
 INBOUND_EMAIL_REQUIRE_DMARC = env.bool("INBOUND_EMAIL_REQUIRE_DMARC", default=False)
+# dmarc=bestguesspass: the domain has no DMARC record but SPF/DKIM align -> the
+# sender IS authenticated. Accepted by default.
+INBOUND_EMAIL_DMARC_ACCEPT_BESTGUESSPASS = env.bool("INBOUND_EMAIL_DMARC_ACCEPT_BESTGUESSPASS", default=True)
+# dmarc=none: no DMARC record AND no aligned SPF/DKIM -> unauthenticated. Refused
+# by default; set True only for an owner whose domain cannot be fixed, knowing it
+# reopens spoofing for such domains.
+INBOUND_EMAIL_DMARC_ALLOW_NO_POLICY = env.bool("INBOUND_EMAIL_DMARC_ALLOW_NO_POLICY", default=False)
+# Trust X-MS-Exchange-Organization-AuthAs=Internal (mail submitted by an
+# authenticated user of the mailbox's own tenant; Exchange strips the header
+# from external mail).
+INBOUND_EMAIL_DMARC_TRUST_INTERNAL = env.bool("INBOUND_EMAIL_DMARC_TRUST_INTERNAL", default=True)
+# E-mail the owner (rate-limited by INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS)
+# when a mail in their name is refused.
+INBOUND_EMAIL_DMARC_NOTIFY_OWNER = env.bool("INBOUND_EMAIL_DMARC_NOTIFY_OWNER", default=True)
 
 GRAPH_TENANT_ID = env("GRAPH_TENANT_ID", default="")
 GRAPH_CLIENT_ID = env("GRAPH_CLIENT_ID", default="")

@@ -44,7 +44,7 @@ def _as(user):
 def _envoyer_callback(app):
     from notifications.webhooks import send_webhook_callback_task
 
-    with patch("notifications.webhooks.requests.post") as poste:
+    with patch("notifications.webhooks._post_pinned") as poste:
         poste.return_value.status_code = 200
         send_webhook_callback_task(
             application_id=app.id, notification_id=1, final_status="sent", sent_at=None

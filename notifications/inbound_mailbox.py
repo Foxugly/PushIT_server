@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 
 from django.conf import settings
+from django.core.cache import cache
 from rest_framework import serializers
 
 from applications import inbound_alias
@@ -11,11 +13,13 @@ from applications.graph_mail import (
     _is_configured,
     fetch_unread_emails,
     mark_email_read,
+    send_email,
 )
 
 from config.logging_utils import mask_email
 
 from .creation import create_notification_with_optional_idempotency
+from .inbound_auth import AUTH_AS_HEADER
 from .inbound_journal import record_inbound_email_ingestion
 from .inbound_reply import (
     auto_reply_block_reason,
@@ -46,6 +50,36 @@ def _maybe_send_unknown_address_reply(email: GraphEmail) -> None:
     send_unknown_address_reply(email.sender.strip().lower(), email.recipient)
 
 
+DMARC_NOTICE_CACHE_PREFIX = "inbound:dmarc-notice:"
+
+
+def _notify_owner_of_dmarc_rejection(user, application, verdict) -> None:
+    """Tell the owner a mail claiming to be from them was refused. Sent to the
+    address on their account (never to a reply path the sender controls), at
+    most once per owner per INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS so a
+    spoofing burst does not become a mail flood."""
+    if not getattr(settings, "INBOUND_EMAIL_DMARC_NOTIFY_OWNER", True):
+        return
+    interval = int(getattr(settings, "INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS", 3600))
+    if interval > 0:
+        digest = hashlib.sha256(str(user.pk).encode("utf-8")).hexdigest()
+        if not cache.add(f"{DMARC_NOTICE_CACHE_PREFIX}{digest}", 1, timeout=interval):
+            return
+    target = application.inbound_email_address if application is not None else "your PushIT address"
+    body = "\n".join([
+        f"PushIT refused an e-mail sent to {target} that claimed to come from your address,",
+        f"because it failed sender authentication ({verdict.reason}).",
+        "No notification was sent.",
+        "",
+        "If you sent it yourself, your mail domain probably lacks SPF/DKIM alignment",
+        "or a DMARC record; ask your mail administrator.",
+        "If you did not, someone may be trying to send notifications in your name:",
+        "regenerate the application's inbound address in PushIT.",
+    ])
+    send_email(to=user.email, subject="PushIT: inbound e-mail refused (sender not authenticated)", body=body)
+    logger.info("inbound_email_dmarc_owner_notified", extra={"user_id": user.pk})
+
+
 def _process_email(email: GraphEmail) -> tuple[bool, str]:
     # Mail that targets no PushIT alias (newsletters, replies to the mailbox,
     # spam to random addresses...) is not ours to judge: mark it read and move
@@ -67,6 +101,7 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
             # SPF/DKIM/DMARC verdicts stamped by M365; consulted only when
             # INBOUND_EMAIL_REQUIRE_DMARC is enabled (anti-`From`-spoofing).
             "authentication_results": email.authentication_results,
+            "exchange_auth_as": (email.headers or {}).get(AUTH_AS_HEADER, ""),
         }
     )
 
@@ -74,6 +109,26 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
         serializer.is_valid(raise_exception=True)
     except serializers.ValidationError:
         errors = serializer.errors
+
+        auth_rejection = serializer.context.get("sender_auth_rejection")
+        if auth_rejection is not None:
+            # Forged or unauthenticated `From`: journal it, no notification and
+            # no "unknown address" auto-reply; the owner gets a heads-up.
+            record_inbound_email_ingestion(
+                source=InboundEmailSource.POLLING,
+                status=InboundEmailIngestionStatus.REJECTED,
+                sender=email.sender,
+                recipient=email.recipient,
+                subject=email.subject,
+                message_id=email.message_id,
+                mailbox_uid=email.graph_id,
+                application=serializer.context.get("application"),
+                error_message=f"Sender failed DMARC authentication ({auth_rejection.reason}).",
+            )
+            _notify_owner_of_dmarc_rejection(
+                serializer.context["user"], serializer.context.get("application"), auth_rejection
+            )
+            return True, "rejected"
 
         # Check if this is a known user sending to an unknown/unauthorized address
         recipient_errors = errors.get("recipient", [])

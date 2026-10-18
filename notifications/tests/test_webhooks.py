@@ -36,7 +36,7 @@ def _make_app(webhook_url: str) -> Application:
 
 
 @pytest.mark.django_db
-@patch("notifications.webhooks.requests.post")
+@patch("notifications.webhooks._post_pinned")
 def test_no_request_when_url_empty(mock_post):
     app = _make_app("")
     send_webhook_callback(app, notification_id=1, final_status="sent")
@@ -45,7 +45,7 @@ def test_no_request_when_url_empty(mock_post):
 
 @pytest.mark.django_db
 @patch("notifications.webhooks.assert_webhook_url_safe", return_value=None)
-@patch("notifications.webhooks.requests.post")
+@patch("notifications.webhooks._post_pinned")
 def test_signature_matches_recomputed_hmac(mock_post, _mock_safe):
     app = _make_app("https://hooks.example.com/pushit")
     mock_post.return_value.status_code = 200
@@ -65,7 +65,7 @@ def test_signature_matches_recomputed_hmac(mock_post, _mock_safe):
 
 @pytest.mark.django_db
 @patch("notifications.webhooks.assert_webhook_url_safe", return_value=None)
-@patch("notifications.webhooks.requests.post")
+@patch("notifications.webhooks._post_pinned")
 def test_payload_layout_is_exact(mock_post, _mock_safe):
     app = _make_app("https://hooks.example.com/pushit")
     mock_post.return_value.status_code = 200
@@ -128,7 +128,7 @@ def test_send_callback_skips_enqueue_when_url_empty(mock_delay):
 
 @pytest.mark.django_db
 @patch("notifications.webhooks.assert_webhook_url_safe", return_value=None)
-@patch("notifications.webhooks.requests.post")
+@patch("notifications.webhooks._post_pinned")
 def test_task_performs_the_post(mock_post, _mock_safe):
     # The task itself still performs the signed POST (exercised directly).
     app = _make_app("https://hooks.example.com/pushit")
@@ -144,7 +144,7 @@ def test_task_performs_the_post(mock_post, _mock_safe):
 
 
 @pytest.mark.django_db
-@patch("notifications.webhooks.requests.post")
+@patch("notifications.webhooks._post_pinned")
 def test_private_url_is_rejected_without_request(mock_post):
     # IMDS endpoint — must be blocked by the SSRF guard, no POST issued.
     app = _make_app("http://169.254.169.254/latest/meta-data/")
@@ -153,7 +153,7 @@ def test_private_url_is_rejected_without_request(mock_post):
 
 
 @pytest.mark.django_db
-@patch("notifications.webhooks.requests.post")
+@patch("notifications.webhooks._post_pinned")
 def test_loopback_url_is_rejected_without_request(mock_post):
     app = _make_app("http://127.0.0.1:6379/")
     send_webhook_callback(app, notification_id=100, final_status="sent")

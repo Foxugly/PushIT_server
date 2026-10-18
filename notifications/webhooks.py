@@ -1,11 +1,14 @@
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from celery import shared_task
 from django.utils import timezone
+from requests.adapters import HTTPAdapter
 
 from applications.models import Application
 from applications.url_safety import UnsafeWebhookURL, assert_webhook_url_safe
@@ -15,6 +18,55 @@ logger = logging.getLogger(__name__)
 
 def _sign_payload(payload_bytes: bytes, secret: str) -> str:
     return hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+
+
+class _PinnedHostAdapter(HTTPAdapter):
+    """HTTPS adapter for a request whose URL carries an IP literal: SNI and
+    certificate hostname verification use the webhook's real name instead.
+    Certificate verification itself is untouched (``verify=True`` by default)."""
+
+    def __init__(self, server_hostname: str, **kwargs):
+        self._server_hostname = server_hostname
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        pool_kwargs["server_hostname"] = self._server_hostname
+        pool_kwargs["assert_hostname"] = self._server_hostname
+        super().init_poolmanager(connections, maxsize, block=block, **pool_kwargs)
+
+
+def _post_pinned(url: str, ips, **kwargs) -> requests.Response:
+    """POST ``url`` over a connection to ``ips[0]``, an address the SSRF guard has
+    just validated, instead of letting ``requests`` resolve the name again.
+
+    A second lookup is a TOCTOU (audit S-M4): a 0-TTL record can answer a public
+    IP to the guard and 127.0.0.1 / 169.254.169.254 to the connect. The original
+    name is kept for the ``Host`` header, SNI and certificate verification.
+    Redirects are never followed and no proxy / netrc from the environment is
+    used (a proxy would resolve the name itself).
+    """
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    ip = ipaddress.ip_address(ips[0])
+    ip_literal = f"[{ip.compressed}]" if ip.version == 6 else ip.compressed
+    # urlsplit strips the brackets of an IPv6 literal host; the Host header needs them.
+    host_header = f"[{host}]" if ":" in host else host
+    if parts.port is not None:
+        host_header = f"{host_header}:{parts.port}"
+    userinfo = parts.netloc.rpartition("@")[0]
+    netloc = ip_literal + (f":{parts.port}" if parts.port is not None else "")
+    if userinfo:
+        netloc = f"{userinfo}@{netloc}"
+    pinned_url = urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
+
+    headers = dict(kwargs.pop("headers", None) or {})
+    headers["Host"] = host_header
+    kwargs["allow_redirects"] = False
+
+    with requests.Session() as session:
+        session.trust_env = False
+        session.mount("https://", _PinnedHostAdapter(host))
+        return session.post(pinned_url, headers=headers, **kwargs)
 
 
 def send_webhook_callback(application, notification_id: int, final_status: str, sent_at=None) -> None:
@@ -65,7 +117,7 @@ def send_webhook_callback_task(
     # / loopback / a private host. If it does, drop the callback rather than let
     # the worker be used as a confused deputy. Terminal — do not retry.
     try:
-        assert_webhook_url_safe(webhook_url)
+        validated_ips = assert_webhook_url_safe(webhook_url)
     except UnsafeWebhookURL as exc:
         logger.warning(
             "webhook_callback_blocked_unsafe_url",
@@ -93,8 +145,10 @@ def send_webhook_callback_task(
     signature = _sign_payload(payload_bytes, application.webhook_secret)
 
     try:
-        response = requests.post(
+        # Connect to the address validated above, not to a fresh DNS answer.
+        response = _post_pinned(
             webhook_url,
+            validated_ips,
             data=payload_bytes,
             headers={
                 "Content-Type": "application/json",

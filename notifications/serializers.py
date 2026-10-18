@@ -15,6 +15,7 @@ from config.api_errors import (
     build_validation_error_serializer,
 )
 from devices.models import Device, DeviceTokenStatus
+from .inbound_auth import evaluate_sender_authentication
 from .inbound_email import extract_subject_schedule
 from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus, NotificationTemplate
 from .scheduling import compute_effective_scheduled_for
@@ -442,26 +443,6 @@ class NotificationCreateWithAppTokenSerializer(BaseNotificationWriteSerializer):
         )
 
 
-def _dmarc_passes(authentication_results: str, from_domain: str) -> bool:
-    """True iff the Authentication-Results header asserts an aligned dmarc=pass.
-
-    M365 stamps a single Authentication-Results line such as
-    ``... dmarc=pass action=none header.from=example.com; ...``. We require both
-    ``dmarc=pass`` AND that the verdict is aligned to the envelope From domain
-    (``header.from=<from_domain>``) so a pass for a *different* domain can't be
-    replayed to spoof ours.
-    """
-    if not authentication_results:
-        return False
-    lowered = authentication_results.lower()
-    if "dmarc=pass" not in lowered:
-        return False
-    # If the header advertises the evaluated From domain, it must match ours.
-    if "header.from=" in lowered:
-        return f"header.from={from_domain.lower()}" in lowered
-    return True
-
-
 class NotificationInboundEmailSerializer(serializers.Serializer):
     sender = serializers.EmailField()
     recipient = serializers.EmailField()
@@ -473,9 +454,17 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         allow_blank=True,
         trim_whitespace=True,
     )
-    # Raw Authentication-Results header (SPF/DKIM/DMARC verdicts stamped by M365).
-    # Only consulted when INBOUND_EMAIL_REQUIRE_DMARC is on; otherwise ignored.
+    # Raw Authentication-Results header (SPF/DKIM/DMARC verdicts stamped by M365)
+    # and X-MS-Exchange-Organization-AuthAs (``Internal`` for mail submitted by an
+    # authenticated user of our tenant). See notifications.inbound_auth. Only fed
+    # by the mailbox poller: this serializer backs no API endpoint.
     authentication_results = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        default="",
+    )
+    exchange_auth_as = serializers.CharField(
         required=False,
         allow_blank=True,
         trim_whitespace=True,
@@ -484,14 +473,10 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         # Anti-spoofing: the `From` (sender) is the only thing authorizing the
-        # creating user below, and it is forgeable at the SMTP layer. Mail reaches
-        # us only by polling a managed M365 mailbox (Graph API) — M365 enforces
-        # SPF/DKIM/DMARC inbound, so a hard DMARC failure is junked/quarantined
-        # before it lands in the polled Inbox. When INBOUND_EMAIL_REQUIRE_DMARC is
-        # enabled AND the Authentication-Results header was captured, we
-        # additionally require an aligned dmarc=pass here as defense in depth.
-        # When the setting is off (default) anti-spoofing is delegated to M365 and
-        # documented as residual risk (see settings.INBOUND_EMAIL_REQUIRE_DMARC).
+        # creating user below, and it is forgeable at the SMTP layer. With
+        # INBOUND_EMAIL_REQUIRE_DMARC on (prod default) the sender must be
+        # authenticated per notifications.inbound_auth; off, the verdict is only
+        # logged (inbound_dmarc_would_reject) and anti-spoofing rests on M365.
         errors = {}
 
         sender = attrs["sender"].strip().lower()
@@ -553,38 +538,36 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
                 "Sender must match the owner of the target application."
             )
 
-        # Anti-spoofing enforcement (defense in depth on top of M365's upstream
-        # SPF/DKIM/DMARC). Only enforced when explicitly enabled, and only when we
-        # would otherwise trust this sender (a known user), so it can never *grant*
-        # access — only deny a forged `From` that passed the user/owner checks.
+        # Anti-spoofing enforcement. Only evaluated when we would otherwise trust
+        # this sender (a known user who passed the owner check), so it can never
+        # *grant* access — only deny a forged `From`.
+        self.context["sender_auth_rejection"] = None
         if user is not None and "sender" not in errors:
-            try:
-                _, sender_domain = sender.split("@", 1)
-            except ValueError:
-                sender_domain = ""
-            passe = _dmarc_passes(attrs.get("authentication_results", ""), sender_domain)
-
-            if getattr(settings, "INBOUND_EMAIL_REQUIRE_DMARC", False):
-                if not passe:
+            sender_domain = sender.rpartition("@")[2]
+            auth_results = attrs.get("authentication_results", "")
+            verdict = evaluate_sender_authentication(
+                auth_results, sender_domain, attrs.get("exchange_auth_as", "")
+            )
+            if not verdict.accepted:
+                log_extra = {
+                    "sender": mask_email(sender),
+                    "sender_domain": sender_domain,
+                    "auth_reason": verdict.reason,
+                    "dmarc_verdict": verdict.dmarc_verdict,
+                    "has_auth_results": bool(auth_results),
+                }
+                if getattr(settings, "INBOUND_EMAIL_REQUIRE_DMARC", False):
                     errors.setdefault("sender", []).append(
                         "Sender failed DMARC authentication."
                     )
-            elif not passe:
-                # Mode observation, comme un Content-Security-Policy-Report-Only :
-                # on journalise ce que l'activation refuserait, sans rien refuser.
-                #
-                # Activer à l'aveugle est un piège : un message interne au tenant
-                # M365 n'a souvent AUCUN en-tête Authentication-Results (il ne
-                # franchit pas la frontière SMTP), et c'est justement le cas
-                # d'usage principal — le propriétaire écrit depuis son compte.
-                # Il faut donc d'abord regarder ce journal sur du trafic réel.
-                logger.info(
-                    "inbound_dmarc_would_reject",
-                    extra={
-                        "sender": mask_email(sender),
-                        "has_auth_results": bool(attrs.get("authentication_results", "")),
-                    },
-                )
+                    self.context["sender_auth_rejection"] = verdict
+                    self.context["user"] = user
+                    self.context["application"] = application
+                    logger.warning("inbound_email_dmarc_rejected", extra=log_extra)
+                else:
+                    # Observation mode (like a CSP Report-Only): log what
+                    # enforcement would refuse, refuse nothing.
+                    logger.info("inbound_dmarc_would_reject", extra=log_extra)
 
         if errors:
             raise serializers.ValidationError(errors)

@@ -10,7 +10,8 @@ We defend in two layers:
      schemes/hosts so a bad value never gets persisted.
   2. At send time (`assert_webhook_url_safe`) — re-resolve the host right before
      the request to defeat DNS rebinding (the name could resolve to a public IP
-     at write time and to 169.254.169.254 at send time).
+     at write time and to 169.254.169.254 at send time). The caller then connects
+     to the address validated here, never to a fresh lookup (audit S-M4).
 """
 
 from __future__ import annotations
@@ -70,10 +71,13 @@ def _resolve_host_ips(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6A
     return ips
 
 
-def assert_webhook_url_safe(url: str) -> None:
+def assert_webhook_url_safe(url: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     """Raise ``UnsafeWebhookURL`` if ``url`` is not safe to request.
 
     Used at send time (anti-DNS-rebinding) and shared by the write-time validator.
+    Returns the validated addresses: the send path must connect to one of these
+    rather than resolve the name again (a second lookup could answer differently,
+    see ``notifications.webhooks._post_pinned``).
     """
     parts = urlsplit(url)
     scheme = parts.scheme.lower()
@@ -84,11 +88,13 @@ def assert_webhook_url_safe(url: str) -> None:
     if not host:
         raise UnsafeWebhookURL("Webhook URL must include a host.")
 
-    for ip in _resolve_host_ips(host):
+    ips = _resolve_host_ips(host)
+    for ip in ips:
         if _is_forbidden_ip(ip):
             raise UnsafeWebhookURL(
                 f"Webhook host resolves to a forbidden address ({ip})."
             )
+    return ips
 
 
 def validate_webhook_url(value: str) -> None:

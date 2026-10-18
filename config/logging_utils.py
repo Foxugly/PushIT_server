@@ -86,6 +86,13 @@ class JsonFormatter(logging.Formatter):
             # whitelisted: they leak email subject/body (PII) into prod logs.
             "notification_message_length",
             "provider_message_id",
+            # Inbound sender authentication (S-I4). `sender` is always passed
+            # through mask_email before it reaches a log record.
+            "sender",
+            "sender_domain",
+            "auth_reason",
+            "dmarc_verdict",
+            "has_auth_results",
         ):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
