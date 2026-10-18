@@ -17,6 +17,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 from applications.graph_mail import send_email
 
@@ -69,5 +70,17 @@ def confirm_password_reset(uidb64: str, token: str, new_password: str) -> bool:
     validate_password(new_password, user)  # may raise ValidationError
     user.set_password(new_password)
     user.save(update_fields=["password"])
+    _revoke_refresh_tokens(user)
     logger.info("password_reset_confirmed", extra={"user_id": user.pk})
     return True
+
+
+def _revoke_refresh_tokens(user) -> None:
+    """Blacklist every outstanding refresh token of ``user``: a password reset
+    must end the sessions opened with the old credentials (including a stolen
+    refresh token)."""
+    already = BlacklistedToken.objects.filter(token__user=user).values_list("token_id", flat=True)
+    pending = OutstandingToken.objects.filter(user=user).exclude(id__in=already)
+    BlacklistedToken.objects.bulk_create(
+        [BlacklistedToken(token=token) for token in pending], ignore_conflicts=True
+    )

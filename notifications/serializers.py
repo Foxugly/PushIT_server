@@ -235,6 +235,10 @@ class DeviceNotificationSerializer(serializers.ModelSerializer):
         ]
 
 
+NOTIFICATION_TITLE_MAX_LENGTH = 255
+NOTIFICATION_MESSAGE_MAX_LENGTH = 5000
+
+
 class BaseNotificationWriteSerializer(serializers.ModelSerializer):
     title = serializers.CharField(max_length=255, trim_whitespace=True, required=False)
     message = serializers.CharField(trim_whitespace=True, required=False)
@@ -255,7 +259,7 @@ class BaseNotificationWriteSerializer(serializers.ModelSerializer):
     def validate_message(self, value):
         if not value.strip():
             raise serializers.ValidationError("Message cannot be empty.")
-        if len(value.strip()) > 5000:
+        if len(value.strip()) > NOTIFICATION_MESSAGE_MAX_LENGTH:
             raise serializers.ValidationError("Message is too long.")
         return value
 
@@ -287,6 +291,24 @@ class BaseNotificationWriteSerializer(serializers.ModelSerializer):
             if template is None:
                 raise serializers.ValidationError({"template_id": ["Template not found."]})
             title, message = template.render(variables)
+            # The direct title/message validators do not run on rendered
+            # output: re-check the bounds here so an over-long value is a 400,
+            # not a database error.
+            errors = {}
+            if not title.strip():
+                errors["title"] = ["Rendered title cannot be empty."]
+            elif len(title) > NOTIFICATION_TITLE_MAX_LENGTH:
+                errors["title"] = [
+                    f"Rendered title exceeds {NOTIFICATION_TITLE_MAX_LENGTH} characters."
+                ]
+            if not message.strip():
+                errors["message"] = ["Rendered message cannot be empty."]
+            elif len(message.strip()) > NOTIFICATION_MESSAGE_MAX_LENGTH:
+                errors["message"] = [
+                    f"Rendered message exceeds {NOTIFICATION_MESSAGE_MAX_LENGTH} characters."
+                ]
+            if errors:
+                raise serializers.ValidationError(errors)
             attrs["title"] = title
             attrs["message"] = message
         else:
@@ -683,3 +705,19 @@ class NotificationTemplateWriteSerializer(serializers.ModelSerializer):
             application=self.context["application"],
             **validated_data,
         )
+
+
+BULK_SEND_MAX_IDS = 500
+
+
+def bulk_send_ids_field():
+    """``notification_ids`` of the bulk-send endpoints: 1..500 integer ids."""
+    return serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=BULK_SEND_MAX_IDS,
+    )
+
+
+class BulkSendRequestSerializer(serializers.Serializer):
+    notification_ids = bulk_send_ids_field()

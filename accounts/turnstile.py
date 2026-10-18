@@ -67,9 +67,10 @@ def verify_turnstile_token(token: str, remote_ip: str | None = None) -> bool:
 
 
 def get_remote_ip(request) -> str | None:
-    """Best-effort client IP. Honours X-Forwarded-For (proxy chain) when
-    present; otherwise falls back to REMOTE_ADDR."""
+    """Best-effort client IP. nginx is the only proxy, so only the last
+    X-Forwarded-For entry (the peer nginx saw) is trusted; earlier entries are
+    client-supplied. Falls back to REMOTE_ADDR. Mirrors DRF ``NUM_PROXIES=1``."""
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
     if xff:
-        return xff.split(",")[0].strip()
+        return xff.split(",")[-1].strip()
     return request.META.get("REMOTE_ADDR")

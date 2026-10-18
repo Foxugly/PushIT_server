@@ -1,4 +1,5 @@
 import hmac
+import logging
 
 from django.conf import settings
 from django.db import connections
@@ -11,6 +12,8 @@ from rest_framework import serializers
 from rest_framework.views import APIView
 
 from config.metrics import PROMETHEUS_CONTENT_TYPE, render_metrics
+
+logger = logging.getLogger("pushit.api")
 
 
 class HealthStatusSerializer(serializers.Serializer):
@@ -83,7 +86,7 @@ class HealthLiveApiView(APIView):
                             "status": "error",
                             "service": "pushit",
                             "check": "ready",
-                            "detail": "database_unavailable: database is locked",
+                            "detail": "database_unavailable",
                         },
                         response_only=True,
                     )
@@ -101,13 +104,16 @@ class HealthReadyApiView(APIView):
             with connections["default"].cursor() as cursor:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
-        except DatabaseError as exc:
+        except DatabaseError:
+            # Public endpoint: the driver message can carry hosts, roles or
+            # paths. Keep it in the logs only.
+            logger.exception("health_ready_database_unavailable")
             return JsonResponse(
                 {
                     "status": "error",
                     "service": "pushit",
                     "check": "ready",
-                    "detail": f"database_unavailable: {exc}",
+                    "detail": "database_unavailable",
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
@@ -144,7 +150,7 @@ class HealthReadyApiView(APIView):
             ),
             403: OpenApiResponse(
                 response=HealthErrorSerializer,
-                description="Invalid metrics token",
+                description="Invalid metrics token, or no token configured where one is required (prod)",
                 examples=[
                     OpenApiExample(
                         "Metrics forbidden",
@@ -167,6 +173,16 @@ class MetricsApiView(APIView):
 
     def get(self, request):
         expected_token = settings.METRICS_AUTH_TOKEN
+        if not expected_token and getattr(settings, "METRICS_REQUIRE_TOKEN", False):
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "service": "pushit",
+                    "check": "metrics",
+                    "detail": "metrics_disabled",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if expected_token:
             provided_token = request.headers.get("X-Metrics-Token", "").strip()
             if not hmac.compare_digest(provided_token, expected_token):

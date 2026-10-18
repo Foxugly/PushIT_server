@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework.test import APIClient
+from accounts.email_confirmation import email_confirmation_token_generator
 from accounts.models import MagicLinkToken, User
 
 
@@ -355,7 +356,7 @@ RESEND_URL = "/api/v1/auth/email/resend/"
 
 
 def _confirm_tokens(user):
-    return urlsafe_base64_encode(force_bytes(user.pk)), default_token_generator.make_token(user)
+    return urlsafe_base64_encode(force_bytes(user.pk)), email_confirmation_token_generator.make_token(user)
 
 
 @pytest.mark.django_db

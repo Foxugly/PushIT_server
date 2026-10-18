@@ -28,6 +28,8 @@ from .utils import (
     notification_filter_needs_effective,
 )
 from .serializers import (
+    BulkSendRequestSerializer,
+    bulk_send_ids_field,
     DetailResponseSerializer,
     NotificationCreateSerializer,
     NotificationCreateValidationErrorResponseSerializer,
@@ -866,20 +868,16 @@ class NotificationBulkSendApiView(APIView):
         auth=[{"BearerAuth": []}],
         request=inline_serializer(
             name="BulkSendRequest",
-            fields={"notification_ids": serializers.ListField(child=serializers.IntegerField())},
+            fields={"notification_ids": bulk_send_ids_field()},
         ),
         responses={
             200: OpenApiResponse(description="Bulk send result with queued and errors"),
         },
     )
     def post(self, request):
-        notification_ids = request.data.get("notification_ids", [])
-        if not notification_ids:
-            return error_response(
-                code="validation_error",
-                detail="notification_ids is required and cannot be empty.",
-                http_status=status.HTTP_400_BAD_REQUEST,
-            )
+        request_serializer = BulkSendRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        notification_ids = request_serializer.validated_data["notification_ids"]
 
         owner_filter = {"application__owner": request.user}
         use_owner_in_queue = not settings.DB_SUPPORTS_ROW_LOCKING

@@ -264,6 +264,11 @@ REST_FRAMEWORK = {
         "magic_link": "5/min",
         "app_token": "300/min",
     },
+    # nginx is the single reverse proxy: trust only the last X-Forwarded-For
+    # entry (the peer nginx saw), never what the client put there itself.
+    # Without this, DRF keys anonymous throttles on the whole client-controlled
+    # header.
+    "NUM_PROXIES": 1,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
@@ -291,6 +296,9 @@ SIMPLE_JWT = {
 FCM_SERVICE_ACCOUNT_PATH = env("FCM_SERVICE_ACCOUNT_PATH", default="")
 PUSHIT_FORCE_MOCK_PUSH = env.bool("PUSHIT_FORCE_MOCK_PUSH", default=False)
 METRICS_AUTH_TOKEN = env("METRICS_AUTH_TOKEN", default=None)
+# When True, an empty METRICS_AUTH_TOKEN means /health/metrics/ is denied
+# instead of public. Forced on in prod.py; dev/test keep the open endpoint.
+METRICS_REQUIRE_TOKEN = env.bool("METRICS_REQUIRE_TOKEN", default=False)
 INBOUND_EMAIL_DOMAIN = env("INBOUND_EMAIL_DOMAIN", default="foxugly.com")
 # Inbound alias format: "<name-slug>-<8 hex><suffix>@INBOUND_EMAIL_DOMAIN",
 # e.g. mon-app-3f9a2c1b.pushit@foxugly.com. The suffix tags the address as a

@@ -67,6 +67,12 @@ def verify_magic_link(token: str):
     )
     if link_token is None or not link_token.is_valid:
         return None
-    link_token.consume()
+    # Atomic consumption: only the request whose conditional UPDATE flips
+    # used_at gets a session; a concurrent replay of the same link gets None.
+    consumed = MagicLinkToken.objects.filter(
+        pk=link_token.pk, used_at__isnull=True, expires_at__gt=timezone.now()
+    ).update(used_at=timezone.now())
+    if consumed != 1:
+        return None
     logger.info("magic_link_verified", extra={"user_id": link_token.user_id})
     return link_token.user

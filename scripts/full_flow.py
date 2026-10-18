@@ -136,12 +136,13 @@ def _email_confirmation_tokens(email: str) -> tuple[str, str]:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     django.setup()
     from django.contrib.auth import get_user_model
-    from django.contrib.auth.tokens import default_token_generator
     from django.utils.encoding import force_bytes
     from django.utils.http import urlsafe_base64_encode
 
+    from accounts.email_confirmation import email_confirmation_token_generator
+
     user = get_user_model().objects.get(email=email)
-    return urlsafe_base64_encode(force_bytes(user.pk)), default_token_generator.make_token(user)
+    return urlsafe_base64_encode(force_bytes(user.pk)), email_confirmation_token_generator.make_token(user)
 
 
 def main() -> None:

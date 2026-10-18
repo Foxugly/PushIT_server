@@ -69,3 +69,49 @@ def test_metrics_endpoint_can_be_protected_by_token():
 
     allowed_response = client.get("/health/metrics/", HTTP_X_METRICS_TOKEN="secret-metrics-token")
     assert allowed_response.status_code == 200
+
+
+@pytest.mark.django_db
+@override_settings(METRICS_AUTH_TOKEN="", METRICS_REQUIRE_TOKEN=True)
+def test_metrics_endpoint_denied_when_token_required_but_unset():
+    reset_metrics()
+    response = APIClient().get("/health/metrics/")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "metrics_disabled"
+    assert b"pushit_process_uptime_seconds" not in response.content
+
+
+@pytest.mark.django_db
+@override_settings(METRICS_AUTH_TOKEN=None, METRICS_REQUIRE_TOKEN=True)
+def test_metrics_endpoint_denied_when_token_none_and_required():
+    response = APIClient().get("/health/metrics/", HTTP_X_METRICS_TOKEN="")
+    assert response.status_code == 403
+
+
+def test_prod_settings_require_metrics_token():
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "DJANGO_SETTINGS_MODULE": "config.settings",
+            "DJANGO_ENV": "prod",
+            "SECRET_KEY": "x" * 50,
+            "ALLOWED_HOSTS": "example.com",
+            "METRICS_AUTH_TOKEN": "",
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", "from django.conf import settings; print(settings.METRICS_REQUIRE_TOKEN)"],
+        cwd=Path(__file__).resolve().parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "True"
+
