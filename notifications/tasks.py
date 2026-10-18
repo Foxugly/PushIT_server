@@ -195,3 +195,12 @@ def flush_expired_tokens_task():
         "outstanding_deleted": outstanding_deleted,
         "magic_links_deleted": magic_links_deleted,
     }
+
+
+@shared_task
+def purge_expired_personal_data_task():
+    """GDPR retention (daily): old notifications + deliveries, inbound-email
+    journal rows and long-invalid devices. See notifications.retention."""
+    from notifications.retention import purge_expired_personal_data
+
+    return purge_expired_personal_data()

@@ -61,13 +61,13 @@ Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DB_ENGINE`, `DB_NAME`, `D
 
 ### Django Apps
 
-- **accounts** — Custom User model (email as username), JWT auth (login/register/refresh/logout), profile management. `/me/` exposes read-only `is_staff` + `is_superuser` so the SPA can gate its admin area.
+- **accounts** — Custom User model (email as username), JWT auth (login/register/refresh/logout), profile management. `/me/` exposes read-only `is_staff` + `is_superuser` so the SPA can gate its admin area. `DELETE /me/` (body `{current_password}`) erases the account (`accounts/deletion.py`): owned apps cascade even if others are subscribed, the user's devices are deleted, refresh tokens are blacklisted.
 - **applications** — Application CRUD, app token generation (`apt_` prefix, SHA256 hashed), quiet period scheduling, QR code generation for device onboarding, webhook URL configuration (SSRF-guarded, see `url_safety.py`), and the **inbound email alias** lifecycle (provisioning is delegated to the `exchange` app; `GET apps/<id>/alias-status/` lets the owner verify the alias is live in Exchange)
 - **exchange** — Exchange Online alias management via a PowerShell Core script (`scripts/exchange/manage_alias.ps1`) executed with `subprocess.run`. `services.ExchangeAliasService` has `add_alias`/`remove_alias`/`list_aliases`; `integration.py` wires it into `Application` save/delete (`provision_alias_for_application` / `deprovision_alias_for_application`) and exposes `is_configured()` + `alias_status(alias_email)` (used by the alias-status endpoint). Swallows non-critical failures so a save never blocks on an Exchange outage.
 - **devices** — Device registration (push tokens), platform tracking (Android/iOS), linking devices to applications via app token
 - **notifications** — Core business logic: notification creation (with idempotency keys), templates with `{{variable}}` substitution, scheduling, quiet period shifting, delivery tracking, retry logic, bulk send, webhook callbacks, inbound email ingestion with auto-reply
 - **health** — Public liveness (`/health/live/`), readiness (`/health/ready/`), Prometheus metrics (`/health/metrics/`), **plus** the staff-gated `GET /api/v1/admin/status/` (`api_views.py`, `IsAdminUser`) aggregating DB / Celery broker / Celery workers / Exchange health + cheap metrics for the SPA admin panel
-- **config** — Settings, custom exception handler, middleware (RequestId, Metrics), Prometheus counters, JSON logging
+- **config** — Settings, custom exception handler, middleware (RequestId, Metrics), Prometheus counters, JSON logging. Pass e-mail addresses through `config.logging_utils.mask_email` before putting them in a log `extra` (Sentry ships `extra` even with `send_default_pii=False`). `django_extensions` is loaded by `dev.py` only.
 
 ### Two Authentication Mechanisms
 
@@ -76,7 +76,7 @@ Key env vars: `STATE`, `SECRET_KEY`, `ALLOWED_HOSTS`, `DB_ENGINE`, `DB_NAME`, `D
 
 ### CORS (frontend cross-origin)
 
-The frontend (`https://pushit.foxugly.com`) calls the API on a different origin, so it must be allowed via `CORS_ALLOWED_ORIGINS` (comma-separated, exact scheme+host). Auth is JWT Bearer (no cookies), so there is **no CSRF/cookie concern**: `CORS_ALLOW_CREDENTIALS` stays `False`, and the `Authorization` header is already whitelisted (django-cors-headers' `default_headers`, plus `x-app-token` added in `base.py:24`). To authorize a new frontend origin in prod, set `/pushit/prod/CORS_ALLOWED_ORIGINS` in SSM and re-fetch (`systemctl restart pushit-env-fetch pushit-api-gunicorn`) — no code change needed.
+The frontend (`https://pushit.foxugly.com`) calls the API on a different origin, so it must be allowed via `CORS_ALLOWED_ORIGINS` (comma-separated, exact scheme+host). Auth is JWT Bearer (no cookies), so there is **no CSRF/cookie concern**: `CORS_ALLOW_CREDENTIALS` stays `False`, and the `Authorization` header is already whitelisted (django-cors-headers' `default_headers`, plus `x-app-token` added in `base.py:24`). To authorize a new frontend origin in prod, set `/pushit/prod/CORS_ALLOWED_ORIGINS` in SSM and re-fetch (`systemctl restart pushit-env-fetch pushit-gunicorn`) — no code change needed.
 
 ### Notification Lifecycle
 
@@ -118,10 +118,11 @@ Every minute:
 
 Daily:
 - `flush_expired_tokens_task` (03:30) — prunes expired SimpleJWT outstanding/blacklisted tokens (kept bounded despite rotation + long refresh lifetimes)
+- `purge_expired_personal_data_task` (03:45) — GDPR retention (`notifications/retention.py`): deletes finished notifications (+ deliveries, + image files) older than `RETENTION_NOTIFICATION_DAYS` (365), inbound-email journal rows older than `RETENTION_INBOUND_EMAIL_LOG_DAYS` (90), and devices whose push token has been `invalid`/`revoked` for more than `RETENTION_INVALID_DEVICE_DAYS` (30). SCHEDULED/QUEUED/PROCESSING notifications are never purged.
 
-Worker children recycle to bound memory on the shared EC2: `CELERY_WORKER_MAX_TASKS_PER_CHILD` (default 200) and `CELERY_WORKER_MAX_MEMORY_PER_CHILD` (KB, default ~195 MB) turn a slow leak or a fat task into a graceful recycle instead of a kernel OOM SIGKILL. The Celery worker/beat run as the systemd units `pushit-api-celery` / `pushit-api-celery-beat`.
+Worker children recycle to bound memory on the shared EC2: `CELERY_WORKER_MAX_TASKS_PER_CHILD` (default 200) and `CELERY_WORKER_MAX_MEMORY_PER_CHILD` (KB, default ~195 MB) turn a slow leak or a fat task into a graceful recycle instead of a kernel OOM SIGKILL. The Celery worker/beat run as the systemd units `pushit-celery` / `pushit-celery-beat`.
 
-> **Not in SSM (by design):** these two vars are intentionally left out of `/pushit/prod/*`. Their `base.py` defaults already encode the prod-intended values, so prod picks them up with nothing seeded. Add them to SSM only if you need to tune the memory ceiling in prod *without a code deploy* — they are non-secret (`String` type, in the defaults block of `seed-parameter-store.*`, not `SECRET_KEYS`), and after seeding you must re-fetch + restart (`systemctl restart pushit-env-fetch pushit-api-celery pushit-api-celery-beat`) for the worker to reload. Listing them in `.env_template` is just catalog documentation and does not imply they must be seeded.
+> **Not in SSM (by design):** these two vars are intentionally left out of `/pushit/prod/*`. Their `base.py` defaults already encode the prod-intended values, so prod picks them up with nothing seeded. Add them to SSM only if you need to tune the memory ceiling in prod *without a code deploy* — they are non-secret (`String` type, in the defaults block of `seed-parameter-store.*`, not `SECRET_KEYS`), and after seeding you must re-fetch + restart (`systemctl restart pushit-env-fetch pushit-celery pushit-celery-beat`) for the worker to reload. Listing them in `.env_template` is just catalog documentation and does not imply they must be seeded.
 
 ### Key Business Logic Locations
 
@@ -175,7 +176,7 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 - **Path:** `/var/www/django_websites/PushIT_server/`
 - **User:** `django:www-data`
 - **Services:** Gunicorn (TCP `127.0.0.1:8001`) + nginx reverse proxy + Celery worker + Celery beat + `pushit-env-fetch` (SSM → `/run/pushit/.env` at boot)
-- **Redis:** DB `/2` (broker), DB `/3` (result backend), queue `pushit` (isolated from QuizOnline on `/0`-`/1`)
+- **Redis:** DB `/2` (broker, `CELERY_BROKER_URL`/`REDIS_URL`), DB `/7` (result backend, `CELERY_RESULT_BACKEND`), DB `/8` (Django cache, `CACHE_URL`), queue `pushit` (fleet allocation: OPERATIONS.md §3.4; verified on the box 2026-10-18)
 - **Database:** PostgreSQL 16 (local on the shared EC2) — database `pushit`, role `pushit`, connected over `127.0.0.1:5432`. Credentials in SSM via the fleet **`DB_*` 6-var convention** (`DB_ENGINE`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`/`DB_HOST`/`DB_PORT`, password as SecureString; OPERATIONS.md §3.13). Migrated from SQLite on 2026-06-02 (dump/loaddata).
 
 ### CI/CD (GitHub Actions)
@@ -220,7 +221,7 @@ aws ssm put-parameter --name /pushit/prod/MY_VAR --value "..." \
 # 2. re-fetch -> rewrites /run/pushit/.env
 sudo systemctl restart pushit-env-fetch
 # 3. make the processes reload the new config
-sudo systemctl restart pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat
+sudo systemctl restart pushit-gunicorn pushit-celery pushit-celery-beat
 ```
 
 > `--overwrite` does **not** change a parameter's Type. To promote a String to
@@ -270,7 +271,7 @@ three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
    `setup-server.sh` runs the same step via the provisioning user's (`ubuntu`)
    own `sudo`.
 3. **At runtime** — `UMask=0027` in the `[Service]` block of
-   `pushit-api-{gunicorn,celery,celery-beat}.service` keeps runtime-created
+   `pushit-{gunicorn,celery,celery-beat}.service` keeps runtime-created
    files (`__pycache__`, `celerybeat-schedule`, caches) conformant. Units live
    in `/etc/systemd/system`, so changes need a manual root step
    (`cp` → `daemon-reload` → `restart`); a code deploy does **not** apply them.
@@ -292,12 +293,12 @@ three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
 
 - `deploy/nginx/pushit-api.conf` — nginx reverse proxy (`proxy_pass http://127.0.0.1:8001`, static/media)
 - `deploy/gunicorn.conf.py` — Gunicorn config (TCP `127.0.0.1:8001`, 3 workers)
-- `deploy/systemd/pushit-api-gunicorn.service` — Gunicorn service (`Restart=always`, `EnvironmentFile=/run/pushit/.env`)
+- `deploy/systemd/pushit-gunicorn.service` — Gunicorn service (`Restart=always`, `EnvironmentFile=/run/pushit/.env`)
 - `deploy/systemd/pushit-env-fetch.service` — oneshot; `ExecStart=/usr/local/sbin/pushit-env-fetch.sh` (root-owned, §3.10), fetches env from SSM at boot
 - `deploy/fetch-env-from-ssm.sh` — versioned **source** for that script; installed `root:root 0755` to `/usr/local/sbin/pushit-env-fetch.sh` out-of-band (never executed from the django-writable tree)
 - `deploy/seed-parameter-store.sh` / `.ps1` — seed SSM `/pushit/prod/*` from a local `.env` (run from your machine)
-- `deploy/systemd/pushit-api-celery.service` — Celery worker (queue `pushit`, concurrency 2)
-- `deploy/systemd/pushit-api-celery-beat.service` — Celery beat scheduler
+- `deploy/systemd/pushit-celery.service` — Celery worker (queue `pushit`, concurrency 2)
+- `deploy/systemd/pushit-celery-beat.service` — Celery beat scheduler
 - `deploy/setup-server.sh` — One-time server provisioning
 - `deploy/deploy.sh` — Deploy script (pull, deps, source env, migrate, collectstatic, normalize perms, restart)
 - `.github/workflows/deploy.yml` — CI/CD pipeline
@@ -306,12 +307,12 @@ three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
 
 ```bash
 # Check service status
-sudo systemctl status pushit-api-gunicorn pushit-api-celery pushit-api-celery-beat pushit-env-fetch
+sudo systemctl status pushit-gunicorn pushit-celery pushit-celery-beat pushit-env-fetch
 
 # View logs
-journalctl -u pushit-api-gunicorn -f
+journalctl -u pushit-gunicorn -f
 journalctl -u pushit-env-fetch -f
-journalctl -u pushit-api-celery -f
+journalctl -u pushit-celery -f
 tail -f /var/log/pushit/gunicorn-access.log
 tail -f /var/log/nginx/pushit-error.log
 

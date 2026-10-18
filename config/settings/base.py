@@ -52,7 +52,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
-    "django_extensions",
     "rest_framework",
     "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
@@ -227,7 +226,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notifications.tasks.flush_expired_tokens_task",
         "schedule": crontab(hour=3, minute=30),
     },
+    # GDPR retention: purge personal data past the RETENTION_*_DAYS windows.
+    "pushit-purge-expired-personal-data": {
+        "task": "notifications.tasks.purge_expired_personal_data_task",
+        "schedule": crontab(hour=3, minute=45),
+    },
 }
+
+# GDPR retention windows (days), applied daily by purge_expired_personal_data_task.
+# Notifications (+ their deliveries) still SCHEDULED/QUEUED/PROCESSING are never purged.
+RETENTION_NOTIFICATION_DAYS = env.int("RETENTION_NOTIFICATION_DAYS", default=365)
+RETENTION_INBOUND_EMAIL_LOG_DAYS = env.int("RETENTION_INBOUND_EMAIL_LOG_DAYS", default=90)
+RETENTION_INVALID_DEVICE_DAYS = env.int("RETENTION_INVALID_DEVICE_DAYS", default=30)
 
 # Watchdog threshold: a notification PROCESSING longer than this (minutes) is
 # treated as stranded by a worker recycle/crash and requeued. See

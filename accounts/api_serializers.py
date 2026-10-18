@@ -216,6 +216,21 @@ class LogoutSerializer(serializers.Serializer):
     )
 
 
+class AccountDeleteSerializer(serializers.Serializer):
+    """Body of DELETE /api/v1/auth/me/. The view does the password check."""
+
+    current_password = serializers.CharField(
+        write_only=True,
+        help_text="Current password, re-entered to confirm the irreversible deletion",
+    )
+
+
+AccountDeleteValidationErrorResponseSerializer = build_validation_error_serializer(
+    "AccountDeleteValidationErrorResponse",
+    ["current_password"],
+)
+
+
 class StaffUserSerializer(serializers.ModelSerializer):
     """Vue staff d'un compte : identité et état de l'accès offert.
 

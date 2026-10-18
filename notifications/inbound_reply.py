@@ -7,6 +7,7 @@ from django.core.cache import cache
 
 from applications import inbound_alias
 from applications.graph_mail import GraphEmail, send_email
+from config.logging_utils import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -104,5 +105,5 @@ def send_unknown_address_reply(sender_email: str, tried_recipient: str) -> None:
         send_email(to=sender_email, subject=subject, body=body)
         logger.info(
             "inbound_email_unknown_address_reply_sent",
-            extra={"sender": sender_email, "recipient": tried_recipient},
+            extra={"sender": mask_email(sender_email), "recipient": mask_email(tried_recipient)},
         )

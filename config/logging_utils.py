@@ -8,6 +8,17 @@ request_id_var = contextvars.ContextVar("request_id", default="-")
 incident_id_var = contextvars.ContextVar("incident_id", default="-")
 
 
+def mask_email(address) -> str:
+    """Mask an e-mail address before it reaches a log line or Sentry `extra`:
+    ``john@x.com`` -> ``j***@x.com``. The domain is kept for diagnosis."""
+    if not address:
+        return ""
+    local, sep, domain = str(address).partition("@")
+    if not sep:
+        return "***"
+    return f"{local[:1]}***@{domain}"
+
+
 def set_request_id(request_id: str):
     return request_id_var.set(request_id)
 

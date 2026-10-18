@@ -13,11 +13,14 @@ from .email_confirmation import (
     send_confirmation_email,
     send_duplicate_registration_email,
 )
+from .deletion import delete_user_account
 from .magic_link import request_magic_link, verify_magic_link
 from .models import User
 from .password_reset import confirm_password_reset, request_password_reset
 from .turnstile import get_remote_ip, turnstile_enabled, verify_turnstile_token
 from .api_serializers import (
+    AccountDeleteSerializer,
+    AccountDeleteValidationErrorResponseSerializer,
     DetailResponseSerializer,
     EmailConfirmSerializer,
     EmailConfirmValidationErrorResponseSerializer,
@@ -474,6 +477,29 @@ class LogoutApiView(APIView):
         tags=["Accounts"],
         auth=[{"BearerAuth": []}],
     ),
+    delete=extend_schema(
+        request=AccountDeleteSerializer,
+        responses={
+            204: OpenApiResponse(description="Account deleted. No content."),
+            400: OpenApiResponse(
+                response=AccountDeleteValidationErrorResponseSerializer,
+                description=(
+                    "`current_password` missing (code=validation_error) or wrong "
+                    "(code=current_password_invalid). Nothing is deleted."
+                ),
+            ),
+        },
+        summary="Delete my account",
+        description=(
+            "Irreversibly deletes the authenticated user (GDPR erasure). Requires the "
+            "current password. Cascades every application the user owns (with its "
+            "notifications, deliveries, templates, send tokens and device links) even "
+            "when other users' devices are subscribed to it, deletes the user's own "
+            "devices, and blacklists every refresh token issued to the user."
+        ),
+        tags=["Accounts"],
+        auth=[{"BearerAuth": []}],
+    ),
 )
 class MeApiView(APIView):
     serializer_class = UserMeSerializer
@@ -487,6 +513,18 @@ class MeApiView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(self.serializer_class(request.user).data, status=status.HTTP_200_OK)
+
+    def delete(self, request):
+        serializer = AccountDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not request.user.check_password(serializer.validated_data["current_password"]):
+            return error_response(
+                code="current_password_invalid",
+                detail="Current password is incorrect.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        delete_user_account(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema_view(
