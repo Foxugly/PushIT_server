@@ -28,6 +28,9 @@ from .utils import (
     notification_filter_needs_effective,
 )
 
+# Bounded by the column (varchar 255): longer keys are a 400, not a DB error.
+IDEMPOTENCY_KEY_MAX_LENGTH = Notification._meta.get_field("idempotency_key").max_length
+
 
 @extend_schema_view(
     post=extend_schema(
@@ -48,7 +51,7 @@ from .utils import (
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.HEADER,
                 required=True,
-                description="Required idempotency key to deduplicate creations on the application side.",
+                description="Required idempotency key to deduplicate creations on the application side (max 255 characters).",
             )
         ],
         request=NotificationCreateWithAppTokenSerializer,
@@ -178,6 +181,12 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
                 detail="Missing Idempotency-Key header.",
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
+        if len(idempotency_key) > IDEMPOTENCY_KEY_MAX_LENGTH:
+            return error_response(
+                code="idempotency_key_invalid",
+                detail=f"Idempotency-Key must be at most {IDEMPOTENCY_KEY_MAX_LENGTH} characters.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
 
         request_fingerprint = compute_request_fingerprint(validated_data)
         outcome = create_notification_with_optional_idempotency(
@@ -237,7 +246,7 @@ class NotificationSendWithAppTokenApiView(generics.GenericAPIView):
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.HEADER,
                 required=True,
-                description="Required idempotency key to deduplicate sends on the application side.",
+                description="Required idempotency key to deduplicate sends on the application side (max 255 characters).",
             )
         ],
         request=NotificationCreateWithAppTokenSerializer,
@@ -270,6 +279,12 @@ class NotificationSendWithAppTokenApiView(generics.GenericAPIView):
             return error_response(
                 code="idempotency_key_missing",
                 detail="Missing Idempotency-Key header.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(idempotency_key) > IDEMPOTENCY_KEY_MAX_LENGTH:
+            return error_response(
+                code="idempotency_key_invalid",
+                detail=f"Idempotency-Key must be at most {IDEMPOTENCY_KEY_MAX_LENGTH} characters.",
                 http_status=status.HTTP_400_BAD_REQUEST,
             )
 
