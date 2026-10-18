@@ -140,6 +140,17 @@ class DeviceDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         except Http404:
             raise NotFound("Device not found.", code="device_not_found")
 
+    def update(self, request, *args, **kwargs):
+        # Validate with DeviceUpdateSerializer but answer with the full
+        # DeviceRead (as documented): the console replaces its device with the
+        # response and needs id, application links and is_mine.
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(DeviceReadSerializer(instance, context=self.get_serializer_context()).data)
+
 
 class UserOwnedDeviceMixin:
     def get_device(self):

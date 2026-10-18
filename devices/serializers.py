@@ -100,6 +100,13 @@ class DeviceUnlinkedApplicationSerializer(serializers.Serializer):
 class DeviceReadSerializer(serializers.ModelSerializer):
     application_ids = serializers.SerializerMethodField()
     unlinked_applications = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField(
+        help_text=(
+            "True when the device belongs to the requesting user. Only then may it be "
+            "edited, deleted or have its quiet periods managed; an application owner "
+            "sees subscriber devices read-only (is_mine=false)."
+        )
+    )
 
     class Meta:
         model = Device
@@ -112,15 +119,23 @@ class DeviceReadSerializer(serializers.ModelSerializer):
             "created_at",
             "application_ids",
             "unlinked_applications",
+            "is_mine",
         ]
+
+    def _request_user_id(self):
+        request = self.context.get("request")
+        return getattr(getattr(request, "user", None), "id", None)
+
+    def get_is_mine(self, obj) -> bool:
+        user_id = self._request_user_id()
+        return user_id is not None and obj.user_id == user_id
 
     def _visible_links(self, obj):
         """Links the requesting user may see. The device's own user sees all of
         them; an application owner (who sees subscriber devices in the console)
         only sees links to their own applications — never other owners' apps.
         Fails closed (no links) without a request user."""
-        request = self.context.get("request")
-        user_id = getattr(getattr(request, "user", None), "id", None)
+        user_id = self._request_user_id()
         links = obj.application_links.all()
         if user_id is not None and obj.user_id == user_id:
             return list(links)
