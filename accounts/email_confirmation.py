@@ -1,7 +1,9 @@
 """Email-confirmation flow (send link + confirm).
 
-Mirrors ``password_reset.py``: stateless tokens via Django's
-``default_token_generator`` — no extra token model. Registration sends a link to
+Mirrors ``password_reset.py``: stateless tokens, no extra token model, but via a
+dedicated ``EmailConfirmationTokenGenerator`` (own salt, hash bound to
+``email_confirmed``) so a confirmation link is single-use and is never accepted
+as a password-reset link, nor the reverse. Registration sends a link to
 ``{FRONTEND_BASE_URL}/auth/confirm-email/{uid}/{token}``; the SPA POSTs the
 ``uid`` + ``token`` back to the confirm endpoint, which flips ``email_confirmed``
 and auto-logs the user in. ``resend_confirmation_email`` is anti-leak.
@@ -11,7 +13,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
@@ -19,6 +21,20 @@ from applications.graph_mail import send_email
 
 logger = logging.getLogger("pushit.api")
 User = get_user_model()
+
+
+class EmailConfirmationTokenGenerator(PasswordResetTokenGenerator):
+    """Token for the confirmation link. Distinct salt from the reset token, and
+    the hash covers ``email_confirmed``: once the account is confirmed every
+    outstanding confirmation link stops validating."""
+
+    key_salt = "accounts.email_confirmation.EmailConfirmationTokenGenerator"
+
+    def _make_hash_value(self, user, timestamp):
+        return f"{super()._make_hash_value(user, timestamp)}{user.email_confirmed}"
+
+
+email_confirmation_token_generator = EmailConfirmationTokenGenerator()
 
 
 def _confirm_link(uidb64: str, token: str) -> str:
@@ -30,7 +46,7 @@ def send_confirmation_email(user) -> None:
     """Send the email-confirmation link to ``user``. Best-effort: relies on
     ``graph_mail.send_email`` (no-op if Graph isn't configured)."""
     uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
+    token = email_confirmation_token_generator.make_token(user)
     link = _confirm_link(uidb64, token)
 
     subject = "Confirm your PushIT email"
@@ -81,19 +97,25 @@ def resend_confirmation_email(email: str) -> None:
 
 def confirm_email(uidb64: str, token: str):
     """Validate the uid+token pair and flip ``email_confirmed``. Returns the
-    user on success, or None if the link is invalid/expired or the user is gone.
-    Idempotent: re-confirming an already-confirmed user still returns the user."""
+    user on success, or None if the link is invalid/expired, already used (the
+    account is already confirmed) or the user is gone. Single-use: the caller
+    issues a session only for the confirmation that actually flipped the flag."""
     try:
         uid = force_str(urlsafe_base64_decode(uidb64))
         user = User.objects.get(pk=uid)
     except (TypeError, ValueError, OverflowError, User.DoesNotExist):
         return None
 
-    if not user.is_active or not default_token_generator.check_token(user, token):
+    if (
+        not user.is_active
+        or user.email_confirmed
+        or not email_confirmation_token_generator.check_token(user, token)
+    ):
         return None
 
-    if not user.email_confirmed:
-        user.email_confirmed = True
-        user.save(update_fields=["email_confirmed"])
-        logger.info("email_confirmed", extra={"user_id": user.pk})
+    # Conditional update so two concurrent confirmations cannot both win.
+    if not User.objects.filter(pk=user.pk, email_confirmed=False).update(email_confirmed=True):
+        return None
+    user.email_confirmed = True
+    logger.info("email_confirmed", extra={"user_id": user.pk})
     return user
