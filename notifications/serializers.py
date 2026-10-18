@@ -9,6 +9,7 @@ from rest_framework import serializers
 from accounts.models import User
 from applications import inbound_alias
 from applications.models import Application
+from config.logging_utils import mask_email
 from config.api_errors import (
     ErrorResponseSerializer as DetailResponseSerializer,
     build_validation_error_serializer,
@@ -580,7 +581,7 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
                 logger.info(
                     "inbound_dmarc_would_reject",
                     extra={
-                        "sender": sender,
+                        "sender": mask_email(sender),
                         "has_auth_results": bool(attrs.get("authentication_results", "")),
                     },
                 )

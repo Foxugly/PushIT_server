@@ -8,6 +8,8 @@ import requests
 from django.conf import settings
 from msal import ConfidentialClientApplication
 
+from config.logging_utils import mask_email
+
 from . import inbound_alias
 
 logger = logging.getLogger(__name__)
@@ -263,7 +265,7 @@ def mark_email_read(graph_id: str) -> None:
 
 def send_email(to: str, subject: str, body: str) -> None:
     if not _is_configured():
-        logger.warning("graph_mail_skipped", extra={"reason": "not configured", "to": to})
+        logger.warning("graph_mail_skipped", extra={"reason": "not configured", "to": mask_email(to)})
         return
 
     try:
@@ -285,6 +287,6 @@ def send_email(to: str, subject: str, body: str) -> None:
             },
             timeout=30,
         ).raise_for_status()
-        logger.info("graph_mail_sent", extra={"to": to, "subject": subject})
+        logger.info("graph_mail_sent", extra={"to": mask_email(to)})
     except Exception:
-        logger.exception("graph_mail_send_failed", extra={"to": to, "subject": subject})
+        logger.exception("graph_mail_send_failed", extra={"to": mask_email(to)})

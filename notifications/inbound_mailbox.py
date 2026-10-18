@@ -13,6 +13,8 @@ from applications.graph_mail import (
     mark_email_read,
 )
 
+from config.logging_utils import mask_email
+
 from .creation import create_notification_with_optional_idempotency
 from .inbound_journal import record_inbound_email_ingestion
 from .inbound_reply import (
@@ -51,7 +53,7 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
     if not inbound_alias.is_inbound_alias_address(email.recipient):
         logger.debug(
             "inbound_email_ignored_no_alias",
-            extra={"mailbox_uid": email.graph_id, "recipient": email.recipient},
+            extra={"mailbox_uid": email.graph_id, "recipient": mask_email(email.recipient)},
         )
         return True, "ignored"
 
