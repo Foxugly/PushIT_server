@@ -270,6 +270,7 @@ REST_FRAMEWORK = {
         "login": "10/min",
         "register": "5/min",
         "password_reset": "5/min",
+        "password_change": "5/min",
         "resend": "3/min",
         "magic_link": "5/min",
         "app_token": "300/min",

@@ -1213,6 +1213,56 @@ paths:
                 $ref: '#/components/schemas/AccountDeleteValidationErrorResponse'
           description: '`current_password` missing (code=validation_error) or wrong
             (code=current_password_invalid). Nothing is deleted.'
+  /api/v1/auth/password/change/:
+    post:
+      operationId: api_v1_auth_password_change_create
+      description: 'Changes the authenticated user''s password. Body `{current_password,
+        new_password}`; `new_password` goes through Django''s password validators
+        (with the user as context) and must differ from the current one. On success
+        **every refresh token previously issued to the user is blacklisted** (all
+        other sessions are signed out at their next refresh) and a fresh `access`
+        + `refresh` pair is returned so the calling session stays signed in: the client
+        MUST replace its stored tokens with these. Throttled per user (`password_change`,
+        5/min).'
+      summary: Change my password
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordChangeResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordChangeValidationErrorResponse'
+          description: A field is missing (code=validation_error), `current_password`
+            is wrong (code=current_password_invalid), `new_password` equals the current
+            one (code=password_unchanged), or the validators reject it (code=password_invalid,
+            messages in `errors.new_password`). The password is unchanged.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Too many attempts (code=throttled)
   /api/v1/auth/refresh/:
     post:
       operationId: api_v1_auth_refresh_create
@@ -5115,6 +5165,76 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotificationTemplateRead'
+    PasswordChangeRequest:
+      type: object
+      description: |-
+        Body of POST /api/v1/auth/password/change/. The view does the checks so
+        each failure gets its own stable `code`.
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: Current password
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: New password, checked against Django's password validators
+      required:
+      - current_password
+      - new_password
+    PasswordChangeResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Always `password_changed`
+        detail:
+          type: string
+        access:
+          type: string
+          description: Fresh access token for the calling session
+        refresh:
+          type: string
+          description: 'Fresh refresh token: every previously issued refresh token
+            is now blacklisted, so the client MUST persist this one'
+        user:
+          $ref: '#/components/schemas/UserMe'
+      required:
+      - access
+      - code
+      - detail
+      - refresh
+      - user
+    PasswordChangeValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/PasswordChangeValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    PasswordChangeValidationErrorResponseFields:
+      type: object
+      properties:
+        current_password:
+          type: array
+          items:
+            type: string
+        new_password:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     PatchedApplicationQuietPeriodWriteRequest:
       type: object
       description: Shared validation, normalization, and update logic for quiet period

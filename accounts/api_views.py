@@ -1,3 +1,4 @@
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import permissions, status
@@ -14,6 +15,7 @@ from .email_confirmation import (
     send_duplicate_registration_email,
 )
 from .deletion import delete_user_account
+from .password_change import change_password_and_rotate_sessions
 from .magic_link import request_magic_link, verify_magic_link
 from .models import User
 from .password_reset import confirm_password_reset, request_password_reset
@@ -37,6 +39,9 @@ from .api_serializers import (
     MagicLinkRequestValidationErrorResponseSerializer,
     MagicLinkVerifySerializer,
     MagicLinkVerifyValidationErrorResponseSerializer,
+    PasswordChangeResponseSerializer,
+    PasswordChangeSerializer,
+    PasswordChangeValidationErrorResponseSerializer,
     RegisterSerializer,
     RegisterValidationErrorResponseSerializer,
     ResetPasswordConfirmSerializer,
@@ -49,6 +54,7 @@ from .api_serializers import (
 from .throttles import (
     LoginRateThrottle,
     MagicLinkRateThrottle,
+    PasswordChangeRateThrottle,
     PasswordResetRateThrottle,
     RegisterRateThrottle,
     ResendEmailRateThrottle,
@@ -525,6 +531,89 @@ class MeApiView(APIView):
             )
         delete_user_account(request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema_view(
+    post=extend_schema(
+        summary="Change my password",
+        description=(
+            "Changes the authenticated user's password. Body `{current_password, "
+            "new_password}`; `new_password` goes through Django's password "
+            "validators (with the user as context) and must differ from the "
+            "current one. On success **every refresh token previously issued to "
+            "the user is blacklisted** (all other sessions are signed out at their "
+            "next refresh) and a fresh `access` + `refresh` pair is returned so the "
+            "calling session stays signed in: the client MUST replace its stored "
+            "tokens with these. Throttled per user (`password_change`, 5/min)."
+        ),
+        tags=["Accounts"],
+        auth=[{"BearerAuth": []}],
+        request=PasswordChangeSerializer,
+        responses={
+            200: PasswordChangeResponseSerializer,
+            400: OpenApiResponse(
+                response=PasswordChangeValidationErrorResponseSerializer,
+                description=(
+                    "A field is missing (code=validation_error), `current_password` "
+                    "is wrong (code=current_password_invalid), `new_password` equals "
+                    "the current one (code=password_unchanged), or the validators "
+                    "reject it (code=password_invalid, messages in "
+                    "`errors.new_password`). The password is unchanged."
+                ),
+            ),
+            429: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Too many attempts (code=throttled)",
+            ),
+        },
+    )
+)
+class PasswordChangeApiView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [PasswordChangeRateThrottle]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        current = serializer.validated_data["current_password"]
+        new = serializer.validated_data["new_password"]
+        user = request.user
+
+        if not user.check_password(current):
+            return error_response(
+                code="current_password_invalid",
+                detail="Current password is incorrect.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new == current:
+            return error_response(
+                code="password_unchanged",
+                detail="The new password must be different from the current one.",
+                http_status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            validate_password(new, user=user)
+        except DjangoValidationError as exc:
+            return Response(
+                {
+                    "code": "password_invalid",
+                    "detail": " ".join(exc.messages),
+                    "errors": {"new_password": list(exc.messages)},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        refresh = change_password_and_rotate_sessions(user, new)
+        return Response(
+            {
+                "code": "password_changed",
+                "detail": "Your password has been changed.",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": UserMeSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 @extend_schema_view(
