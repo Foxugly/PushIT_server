@@ -9,6 +9,7 @@ from drf_spectacular.utils import (
     extend_schema_view,
 )
 from rest_framework import generics, permissions, serializers, status
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
@@ -26,6 +27,24 @@ from .serializers import (
     DeviceUpdateSerializer,
     DeviceUpdateValidationErrorResponseSerializer,
 )
+
+
+def _device_access_filter(request):
+    """Which devices ``request.user`` may act on.
+
+    Reads: the user's own devices plus the devices actively linked to one of
+    their applications (the owner console). Writes (update, delete, quiet
+    periods): only the user's own devices — a device is shared by every app it
+    is linked to, so an app owner must not be able to alter it. Anything else
+    is a 404, so the device's existence is not disclosed.
+    """
+    own = Q(user=request.user)
+    if request.method not in SAFE_METHODS:
+        return own
+    return own | Q(
+        application_links__application__owner=request.user,
+        application_links__is_active=True,
+    )
 
 
 @extend_schema_view(
@@ -46,13 +65,7 @@ class DeviceListApiView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            Device.objects.filter(
-                Q(user=self.request.user)
-                | Q(
-                    application_links__application__owner=self.request.user,
-                    application_links__is_active=True,
-                )
-            )
+            Device.objects.filter(_device_access_filter(self.request))
             .distinct()
             .prefetch_related("application_links__application")
             .order_by("-id")
@@ -110,13 +123,7 @@ class DeviceDetailApiView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return (
-            Device.objects.filter(
-                Q(user=self.request.user)
-                | Q(
-                    application_links__application__owner=self.request.user,
-                    application_links__is_active=True,
-                )
-            )
+            Device.objects.filter(_device_access_filter(self.request))
             .distinct()
             .prefetch_related("application_links__application")
             .order_by("-id")
@@ -138,11 +145,7 @@ class UserOwnedDeviceMixin:
     def get_device(self):
         return (
             Device.objects.filter(
-                Q(user=self.request.user)
-                | Q(
-                    application_links__application__owner=self.request.user,
-                    application_links__is_active=True,
-                ),
+                _device_access_filter(self.request),
                 id=self.kwargs["device_id"],
             )
             .distinct()
