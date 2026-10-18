@@ -1185,6 +1185,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/LanguageUpdateValidationErrorResponse'
           description: Invalid data
+    delete:
+      operationId: api_v1_auth_me_destroy
+      description: Irreversibly deletes the authenticated user (GDPR erasure). Requires
+        the current password. Cascades every application the user owns (with its notifications,
+        deliveries, templates, send tokens and device links) even when other users'
+        devices are subscribed to it, deletes the user's own devices, and blacklists
+        every refresh token issued to the user.
+      summary: Delete my account
+      tags:
+      - Accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeleteRequest'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: Account deleted. No content.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeleteValidationErrorResponse'
+          description: '`current_password` missing (code=validation_error) or wrong
+            (code=current_password_invalid). Nothing is deleted.'
   /api/v1/auth/refresh/:
     post:
       operationId: api_v1_auth_refresh_create
@@ -3037,6 +3065,41 @@ paths:
           description: Dependency unavailable
 components:
   schemas:
+    AccountDeleteRequest:
+      type: object
+      description: Body of DELETE /api/v1/auth/me/. The view does the password check.
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: Current password, re-entered to confirm the irreversible deletion
+      required:
+      - current_password
+    AccountDeleteValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          $ref: '#/components/schemas/AccountDeleteValidationErrorResponseFields'
+        code:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - errors
+    AccountDeleteValidationErrorResponseFields:
+      type: object
+      properties:
+        current_password:
+          type: array
+          items:
+            type: string
+        non_field_errors:
+          type: array
+          items:
+            type: string
     AdminStatusCheck:
       type: object
       properties:
