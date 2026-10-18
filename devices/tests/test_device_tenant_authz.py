@@ -254,3 +254,52 @@ def test_device_user_sees_all_own_links(tenants):
     assert [u["application_id"] for u in resp.data["unlinked_applications"]] == [
         tenants["app_c_old"].id
     ]
+
+
+# --- is_mine: lets the console hide actions the API would refuse -------------
+
+
+@pytest.mark.django_db
+def test_is_mine_true_for_device_user_on_detail_and_list(tenants):
+    device = tenants["device"]
+    client = _client(tenants["subscriber_b"])
+    assert client.get(f"/api/v1/devices/{device.id}/").data["is_mine"] is True
+    rows = {row["id"]: row for row in client.get("/api/v1/devices/").data}
+    assert rows[device.id]["is_mine"] is True
+
+
+@pytest.mark.django_db
+def test_is_mine_false_for_app_owner_on_detail_and_list(tenants):
+    device = tenants["device"]
+    client = _client(tenants["owner_a"])
+    assert client.get(f"/api/v1/devices/{device.id}/").data["is_mine"] is False
+    rows = {row["id"]: row for row in client.get("/api/v1/devices/").data}
+    assert rows[device.id]["is_mine"] is False
+
+
+@pytest.mark.django_db
+def test_is_mine_is_read_only(tenants):
+    device = tenants["device"]
+    client = _client(tenants["subscriber_b"])
+    resp = client.patch(f"/api/v1/devices/{device.id}/", {"is_mine": False}, format="json")
+    assert resp.status_code == 200
+    assert client.get(f"/api/v1/devices/{device.id}/").data["is_mine"] is True
+
+
+@pytest.mark.django_db
+def test_device_update_answers_with_full_device_read(tenants):
+    device = tenants["device"]
+    client = _client(tenants["subscriber_b"])
+    for method in (client.patch, client.put):
+        resp = method(
+            f"/api/v1/devices/{device.id}/",
+            {"device_name": "Renamed", "platform": "android", "push_token_status": "active"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["id"] == device.id
+        assert resp.data["device_name"] == "Renamed"
+        assert resp.data["is_mine"] is True
+        assert sorted(resp.data["application_ids"]) == sorted(
+            [tenants["app_a"].id, tenants["app_c"].id]
+        )
