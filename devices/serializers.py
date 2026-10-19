@@ -56,7 +56,7 @@ DeviceUpdateValidationErrorResponseSerializer = build_validation_error_serialize
 
 DeviceLinkWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
     "DeviceLinkWithAppTokenValidationErrorResponse",
-    ["app_token", "device_name", "platform", "push_token"],
+    ["app_token", "device_name", "platform", "push_token", "previous_push_token"],
 )
 
 DeviceUnlinkWithAppTokenValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -80,7 +80,7 @@ DeviceUnlinkByApplicationValidationErrorResponseSerializer = build_validation_er
 
 DeviceIdentifyValidationErrorResponseSerializer = build_validation_error_serializer(
     "DeviceIdentifyValidationErrorResponse",
-    ["device_name", "platform", "push_token"],
+    ["device_name", "platform", "push_token", "previous_push_token"],
 )
 
 DeviceQuietPeriodValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -180,6 +180,18 @@ class DeviceLinkWithAppTokenSerializer(serializers.Serializer):
     device_name = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True,)
     platform = serializers.ChoiceField(choices=DevicePlatform.choices, default=DevicePlatform.ANDROID)
     push_token = serializers.CharField(min_length=20, max_length=512, trim_whitespace=True)
+    previous_push_token = serializers.CharField(
+        max_length=512,
+        trim_whitespace=True,
+        required=False,
+        allow_blank=True,
+        help_text=(
+            'Optional. The push token this installation used before an FCM token '
+            'rotation. When it belongs to a device of the authenticated user, that '
+            'device is updated in place (links + inbox kept) instead of creating a '
+            'new one. Unknown or foreign values are ignored.'
+        ),
+    )
 
 
 class DeviceUnlinkWithAppTokenSerializer(serializers.Serializer):
@@ -193,6 +205,18 @@ class DeviceIdentifySerializer(serializers.Serializer):
     device_name = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True)
     platform = serializers.ChoiceField(choices=DevicePlatform.choices, default=DevicePlatform.ANDROID)
     push_token = serializers.CharField(min_length=20, max_length=512, trim_whitespace=True)
+    previous_push_token = serializers.CharField(
+        max_length=512,
+        trim_whitespace=True,
+        required=False,
+        allow_blank=True,
+        help_text=(
+            'Optional. The push token this installation used before an FCM token '
+            'rotation. When it belongs to a device of the authenticated user, that '
+            'device is updated in place (links + inbox kept) instead of creating a '
+            'new one. Unknown or foreign values are ignored.'
+        ),
+    )
 
 
 class DeviceQuietPeriodReadSerializer(serializers.ModelSerializer):

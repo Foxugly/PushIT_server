@@ -76,7 +76,7 @@ def test_inactive_app_token_is_rejected():
         format="json",
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert response.data["code"] == "app_token_inactive"
 
 
@@ -106,7 +106,7 @@ def test_revoked_app_token_is_rejected():
         format="json",
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert response.data["code"] == "app_token_revoked"
 
 
@@ -129,7 +129,7 @@ def test_missing_app_token_returns_explicit_business_code():
         format="json",
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert response.data["code"] == "app_token_missing"
 
 

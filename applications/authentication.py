@@ -82,10 +82,17 @@ def get_application_for_enrolment(raw_code: str | None) -> Application:
 
     Accepte le code d'enrôlement, et — le temps de la transition — le jeton
     hérité que portent les installations mobiles déjà publiées.
+
+    Les refus sont des **403** (`PermissionDenied`), jamais des 401 : l'appelant
+    est déjà authentifié par son JWT, c'est le code présenté qui est refusé. Un
+    401 ferait croire au client que sa session est morte (refresh, puis
+    déconnexion) alors qu'il suffit de rescanner un QR. Les `code` restent ceux
+    d'avant : app_token_missing, app_token_invalid, app_token_invalid_format,
+    app_token_inactive, app_token_revoked.
     """
     if not raw_code:
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "missing"})
-        raise exceptions.NotAuthenticated("Missing app token.", code="app_token_missing")
+        raise exceptions.PermissionDenied("Missing app token.", code="app_token_missing")
 
     if raw_code.startswith("apk_"):
         application = Application.objects.select_related("owner").filter(
@@ -93,10 +100,10 @@ def get_application_for_enrolment(raw_code: str | None) -> Application:
         ).first()
         if application is None:
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid"})
-            raise exceptions.AuthenticationFailed("Invalid app token.", code="app_token_invalid")
+            raise exceptions.PermissionDenied("Invalid app token.", code="app_token_invalid")
         if not application.is_active:
             increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
-            raise exceptions.AuthenticationFailed(
+            raise exceptions.PermissionDenied(
                 "Inactive application.", code="app_token_inactive"
             )
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "enrolment_code"})
@@ -193,7 +200,7 @@ def _legacy_application(raw_token: str) -> Application:
     """
     if not raw_token.startswith("apt_"):
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid_format"})
-        raise exceptions.AuthenticationFailed(
+        raise exceptions.PermissionDenied(
             "Invalid app token format.",
             code="app_token_invalid_format",
         )
@@ -204,7 +211,7 @@ def _legacy_application(raw_token: str) -> Application:
         application = Application.objects.select_related("owner").get(app_token_hash=token_hash)
     except Application.DoesNotExist:
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "invalid"})
-        raise exceptions.AuthenticationFailed(
+        raise exceptions.PermissionDenied(
             "Invalid app token.",
             code="app_token_invalid",
         )
@@ -214,21 +221,21 @@ def _legacy_application(raw_token: str) -> Application:
         # ambiguous token, which could otherwise grant cross-application access.
         # The counter surfaces it for monitoring; the rows must be fixed manually.
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "duplicate"})
-        raise exceptions.AuthenticationFailed(
+        raise exceptions.PermissionDenied(
             "Invalid app token.",
             code="app_token_invalid",
         )
 
     if not application.is_active:
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "inactive"})
-        raise exceptions.AuthenticationFailed(
+        raise exceptions.PermissionDenied(
             "Inactive application.",
             code="app_token_inactive",
         )
 
     if application.revoked_at is not None:
         increment_counter("pushit_app_token_auth_total", labels={"outcome": "revoked"})
-        raise exceptions.AuthenticationFailed(
+        raise exceptions.PermissionDenied(
             "App token has been revoked.",
             code="app_token_revoked",
         )

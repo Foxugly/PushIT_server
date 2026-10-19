@@ -131,7 +131,7 @@ def test_rotating_closes_the_door_to_newcomers(app, owner, autre):
 
     _as(owner).post(f"/api/v1/apps/{app.id}/rotate-enrolment-code/", {}, format="json")
 
-    assert _link(_as(autre), ancien).status_code == 401
+    assert _link(_as(autre), ancien).status_code == 403
 
 
 @pytest.mark.django_db

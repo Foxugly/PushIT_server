@@ -160,7 +160,8 @@ class ApplicationDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(ApplicationReadSerializer(instance).data)
+        # Same context as GET so `logo` is an absolute URL in both responses.
+        return Response(ApplicationReadSerializer(instance, context={"request": request}).data)
 
 
 def _get_app_or_404(app_id, user):

@@ -77,6 +77,30 @@ def applications_used(user) -> int:
     return Application.objects.filter(owner=user).count()
 
 
+SUBSCRIPTION_REQUIRED_CODE = "subscription_required"
+
+
+def subscription_required(user):
+    """402 si le propriétaire ne peut plus émettre, sinon None.
+
+    Même porte que `quota_required` (création d'application), appliquée à la
+    création et à l'envoi de notifications. Mêmes exemptions, par construction :
+    facturation non branchée, et accès offert (`subscription_bypass`). Aucun appel
+    réseau : on lit le cache local des droits, donc une panne du central ne
+    bloque personne de payant — et ne débloque personne d'expiré.
+    """
+    if user_is_paid(user):
+        return None
+
+    from config.api_errors import error_response
+
+    return error_response(
+        code=SUBSCRIPTION_REQUIRED_CODE,
+        detail="Un abonnement actif est nécessaire pour envoyer des notifications.",
+        http_status=402,
+    )
+
+
 def quota_required(user):
     """402 si l'utilisateur ne peut pas créer une application de plus, sinon None.
 

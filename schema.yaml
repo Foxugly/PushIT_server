@@ -302,6 +302,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found
+  /api/v1/apps/{app_id}/devices/{device_id}/:
+    delete:
+      operationId: api_v1_apps_devices_destroy
+      description: 'Deactivates the link between an application owned by the authenticated
+        user and one of its subscribed devices. The device itself is left untouched
+        — it belongs to somebody else, and may be linked to other applications. Idempotent:
+        evicting an already-evicted device returns 204. Note that eviction alone does
+        not prevent a comeback: whoever still has the enrolment code can link again,
+        so rotate the code as well.'
+      summary: Evict a device from an application
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: device_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found, or this device is not one of its subscribers
   /api/v1/apps/{app_id}/logo/:
     post:
       operationId: api_v1_apps_logo_create
@@ -363,13 +397,13 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found
   /api/v1/apps/{app_id}/qrcode/:
-    post:
-      operationId: api_v1_apps_qrcode_create
-      description: Returns a PNG image of a QR code encoding the provided app token
-        in plain text (e.g. `apt_xxxxxxxxxxxx`). The token must match the application's
-        current token. Mobile clients scan this QR code to link their device to the
-        application.
-      summary: Generate QR code for an app token
+    get:
+      operationId: api_v1_apps_qrcode_retrieve
+      description: 'Returns a PNG of a QR code encoding the application''s **enrolment
+        code** (`apk_…`) in plain text — the string a mobile client scans to link
+        a device. Needs no secret from the caller: the code is stored in clear because
+        it is meant to be distributed. It never encodes a send token.'
+      summary: QR code of the enrolment code
       parameters:
       - in: path
         name: app_id
@@ -380,6 +414,37 @@ paths:
       - Applications
       security:
       - BearerAuth: []
+      responses:
+        '200':
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+          description: QR code PNG image
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
+    post:
+      operationId: api_v1_apps_qrcode_create
+      description: 'Legacy form: encodes the raw legacy app token passed in the body,
+        which the caller must still hold. Kept while published mobile installs carry
+        that token; new callers should use `GET` and distribute the enrolment code.'
+      summary: QR code for a legacy app token (deprecated)
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      deprecated: true
       responses:
         '200':
           content:
@@ -713,6 +778,157 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found
+  /api/v1/apps/{app_id}/rotate-enrolment-code/:
+    post:
+      operationId: api_v1_apps_rotate_enrolment_code_create
+      description: 'Draws a new enrolment code for an application owned by the authenticated
+        user. The previous code stops linking new devices. **It evicts nobody**: already-linked
+        devices stay linked — use `DELETE /apps/<id>/devices/<device_id>/` for that.'
+      summary: Rotate the enrolment code
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationEnrolmentCodeResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
+  /api/v1/apps/{app_id}/send-tokens/:
+    get:
+      operationId: api_v1_apps_send_tokens_list
+      description: |-
+        GET : la liste. POST {name} : crée et renvoie la valeur **une seule fois**.
+
+        Créer un jeton n'en révoque aucun autre : c'est ce qui permet de remplacer
+        un jeton compromis sans interruption — on crée, on déploie, puis on révoque
+        l'ancien. L'ancienne régénération coupait tout d'un coup.
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SendToken'
+          description: ''
+    post:
+      operationId: api_v1_apps_send_tokens_create
+      description: |-
+        GET : la liste. POST {name} : crée et renvoie la valeur **une seule fois**.
+
+        Créer un jeton n'en révoque aucun autre : c'est ce qui permet de remplacer
+        un jeton compromis sans interruption — on crée, on déploie, puis on révoque
+        l'ancien. L'ancienne régénération coupait tout d'un coup.
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendTokenRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendToken'
+          description: ''
+  /api/v1/apps/{app_id}/send-tokens/{token_id}/:
+    delete:
+      operationId: api_v1_apps_send_tokens_destroy
+      description: 'DELETE : révoque. Immédiat, et sans effet sur les autres jetons.'
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: token_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/apps/{app_id}/send-tokens/{token_id}/reveal/:
+    post:
+      operationId: api_v1_apps_send_tokens_reveal_create
+      description: 'POST {password} : renvoie la valeur en clair, et le journalise.'
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: token_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevealRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RevealRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RevealRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/v1/apps/{app_id}/templates/:
     get:
       operationId: api_v1_apps_templates_list
@@ -912,6 +1128,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Template not found
+  /api/v1/apps/{app_id}/webhook-secret/reveal/:
+    post:
+      operationId: api_v1_apps_webhook_secret_reveal_create
+      description: |-
+        POST {password} : renvoie le secret qui signe les callbacks.
+
+        Le propriétaire doit pouvoir le lire — sans lui, il ne peut pas vérifier la
+        signature de son côté. Même exigence que pour un jeton d'émission : une
+        session ouverte ne suffit pas à relire un secret.
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevealRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RevealRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RevealRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/apps/{app_id}/webhook-secret/rotate/:
+    post:
+      operationId: api_v1_apps_webhook_secret_rotate_create
+      description: |-
+        POST : tire un nouveau secret de signature.
+
+        Le geste d'urgence si le secret a fuité. Les callbacks suivants sont signés
+        avec le nouveau : mettre à jour l'endpoint **d'abord**, sinon ils seront
+        rejetés le temps du décalage.
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/v1/auth/email/confirm/:
     post:
       operationId: api_v1_auth_email_confirm_create
@@ -1250,12 +1522,6 @@ paths:
       summary: Delete my account
       tags:
       - Accounts
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AccountDeleteRequest'
-        required: true
       security:
       - BearerAuth: []
       responses:
@@ -1469,6 +1735,113 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Invalid/expired link or weak password
+  /api/v1/billing/checkout/:
+    post:
+      operationId: api_v1_billing_checkout_create
+      description: POST {plan, interval, quantity} → l'URL d'une session Stripe Checkout.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/entitlement/:
+    post:
+      operationId: api_v1_billing_entitlement_create
+      description: |-
+        Reçoit un droit poussé par le central.
+
+        Signature HMAC obligatoire. L'idempotence repose sur le `delivery_id` : le
+        central rejoue volontiers, et un rejeu tardif ne doit pas réappliquer un état
+        périmé par-dessus un état plus récent.
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/history/:
+    get:
+      operationId: api_v1_billing_history_retrieve
+      description: Abonnements passés et factures, relayés depuis le central.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/plans/:
+    get:
+      operationId: api_v1_billing_plans_retrieve
+      description: |-
+        Le catalogue, relayé depuis le central.
+
+        Les montants ne sont PAS codés en dur dans PushIT : changer un tarif ne doit
+        pas exiger un déploiement.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/portal/:
+    post:
+      operationId: api_v1_billing_portal_create
+      description: POST → l'URL du portail client Stripe (moyens de paiement, factures).
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/quantity/:
+    post:
+      operationId: api_v1_billing_quantity_create
+      description: POST {quantity} → applique le changement, avec prorata.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/quantity/preview/:
+    post:
+      operationId: api_v1_billing_quantity_preview_create
+      description: |-
+        POST {quantity} → ce que coûterait le changement, sans rien modifier.
+
+        C'est l'engagement de transparence : on n'ajuste jamais un abonnement sans
+        avoir annoncé le prorata, qui n'est pas devinable en cours de période.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/billing/subscription/:
+    get:
+      operationId: api_v1_billing_subscription_retrieve
+      description: |-
+        État de facturation du compte, servi depuis le cache local.
+
+        Aucun appel réseau : la page reste rapide et s'affiche même si le central est
+        indisponible. Exception au retour du Checkout (`?refresh=1`), où l'on
+        interroge le central en synchrone — sinon l'utilisateur qui revient de Stripe
+        avant l'arrivée du webhook verrait « aucun abonnement » juste après avoir payé.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
   /api/v1/devices/:
     get:
       operationId: api_v1_devices_list
@@ -1886,8 +2259,11 @@ paths:
   /api/v1/devices/identify/:
     post:
       operationId: api_v1_devices_identify_create
-      description: Creates or updates a device for the authenticated user from its
+      description: 'Creates or updates a device for the authenticated user from its
         push token and returns the active applications already linked to that device.
+        After an FCM token rotation, send the old token as `previous_push_token`:
+        if it is one of the caller''s devices, that device is updated in place (links
+        and inbox kept, same `device_id`). Unknown/foreign previous tokens are ignored.'
       summary: Identify an authenticated device
       tags:
       - Devices
@@ -1964,13 +2340,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Invalid or missing app token
+          description: Missing or invalid user JWT
         '403':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Access denied
+          description: 'Enrolment code refused (valid JWT): code is one of app_token_missing,
+            app_token_invalid, app_token_invalid_format, app_token_inactive, app_token_revoked'
   /api/v1/devices/unlink/:
     post:
       operationId: api_v1_devices_unlink_create
@@ -2013,13 +2390,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Invalid or missing app token
+          description: Missing or invalid user JWT
         '403':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Access denied
+          description: 'Enrolment code refused (valid JWT): code is one of app_token_missing,
+            app_token_invalid, app_token_invalid_format, app_token_inactive, app_token_revoked'
   /api/v1/devices/unlink-app/:
     post:
       operationId: api_v1_devices_unlink_app_create
@@ -2253,6 +2631,12 @@ paths:
                     sent_at: null
                   summary: Scheduled notification deferred by quiet period
           description: Notification created
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
         '400':
           content:
             application/json:
@@ -2292,6 +2676,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotificationQueuedResponse'
           description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application inactive (code application_inactive)
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
         '404':
           content:
             application/json:
@@ -2313,8 +2709,10 @@ paths:
   /api/v1/notifications/{id}/:
     get:
       operationId: api_v1_notifications_retrieve
-      description: Returns the detail of a notification belonging to an application
-        of the authenticated user.
+      description: Returns the detail of a notification. The owner of the application
+        gets every delivery; a recipient (the notification was delivered to one of
+        the caller's own devices) gets the same shape with `device_ids` / `deliveries`
+        restricted to their devices.
       summary: Notification detail
       parameters:
       - in: path
@@ -2338,7 +2736,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-          description: Notification not found
+          description: Not found, or neither owned by the caller nor delivered to
+            one of their devices
   /api/v1/notifications/{id}/opened/:
     post:
       operationId: api_v1_notifications_opened_create
@@ -2544,6 +2943,12 @@ paths:
       responses:
         '200':
           description: Bulk send result with queued and errors
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
         '401':
           content:
             application/json:
@@ -2645,6 +3050,12 @@ paths:
                       - Scheduled date must be in the future.
                   summary: Validation error
           description: Invalid data
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
         '401':
           content:
             application/json:
@@ -2710,6 +3121,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotificationRead'
           description: Notification created and queued
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
         '200':
           content:
             application/json:
@@ -2759,6 +3176,12 @@ paths:
       responses:
         '200':
           description: Bulk send result with queued and errors
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
   /api/v1/notifications/device/:
     get:
       operationId: api_v1_notifications_device_list
@@ -3076,6 +3499,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotificationRead'
           description: ''
+        '402':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Owner subscription required (code subscription_required)
         '400':
           content:
             application/json:
@@ -3114,6 +3543,74 @@ paths:
                 items:
                   $ref: '#/components/schemas/NotificationStats'
           description: ''
+  /api/v1/staff/users/:
+    get:
+      operationId: api_v1_staff_users_retrieve
+      description: |-
+        GET ?q=<terme> — recherche par email.
+
+        Sans `q`, renvoie les comptes ayant un accès offert : c'est la liste que le
+        staff consulte en pratique, et elle répond à « à qui ai-je donné quoi ? ».
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/staff/users/{id}/:
+    patch:
+      operationId: api_v1_staff_users_partial_update
+      description: PATCH {subscription_bypass?, bypass_note?} — bascule l'accès offert.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /health/:
+    get:
+      operationId: health_retrieve
+      description: Checks that the service is ready to serve traffic, including database
+        access.
+      summary: Readiness probe
+      tags:
+      - Health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              examples:
+                ReadinessOK:
+                  value:
+                    status: ok
+                    service: pushit
+                    check: ready
+                  summary: Readiness OK
+          description: Service ready
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthError'
+              examples:
+                DatabaseUnavailable:
+                  value:
+                    status: error
+                    service: pushit
+                    check: ready
+                    detail: database_unavailable
+                  summary: Database unavailable
+          description: Dependency unavailable
   /health/live/:
     get:
       operationId: health_live_retrieve
@@ -3217,17 +3714,6 @@ paths:
           description: Dependency unavailable
 components:
   schemas:
-    AccountDeleteRequest:
-      type: object
-      description: Body of DELETE /api/v1/auth/me/. The view does the password check.
-      properties:
-        current_password:
-          type: string
-          writeOnly: true
-          minLength: 1
-          description: Current password, re-entered to confirm the irreversible deletion
-      required:
-      - current_password
     AccountDeleteValidationErrorResponse:
       type: object
       properties:
@@ -3325,6 +3811,9 @@ components:
         app_token_prefix:
           type: string
           readOnly: true
+        enrolment_code:
+          type: string
+          readOnly: true
         inbound_email_alias:
           type: string
           readOnly: true
@@ -3359,6 +3848,7 @@ components:
       - app_token
       - app_token_prefix
       - created_at
+      - enrolment_code
       - id
       - inbound_email_address
       - inbound_email_alias
@@ -3410,6 +3900,20 @@ components:
           type: array
           items:
             type: string
+    ApplicationEnrolmentCodeResponse:
+      type: object
+      properties:
+        app_id:
+          type: integer
+        enrolment_code:
+          type: string
+        enrolment_code_rotated_at:
+          type: string
+          format: date-time
+      required:
+      - app_id
+      - enrolment_code
+      - enrolment_code_rotated_at
     ApplicationLogoUploadRequest:
       type: object
       description: Multipart upload of an application logo image.
@@ -3577,6 +4081,17 @@ components:
         app_token_prefix:
           type: string
           maxLength: 24
+        enrolment_code:
+          type: string
+          maxLength: 32
+        enrolment_code_rotated_at:
+          type: string
+          format: date-time
+          nullable: true
+        legacy_send_last_used_at:
+          type: string
+          format: date-time
+          nullable: true
         inbound_email_alias:
           type: string
           maxLength: 120
@@ -3607,6 +4122,7 @@ components:
       required:
       - app_token_prefix
       - created_at
+      - enrolment_code
       - id
       - inbound_email_address
       - inbound_email_alias
@@ -3725,6 +4241,13 @@ components:
           type: string
           minLength: 20
           maxLength: 512
+        previous_push_token:
+          type: string
+          description: Optional. The push token this installation used before an FCM
+            token rotation. When it belongs to a device of the authenticated user,
+            that device is updated in place (links + inbox kept) instead of creating
+            a new one. Unknown or foreign values are ignored.
+          maxLength: 512
       required:
       - push_token
     DeviceIdentifyResponse:
@@ -3773,6 +4296,10 @@ components:
           type: array
           items:
             type: string
+        previous_push_token:
+          type: array
+          items:
+            type: string
         non_field_errors:
           type: array
           items:
@@ -3793,6 +4320,13 @@ components:
         push_token:
           type: string
           minLength: 20
+          maxLength: 512
+        previous_push_token:
+          type: string
+          description: Optional. The push token this installation used before an FCM
+            token rotation. When it belongs to a device of the authenticated user,
+            that device is updated in place (links + inbox kept) instead of creating
+            a new one. Unknown or foreign values are ignored.
           maxLength: 512
       required:
       - push_token
@@ -3844,6 +4378,10 @@ components:
           items:
             type: string
         push_token:
+          type: array
+          items:
+            type: string
+        previous_push_token:
           type: array
           items:
             type: string
@@ -5501,6 +6039,11 @@ components:
         turnstile_token:
           type: string
           writeOnly: true
+        language:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 2
       required:
       - email
       - password
@@ -5525,6 +6068,10 @@ components:
           items:
             type: string
         password:
+          type: array
+          items:
+            type: string
+        language:
           type: array
           items:
             type: string
@@ -5553,6 +6100,63 @@ components:
       - password
       - token
       - uid
+    RevealRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+    SendToken:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          description: 'À quoi il sert : « serveur-prod ».'
+          maxLength: 60
+        prefix:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_used_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - is_active
+      - last_used_at
+      - name
+      - prefix
+      - revoked_at
+    SendTokenRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 'À quoi il sert : « serveur-prod ».'
+          maxLength: 60
+      required:
+      - name
     Status537Enum:
       enum:
       - draft
@@ -5665,3 +6269,8 @@ components:
       - id
       - is_staff
       - is_superuser
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

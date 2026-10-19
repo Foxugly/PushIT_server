@@ -9,7 +9,8 @@ from django.db.models import F
 from django.utils import timezone
 
 from config.metrics import increment_counter
-from devices.models import Device, DeviceTokenStatus
+from billing.service import SUBSCRIPTION_REQUIRED_CODE, user_is_paid
+from devices.models import Device, DeviceApplicationLink, DeviceTokenStatus
 from .models import Notification, NotificationDelivery, NotificationStatus, DeliveryStatus
 from .push import (
     send_push_to_device,
@@ -207,6 +208,49 @@ def _mark_delivery_as_deferred(delivery: NotificationDelivery, retry_at) -> None
         ]
     )
 
+
+# Reasons a delivery is cancelled at send time, before any push (stored in
+# `error_message` as "Cancelled: <reason>." on a FAILED delivery).
+CANCEL_APPLICATION_INACTIVE = "application_inactive"
+CANCEL_DEVICE_UNLINKED = "device_unlinked"
+CANCEL_PUSH_TOKEN_INACTIVE = "push_token_inactive"
+CANCEL_SUBSCRIPTION_REQUIRED = SUBSCRIPTION_REQUIRED_CODE
+
+
+def _cancel_delivery(delivery: NotificationDelivery, reason: str) -> None:
+    """Mark a delivery FAILED without pushing, with a machine-readable reason.
+
+    Not counted as a provider attempt (`attempt_count` untouched): nothing was
+    sent. `next_retry_at` is cleared so the retry sweep never picks it up again;
+    a later manual re-send re-evaluates eligibility from scratch.
+    """
+    delivery.status = DeliveryStatus.FAILED
+    delivery.error_message = f"Cancelled: {reason}."
+    delivery.last_attempt_at = timezone.now()
+    delivery.next_retry_at = None
+    delivery.save(update_fields=["status", "error_message", "last_attempt_at", "next_retry_at"])
+    increment_counter(
+        "pushit_notification_delivery_total",
+        labels={"outcome": f"cancelled_{reason}"},
+    )
+
+
+def _ineligibility_reason(application, device: Device, linked_device_ids: set[int]) -> str | None:
+    """Why `device` must not receive a push for `application` *now*, or None.
+
+    Rechecked at send time on every pass (first send, scheduled dispatch, retry,
+    watchdog requeue): the delivery row may predate an unlink, a token
+    invalidation or the deactivation of the application.
+    """
+    if not application.is_active:
+        return CANCEL_APPLICATION_INACTIVE
+    if device.id not in linked_device_ids:
+        return CANCEL_DEVICE_UNLINKED
+    if device.push_token_status != DeviceTokenStatus.ACTIVE or not device.is_active:
+        return CANCEL_PUSH_TOKEN_INACTIVE
+    return None
+
+
 def _mark_delivery_as_failed(delivery: NotificationDelivery, exc: Exception) -> None:
     # Atomic, race-safe increment: concurrent failures for the same delivery
     # (e.g. retried by overlapping workers) must not clobber each other's count.
@@ -287,6 +331,43 @@ def _record_delivery_failure(
     )
 
 
+def _fail_for_lapsed_subscription(notification: Notification) -> dict:
+    """The owner's subscription lapsed between creation and dispatch: push
+    nothing, cancel every not-yet-sent delivery, close the notification FAILED."""
+    pending = list(notification.deliveries.exclude(status=DeliveryStatus.SENT))
+    for delivery in pending:
+        _cancel_delivery(delivery, CANCEL_SUBSCRIPTION_REQUIRED)
+
+    Notification.objects.filter(id=notification.id).update(
+        status=NotificationStatus.FAILED,
+        sent_at=None,
+        processing_started_at=None,
+    )
+    logger.info(
+        "notification_skipped_subscription_required",
+        extra={
+            "notification_id": notification.id,
+            "application_id": notification.application_id,
+        },
+    )
+    increment_counter(
+        "pushit_notification_send_total",
+        labels={"outcome": "subscription_required"},
+    )
+    send_webhook_callback(
+        application=notification.application,
+        notification_id=notification.id,
+        final_status=NotificationStatus.FAILED,
+    )
+    return SendNotificationResult(
+        notification_id=notification.id,
+        target_count=len(pending),
+        sent_count=0,
+        failed_count=len(pending),
+        skipped_count=0,
+    ).as_dict()
+
+
 def send_notification(notification_id: int) -> dict:
     """
     Envoie une notification à tous les devices cibles.
@@ -311,6 +392,9 @@ def send_notification(notification_id: int) -> dict:
             failed_count=0,
             skipped_count=0,
         ).as_dict()
+
+    if not user_is_paid(notification.application.owner):
+        return _fail_for_lapsed_subscription(notification)
 
     quiet_period_end = get_current_quiet_period_end(notification, at=timezone.now())
     if quiet_period_end is not None:
@@ -396,6 +480,16 @@ def send_notification(notification_id: int) -> dict:
         "application_name": application.name,
         "application_logo": logo_url,
     }
+    # Fresh read of the application flag and of the active links: the delivery
+    # rows (and the `notification.application` instance) may be stale.
+    application.refresh_from_db(fields=["is_active"])
+    linked_device_ids = set(
+        DeviceApplicationLink.objects.filter(
+            application=application,
+            is_active=True,
+            device_id__in=[d.device_id for d in deliveries],
+        ).values_list("device_id", flat=True)
+    )
 
     for delivery in deliveries:
         device = delivery.device
@@ -406,6 +500,12 @@ def send_notification(notification_id: int) -> dict:
                 labels={"outcome": "skipped"},
             )
             skipped_count += 1
+            continue
+
+        reason = _ineligibility_reason(application, device, linked_device_ids)
+        if reason is not None:
+            _cancel_delivery(delivery, reason)
+            failed_count += 1
             continue
 
         if _should_wait_for_retry(delivery):

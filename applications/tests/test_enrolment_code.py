@@ -106,7 +106,7 @@ def test_the_legacy_token_still_links_during_the_transition(owner, destinataire)
 def test_an_unknown_code_is_refused(app, destinataire):
     r = _link(_as(destinataire), "apk_inexistant")
 
-    assert r.status_code == 401
+    assert r.status_code == 403
 
 
 @pytest.mark.django_db
@@ -151,7 +151,7 @@ def test_rotating_the_code_invalidates_the_previous_one(app, destinataire):
     app.rotate_enrolment_code()
     app.save()
 
-    assert _link(_as(destinataire), ancien).status_code == 401
+    assert _link(_as(destinataire), ancien).status_code == 403
     assert _link(_as(destinataire), app.enrolment_code).status_code == 200
 
 
