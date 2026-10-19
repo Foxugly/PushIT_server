@@ -362,6 +362,8 @@ class NotificationCreateSerializer(BaseNotificationWriteSerializer):
             app = Application.objects.get(id=application_id, owner=request.user)
         except Application.DoesNotExist:
             raise serializers.ValidationError({"application_id": ["Application not found."]})
+        if not app.is_active:
+            raise serializers.ValidationError({"application_id": ["Application is inactive."]})
 
         self.context["application"] = app
         attrs = self._resolve_template(attrs)

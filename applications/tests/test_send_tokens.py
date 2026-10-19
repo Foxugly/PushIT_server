@@ -155,7 +155,8 @@ def test_a_send_token_can_never_link_a_device(app, owner):
         format="json",
     )
 
-    assert r.status_code == 401
+    # Valid JWT: an enrolment refusal is 403, never 401 (audit 2026-10-19).
+    assert r.status_code == 403
 
 
 @override_settings(**CHIFFREMENT)

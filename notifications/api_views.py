@@ -20,6 +20,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing.service import subscription_required
 from config.api_errors import error_response
 from config.pagination import OptionalPageNumberPagination
 from .models import Notification, NotificationDelivery, NotificationStatus
@@ -251,6 +252,7 @@ def device_ids_prefetch() -> Prefetch:
                     )
                 ],
             ),
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
             400: OpenApiResponse(
                 response=NotificationCreateValidationErrorResponseSerializer,
                 description="Invalid data",
@@ -325,6 +327,9 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
+        refus = subscription_required(request.user)
+        if refus is not None:
+            return refus
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         instance = serializer.save()
@@ -338,16 +343,29 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
 @extend_schema_view(
     get=extend_schema(
         summary="Notification detail",
-        description="Returns the detail of a notification belonging to an application of the authenticated user.",
+        description=(
+            "Returns the detail of a notification. The owner of the application gets every "
+            "delivery; a recipient (the notification was delivered to one of the caller's own "
+            "devices) gets the same shape with `device_ids` / `deliveries` restricted to "
+            "their devices."
+        ),
         tags=["Notifications"],
         auth=[{"BearerAuth": []}],
         responses={
             200: NotificationDetailSerializer,
-            404: OpenApiResponse(response=DetailResponseSerializer, description="Notification not found"),
+            404: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Not found, or neither owned by the caller nor delivered to one of their devices",
+            ),
         },
     ),
 )
 class NotificationDetailApiView(generics.RetrieveAPIView):
+    """Owner: the full detail. Recipient (a user with a delivery of this
+    notification on one of *their own* devices, e.g. the mobile app opening a
+    received push): the same shape, read-only, but `device_ids` / `deliveries`
+    restricted to the caller's devices so no other recipient leaks."""
+
     serializer_class = NotificationDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -361,11 +379,29 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
             )
         )
 
+    def _recipient_queryset(self):
+        own_deliveries = NotificationDelivery.objects.filter(
+            device__user=self.request.user
+        ).select_related("device")
+        return (
+            Notification.objects.filter(deliveries__device__user=self.request.user)
+            .select_related("application")
+            .prefetch_related(
+                "application__quiet_periods",
+                Prefetch("deliveries", queryset=own_deliveries),
+            )
+            .distinct()
+        )
+
     def get_object(self):
         try:
             return super().get_object()
         except Http404:
+            pass
+        instance = self._recipient_queryset().filter(pk=self.kwargs["pk"]).first()
+        if instance is None:
             raise NotFound("Notification not found.", code="notification_not_found")
+        return instance
 
 
 @extend_schema_view(
@@ -650,6 +686,23 @@ class NotificationFutureDetailApiView(generics.RetrieveUpdateDestroyAPIView):
         except Http404:
             raise NotFound("Future notification not found.", code="notification_future_not_found")
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        # The documented 200 is NotificationReadSerializer (device_ids,
+        # effective_scheduled_for, ...), not the write serializer's echo.
+        refreshed = (
+            Notification.objects.select_related("application")
+            .prefetch_related("application__quiet_periods", device_ids_prefetch())
+            .get(pk=instance.pk)
+        )
+        return Response(
+            NotificationReadSerializer(refreshed, context=self.get_serializer_context()).data
+        )
+
 
 def _try_queue_notification(notification, owner_filter=None):
     """Attempt to queue a single notification. Returns (success, result_dict).
@@ -664,6 +717,13 @@ def _try_queue_notification(notification, owner_filter=None):
     would only save wasted work, not fix a correctness bug — and would conflict
     with returning the task id synchronously, so it's intentionally not done.
     """
+    if not notification.application.is_active:
+        return False, {
+            "id": notification.id,
+            "code": "application_inactive",
+            "detail": "The application is inactive; its notifications cannot be sent.",
+        }
+
     if (
         notification.status == NotificationStatus.SCHEDULED
         and notification.scheduled_for is not None
@@ -746,6 +806,14 @@ def _try_queue_notification(notification, owner_filter=None):
     }
 
 
+def _queue_error_status(code: str) -> int:
+    if code == "notification_queue_unavailable":
+        return status.HTTP_503_SERVICE_UNAVAILABLE
+    if code == "application_inactive":
+        return status.HTTP_400_BAD_REQUEST
+    return status.HTTP_409_CONFLICT
+
+
 def _fetch_notification(notification_id, owner_filter):
     if settings.DB_SUPPORTS_ROW_LOCKING:
         with transaction.atomic():
@@ -771,6 +839,8 @@ class NotificationSendApiView(APIView):
         request=None,
         responses={
             202: NotificationQueuedResponseSerializer,
+            400: OpenApiResponse(response=DetailResponseSerializer, description="Application inactive (code application_inactive)"),
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
             404: OpenApiResponse(response=DetailResponseSerializer, description="Notification not found"),
             409: OpenApiResponse(
                 response=DetailResponseSerializer,
@@ -783,6 +853,9 @@ class NotificationSendApiView(APIView):
         },
     )
     def post(self, request, notification_id):
+        refus = subscription_required(request.user)
+        if refus is not None:
+            return refus
         owner_filter = {"application__owner": request.user}
 
         try:
@@ -800,7 +873,7 @@ class NotificationSendApiView(APIView):
         )
         if success:
             return Response(result, status=status.HTTP_202_ACCEPTED)
-        return Response(result, status=status.HTTP_409_CONFLICT if result["code"] != "notification_queue_unavailable" else status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(result, status=_queue_error_status(result["code"]))
 
 
 class NotificationSendNowApiView(APIView):
@@ -824,6 +897,7 @@ class NotificationSendNowApiView(APIView):
         request=NotificationCreateSerializer,
         responses={
             202: NotificationReadSerializer,
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
             400: OpenApiResponse(
                 response=NotificationCreateValidationErrorResponseSerializer,
                 description="Invalid data (or scheduled_for supplied — schedule via POST /notifications/)",
@@ -832,6 +906,9 @@ class NotificationSendNowApiView(APIView):
         },
     )
     def post(self, request):
+        refus = subscription_required(request.user)
+        if refus is not None:
+            return refus
         serializer = NotificationCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         if serializer.validated_data.get("scheduled_for") is not None:
@@ -847,12 +924,7 @@ class NotificationSendNowApiView(APIView):
             owner_filter={"application__owner": request.user} if not settings.DB_SUPPORTS_ROW_LOCKING else None,
         )
         if not success:
-            http_status = (
-                status.HTTP_503_SERVICE_UNAVAILABLE
-                if result["code"] == "notification_queue_unavailable"
-                else status.HTTP_409_CONFLICT
-            )
-            return Response(result, status=http_status)
+            return Response(result, status=_queue_error_status(result["code"]))
 
         read = NotificationReadSerializer(instance, context={"request": request})
         return Response(read.data, status=status.HTTP_202_ACCEPTED)
@@ -872,9 +944,13 @@ class NotificationBulkSendApiView(APIView):
         ),
         responses={
             200: OpenApiResponse(description="Bulk send result with queued and errors"),
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
         },
     )
     def post(self, request):
+        refus = subscription_required(request.user)
+        if refus is not None:
+            return refus
         request_serializer = BulkSendRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         notification_ids = request_serializer.validated_data["notification_ids"]
@@ -932,6 +1008,10 @@ class NotificationStatsApiView(APIView):
         queryset = Notification.objects.filter(application__owner=request.user)
         application_id = request.query_params.get("application_id")
         if application_id is not None:
+            try:
+                application_id = serializers.IntegerField().run_validation(application_id)
+            except serializers.ValidationError as exc:
+                raise serializers.ValidationError({"application_id": exc.detail})
             queryset = queryset.filter(application_id=application_id)
         stats = (
             queryset

@@ -248,7 +248,26 @@ The client should call `/api/v1/devices/identify/` again when:
 - notification permissions are reset;
 - the app wants to refresh `last_seen_at`.
 
-The identify endpoint is idempotent by `push_token`: it updates the existing device metadata and returns the current linked apps.
+The identify endpoint is idempotent by `push_token`: it updates the existing device metadata and returns the current linked apps. It also fully reactivates a device whose token had been invalidated (`push_token_status=active`, `is_active=true`, `invalidated_at=null`, `failure_count=0`).
+
+### FCM token rotation: `previous_push_token`
+
+When Firebase hands the app a **new** token, send the old one along so PushIT keeps the same device (its app links and its inbox history) instead of creating a new, unlinked one:
+
+```json
+{
+  "push_token": "new_fcm_registration_token",
+  "previous_push_token": "old_fcm_registration_token",
+  "platform": "android",
+  "device_name": "Samsung S24"
+}
+```
+
+Accepted by `POST /api/v1/devices/identify/` and `POST /api/v1/devices/link/` (optional, max 512 chars). Rules:
+
+- the previous token belongs to a device **of the authenticated user** → that device's `push_token` is replaced in place; same `device_id`, `device_created=false`;
+- unknown previous token, or a device of **another user** → silently ignored, normal behaviour on `push_token`;
+- a device row for the new token already exists (an older app version identified with it first) → the **old** device is kept and the new row is merged into it (links, deliveries, quiet periods), then deleted — unless that new row belongs to another user, in which case nothing is merged and the normal takeover applies.
 
 Call `/api/v1/devices/link/` only when the user provides a new `app_token` or explicitly wants to reconnect a previously inactive app link.
 
@@ -262,6 +281,8 @@ Device linking requires both:
 
 - a valid user JWT in `Authorization: Bearer ...`;
 - a valid app token in the JSON payload.
+
+Status codes: a missing/invalid **JWT** is `401`. With a valid JWT, a problem with the **enrolment code** (`app_token`) is `403` — never `401`, so a client never mistakes it for an expired session. The `code` values below are unchanged (since 2026-10-19; before, these were 401).
 
 `X-App-Token` is still used for server-to-server application endpoints such as:
 
@@ -282,6 +303,8 @@ Missing or invalid user JWT:
   "detail": "Authentication credentials were not provided."
 }
 ```
+
+Enrolment code refused — HTTP `403`, `code` one of `app_token_missing`, `app_token_invalid`, `app_token_invalid_format`, `app_token_inactive`, `app_token_revoked`.
 
 Missing app token:
 

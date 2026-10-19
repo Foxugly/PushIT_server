@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from applications.authentication import AppTokenAuthentication
 from applications.permissions import HasAppToken
 from applications.throttles import AppTokenRateThrottle
+from billing.service import subscription_required
 from config.api_errors import error_response
 from .api_views import device_ids_prefetch
 from .creation import create_notification_with_optional_idempotency
@@ -133,6 +134,7 @@ IDEMPOTENCY_KEY_MAX_LENGTH = Notification._meta.get_field("idempotency_key").max
                     )
                 ],
             ),
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
             401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
             403: OpenApiResponse(response=DetailResponseSerializer, description="Access denied"),
             409: OpenApiResponse(
@@ -168,6 +170,9 @@ class NotificationCreateWithAppTokenApiView(generics.GenericAPIView):
         return context
 
     def post(self, request, *args, **kwargs):
+        refus = subscription_required(request.auth_application.owner)
+        if refus is not None:
+            return refus
         write_serializer = self.get_serializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
 
@@ -252,6 +257,7 @@ class NotificationSendWithAppTokenApiView(generics.GenericAPIView):
         request=NotificationCreateWithAppTokenSerializer,
         responses={
             201: OpenApiResponse(response=NotificationReadSerializer, description="Notification created and queued"),
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
             200: OpenApiResponse(response=NotificationReadSerializer, description="Existing notification returned via idempotency"),
             400: OpenApiResponse(
                 response=NotificationCreateWithAppTokenValidationErrorResponseSerializer,
@@ -264,6 +270,9 @@ class NotificationSendWithAppTokenApiView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         from .api_views import _try_queue_notification
 
+        refus = subscription_required(request.auth_application.owner)
+        if refus is not None:
+            return refus
         write_serializer = self.get_serializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
         validated_data = write_serializer.validated_data
@@ -493,12 +502,16 @@ class NotificationBulkSendWithAppTokenApiView(APIView):
         ),
         responses={
             200: OpenApiResponse(description="Bulk send result with queued and errors"),
+            402: OpenApiResponse(response=DetailResponseSerializer, description="Owner subscription required (code subscription_required)"),
             401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
         },
     )
     def post(self, request):
         from .api_views import _try_queue_notification
 
+        refus = subscription_required(request.auth_application.owner)
+        if refus is not None:
+            return refus
         request_serializer = BulkSendRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         notification_ids = request_serializer.validated_data["notification_ids"]

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from applications.authentication import get_application_for_enrolment
-from .models import Device, DeviceApplicationLink, DeviceTokenStatus, UnlinkSource
+from .models import Device, DeviceApplicationLink, DeviceQuietPeriod, DeviceTokenStatus, UnlinkSource
 from .serializers import (
     DetailResponseSerializer,
     DeviceIdentifyResponseSerializer,
@@ -46,8 +46,90 @@ def _apply_device_fields(device, *, user, data):
     device.user = user
     device.device_name = data.get("device_name", "")
     device.platform = data.get("platform", "android")
+    # The app just proved this token is live: a device previously invalidated
+    # (FCM said "unregistered", or it was revoked) is fully reactivated, not
+    # left half-dead with is_active=False / a stale failure counter.
     device.push_token_status = DeviceTokenStatus.ACTIVE
+    device.is_active = True
+    device.invalidated_at = None
+    device.invalidation_reason = ""
+    device.failure_count = 0
     device.last_seen_at = timezone.now()
+
+
+_DEVICE_UPSERT_FIELDS = [
+    "user",
+    "device_name",
+    "platform",
+    "push_token_status",
+    "is_active",
+    "invalidated_at",
+    "invalidation_reason",
+    "failure_count",
+    "last_seen_at",
+]
+
+
+def _merge_device_into(source, target):
+    """Move `source`'s links, inbox history and quiet periods onto `target`,
+    then delete `source`. Both belong to the same user (checked by the caller).
+
+    A link to an application `target` already has is not duplicated: `target`'s
+    row wins, reactivated if only `source`'s was active. A delivery of a
+    notification `target` already has is dropped with `source`.
+    """
+    from notifications.models import NotificationDelivery
+
+    target_links = {link.application_id: link for link in target.application_links.all()}
+    for link in source.application_links.all():
+        existing = target_links.get(link.application_id)
+        if existing is None:
+            link.device = target
+            link.save(update_fields=["device"])
+        elif link.is_active and not existing.is_active:
+            existing.is_active = True
+            existing.unlinked_at = None
+            existing.unlink_source = ""
+            existing.save(update_fields=["is_active", "unlinked_at", "unlink_source"])
+
+    already = target.deliveries.values_list("notification_id", flat=True)
+    NotificationDelivery.objects.filter(device=source).exclude(notification_id__in=already).update(
+        device=target
+    )
+    DeviceQuietPeriod.objects.filter(device=source).update(device=target)
+    source.delete()
+
+
+def _rotate_push_token(*, user, data):
+    """FCM token rotation (`previous_push_token`). Returns the device or None.
+
+    Only a device that already belongs to the authenticated user is rotated —
+    a previous token that is unknown, unowned or another user's is ignored and
+    the caller falls back to the plain upsert. When a row for the new token
+    already exists (an older client identified with it first), the *old*
+    device is kept, because it carries the links and the inbox history the
+    user knows, and the new row is merged into it — unless that new row is
+    another user's device, which is never merged (plain upsert/takeover then).
+    """
+    previous = (data.get("previous_push_token") or "").strip()
+    push_token = data["push_token"]
+    if not previous or previous == push_token:
+        return None
+
+    old = _select_existing_device(previous)
+    if old is None or old.user_id != user.id:
+        return None
+
+    clash = _select_existing_device(push_token)
+    if clash is not None:
+        if clash.user_id not in (None, user.id):
+            return None
+        _merge_device_into(clash, old)
+
+    old.push_token = push_token
+    _apply_device_fields(old, user=user, data=data)
+    old.save(update_fields=["push_token", *_DEVICE_UPSERT_FIELDS])
+    return old
 
 
 def _upsert_authenticated_device(*, user, data):
@@ -57,18 +139,14 @@ def _upsert_authenticated_device(*, user, data):
     # without row locking (sqlite tests) we additionally guard the INSERT against
     # a concurrent creator via the unique push_token constraint.
     with transaction.atomic():
+        rotated = _rotate_push_token(user=user, data=data)
+        if rotated is not None:
+            return rotated, False
+
         device = _select_existing_device(push_token)
         if device is not None:
             _apply_device_fields(device, user=user, data=data)
-            device.save(
-                update_fields=[
-                    "user",
-                    "device_name",
-                    "platform",
-                    "push_token_status",
-                    "last_seen_at",
-                ]
-            )
+            device.save(update_fields=_DEVICE_UPSERT_FIELDS)
             return device, False
 
         device = Device(push_token=push_token)
@@ -84,15 +162,7 @@ def _upsert_authenticated_device(*, user, data):
             if device is None:  # pragma: no cover - lost row, should not happen
                 raise
             _apply_device_fields(device, user=user, data=data)
-            device.save(
-                update_fields=[
-                    "user",
-                    "device_name",
-                    "platform",
-                    "push_token_status",
-                    "last_seen_at",
-                ]
-            )
+            device.save(update_fields=_DEVICE_UPSERT_FIELDS)
             return device, False
 
 
@@ -127,7 +197,10 @@ def _serialize_linked_applications(device, request=None):
         summary="Identify an authenticated device",
         description=(
             "Creates or updates a device for the authenticated user from its push token "
-            "and returns the active applications already linked to that device."
+            "and returns the active applications already linked to that device. After "
+            "an FCM token rotation, send the old token as `previous_push_token`: if it "
+            "is one of the caller's devices, that device is updated in place (links and "
+            "inbox kept, same `device_id`). Unknown/foreign previous tokens are ignored."
         ),
         tags=["Devices"],
         auth=[{"BearerAuth": []}],
@@ -179,8 +252,15 @@ class DeviceIdentifyApiView(APIView):
                 response=DeviceLinkWithAppTokenValidationErrorResponseSerializer,
                 description="Invalid data",
             ),
-            401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
-            403: OpenApiResponse(response=DetailResponseSerializer, description="Access denied"),
+            401: OpenApiResponse(response=DetailResponseSerializer, description="Missing or invalid user JWT"),
+            403: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description=(
+                    "Enrolment code refused (valid JWT): code is one of app_token_missing, "
+                    "app_token_invalid, app_token_invalid_format, app_token_inactive, "
+                    "app_token_revoked"
+                ),
+            ),
         },
     )
 )
@@ -249,8 +329,15 @@ class DeviceLinkWithAppTokenApiView(APIView):
                 response=DeviceUnlinkWithAppTokenValidationErrorResponseSerializer,
                 description="Invalid data",
             ),
-            401: OpenApiResponse(response=DetailResponseSerializer, description="Invalid or missing app token"),
-            403: OpenApiResponse(response=DetailResponseSerializer, description="Access denied"),
+            401: OpenApiResponse(response=DetailResponseSerializer, description="Missing or invalid user JWT"),
+            403: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description=(
+                    "Enrolment code refused (valid JWT): code is one of app_token_missing, "
+                    "app_token_invalid, app_token_invalid_format, app_token_inactive, "
+                    "app_token_revoked"
+                ),
+            ),
         },
     )
 )

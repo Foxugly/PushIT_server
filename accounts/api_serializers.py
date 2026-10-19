@@ -13,7 +13,7 @@ from .refresh_cookie import PERSIST_CLAIM
 
 RegisterValidationErrorResponseSerializer = build_validation_error_serializer(
     "RegisterValidationErrorResponse",
-    ["email", "password"],
+    ["email", "password", "language"],
 )
 
 LoginValidationErrorResponseSerializer = build_validation_error_serializer(
@@ -71,10 +71,21 @@ class RegisterSerializer(serializers.ModelSerializer):
     turnstile_token = serializers.CharField(
         write_only=True, required=False, allow_blank=True
     )
+    # Optional UI language chosen before signing up (case-insensitive, one of
+    # UserLanguage). Omitted -> the model default (FR).
+    language = serializers.CharField(write_only=True, required=False, max_length=2)
 
     class Meta:
         model = User
-        fields = ["email", "password", "turnstile_token"]
+        fields = ["email", "password", "turnstile_token", "language"]
+
+    def validate_language(self, value):
+        code = value.strip().upper()
+        if code not in UserLanguage.values:
+            raise serializers.ValidationError(
+                f"Unsupported language. Choose one of: {', '.join(UserLanguage.values)}."
+            )
+        return code
 
     def validate_email(self, value):
         # Normalize only. We deliberately do NOT reject an already-registered
@@ -88,9 +99,13 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        extra = {}
+        if validated_data.get("language"):
+            extra["language"] = validated_data["language"]
         return User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
+            **extra,
         )
 
 
