@@ -339,6 +339,21 @@ tail -f /var/log/nginx/pushit-error.log
 sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh
 ```
 
+### Android APK download (2026-10-21)
+
+`GET /api/v1/devices/android-app/` (`devices/api_views_android_app.py`) serves the Android APK to any
+**signed-in** user (401 otherwise, 404 `android_app_not_found` when no file). The file is **not** in
+the repo or the app tree: root places it at `ANDROID_APK_PATH` (default
+`/var/lib/pushit/apk/pushit.apk`, dir `750 root:django`, file `640 root:django`). nginx buffers the
+response, so a slow phone does not hold a sync gunicorn worker. To publish a new build, from the PC:
+
+```bash
+scp -i <key> androidApp-debug.apk ubuntu@<box>:/tmp/pushit.apk
+ssh -i <key> ubuntu@<box> 'sudo install -o root -g django -m 640 /tmp/pushit.apk /var/lib/pushit/apk/pushit.apk && rm /tmp/pushit.apk'
+```
+
+The console shows the button on the Devices page (PushIT_frontend).
+
 ## Current Limitations
 
 - SQLite in dev/CI, PostgreSQL in prod (migrated 2026-06-02). CI tests run on SQLite, so the concurrency tests stay skipped there; the `SQLITE_TIMEOUT` busy-timeout setting only matters for SQLite (no-op on PostgreSQL).

@@ -2256,6 +2256,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Device not found
+  /api/v1/devices/android-app/:
+    get:
+      operationId: devices_android_app_download
+      description: |-
+        Serve the PushIT Android APK to a signed-in user.
+
+        The file is placed out-of-band by root (``settings.ANDROID_APK_PATH``),
+        outside the app tree, so it is never served without authentication.
+        nginx buffers the upstream response, so the sync worker is freed as soon
+        as the file has been handed to nginx, not when the phone has finished.
+      summary: Download the Android app (APK)
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/vnd.android.package-archive:
+              schema:
+                type: string
+                format: binary
+          description: The APK.
+        '404':
+          description: No APK is published.
   /api/v1/devices/identify/:
     post:
       operationId: api_v1_devices_identify_create
