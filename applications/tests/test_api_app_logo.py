@@ -120,3 +120,34 @@ def test_logo_upload_accepts_normal_image():
     )
     assert resp.status_code == 200
     assert resp.data["logo"]
+
+
+def _png_colored(rgb) -> SimpleUploadedFile:
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4), rgb).save(buf, format="PNG")
+    return SimpleUploadedFile("logo.png", buf.getvalue(), content_type="image/png")
+
+
+@override_settings(MEDIA_ROOT=_TMP_MEDIA)
+@pytest.mark.django_db
+def test_logo_url_follows_the_content_hash():
+    """Same image -> same URL; new image -> new URL and the old file is gone."""
+    client = APIClient()
+    user = User.objects.create_user(email="logo-hash@example.com", password="MotDePasseTresSolide123!")
+    app = Application.objects.create(owner=user, name="Hash")
+    _auth(client, user)
+    url = f"/api/v1/apps/{app.id}/logo/"
+
+    first = client.post(url, {"logo": _png_colored((1, 2, 3))}, format="multipart").data["logo"]
+    app.refresh_from_db()
+    first_name = app.logo.name
+    assert first_name.startswith(f"app_logo/{app.id}-") and first_name.endswith(".png")
+
+    again = client.post(url, {"logo": _png_colored((1, 2, 3))}, format="multipart").data["logo"]
+    assert again == first
+
+    other = client.post(url, {"logo": _png_colored((9, 9, 9))}, format="multipart").data["logo"]
+    assert other != first
+    app.refresh_from_db()
+    assert not app.logo.storage.exists(first_name)
+    assert app.logo.storage.exists(app.logo.name)
