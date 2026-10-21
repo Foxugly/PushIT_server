@@ -122,7 +122,7 @@ Quiet periods (one-time or recurring) can shift `scheduled_for` → `effective_s
 2. `inbound_sender_mode="owner"` (default): accepted if sender == owner's e-mail or matches `inbound_sender_allowlist`, else refused `not_allowed`;
 3. `inbound_sender_mode="anyone"`: accepted unless blocklisted;
 4. DMARC/anti-spoofing (`evaluate_sender_authentication`, enforced by `INBOUND_EMAIL_REQUIRE_DMARC`) runs on **every** accepted sender (owner, allowlisted, anyone) → refused `sender_not_authenticated`.
-List entries are `alice@x.com` (exact) or `@x.com` (whole domain, exact — subdomains not included), stored lowercase/deduped, ≤ 200 per list (validated by `ApplicationUpdateSerializer`). The notification belongs to the application (no author field on `Notification`): senders need no PushIT account, billing gates key on `application.owner`, and the real sender stays on `InboundEmailIngestionLog.sender`. On refusal the log row carries the application and the reason, and the owner is told per the app's flags: `inbound_rejection_notify_email` (default **on**; mail to the owner's account address; DMARC notices also muted by the global `INBOUND_EMAIL_DMARC_NOTIFY_OWNER=False`), `inbound_rejection_notify_push` (default off; direct system push via `send_push_to_device` to the owner's own active devices, `Device.user == owner`, data `type=inbound_email_rejected`, no `Notification` row), each rate-limited to one per owner per channel per `INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS`; sender is masked. `inbound_rejection_reply_to_sender` (default **off** — backscatter) replies with the RFC 3834 guard + per-sender rate limit (PushIT users get the "unknown address" reply, others a generic "not accepted"), and **never** for a DMARC failure (forged `From`). Unknown aliases (no app) keep the historical behaviour: known user → "unknown address" auto-reply, otherwise silent.
+List entries are `alice@x.com` (exact), `@x.com` (that domain only — subdomains not included) or `@*.x.com` (`x.com` **and** any subdomain, label boundary: not `badx.com`; `*` is refused anywhere else), stored lowercase/deduped, ≤ 200 per list (validated by `ApplicationUpdateSerializer`). The notification belongs to the application (no author field on `Notification`): senders need no PushIT account, billing gates key on `application.owner`, and the real sender stays on `InboundEmailIngestionLog.sender`. On refusal the log row carries the application and an `error_message` starting with a stable code — `sender_not_allowed:`, `sender_blocked:` or `dmarc_failed:` (`inbound_sender_policy.LOG_CODE_*`, don't rename) — which the owner reads via `GET apps/<id>/inbound-email-logs/` (50 newest rows of that app, newest first, bare array: `id, processed_at, status, sender, subject, error_message, notification_id`; other users 404); and the owner is told per the app's flags: `inbound_rejection_notify_email` (default **on**; mail to the owner's account address; DMARC notices also muted by the global `INBOUND_EMAIL_DMARC_NOTIFY_OWNER=False`), `inbound_rejection_notify_push` (default off; direct system push via `send_push_to_device` to the owner's own active devices, `Device.user == owner`, data `type=inbound_email_rejected`, no `Notification` row), each rate-limited to one per owner per channel per `INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS`; sender is masked. `inbound_rejection_reply_to_sender` (default **off** — backscatter) replies with the RFC 3834 guard + per-sender rate limit (PushIT users get the "unknown address" reply, others a generic "not accepted"), and **never** for a DMARC failure (forged `From`). Unknown aliases (no app) keep the historical behaviour: known user → "unknown address" auto-reply, otherwise silent.
 
 ### Sessions & admin access
 
@@ -352,11 +352,19 @@ sudo -u django /var/www/django_websites/PushIT_server/deploy/deploy.sh
 **signed-in** user (401 otherwise, 404 `android_app_not_found` when no file). The file is **not** in
 the repo or the app tree: root places it at `ANDROID_APK_PATH` (default
 `/var/lib/pushit/apk/pushit.apk`, dir `750 root:www-data`, file `640 root:www-data` — the `django` user is only in `www-data`, not in the `django` group). nginx buffers the
-response, so a slow phone does not hold a sync gunicorn worker. To publish a new build, from the PC:
+response, so a slow phone does not hold a sync gunicorn worker.
+
+`GET /api/v1/devices/android-app/version/` (signed-in) returns `{"version_code": int, "version_name": str, "size": int}`
+— `size` is the APK's byte size, the two others come from a JSON sidecar at `ANDROID_APK_META_PATH` (default
+`pushit.json` next to the APK: `/var/lib/pushit/apk/pushit.json`). 404 `android_app_not_found` when the APK or the
+sidecar is missing/invalid — **so always publish both together**. To publish a new build, from the PC (take
+`versionCode`/`versionName` from `androidApp/build.gradle.kts` of `PushIT_app`):
 
 ```bash
+printf '{"version_code": %d, "version_name": "%s"}\n' <versionCode> '<versionName>' > pushit.json
 scp -i <key> androidApp-debug.apk ubuntu@<box>:/tmp/pushit.apk
-ssh -i <key> ubuntu@<box> 'sudo install -o root -g www-data -m 640 /tmp/pushit.apk /var/lib/pushit/apk/pushit.apk && rm /tmp/pushit.apk'
+scp -i <key> pushit.json ubuntu@<box>:/tmp/pushit.json
+ssh -i <key> ubuntu@<box> 'sudo install -o root -g www-data -m 640 /tmp/pushit.apk /var/lib/pushit/apk/pushit.apk && sudo install -o root -g www-data -m 640 /tmp/pushit.json /var/lib/pushit/apk/pushit.json && rm /tmp/pushit.apk /tmp/pushit.json'
 ```
 
 The console shows the button on the Devices page (PushIT_frontend).

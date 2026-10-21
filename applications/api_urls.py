@@ -7,6 +7,7 @@ from .api_views_send_tokens import (
     WebhookSecretRevealApiView,
     WebhookSecretRotateApiView,
 )
+from notifications.api_views_inbound_logs import ApplicationInboundEmailLogListApiView
 from notifications.api_views_templates import (
     NotificationTemplateListCreateApiView,
     NotificationTemplateDetailApiView,
@@ -42,6 +43,7 @@ urlpatterns = [
     path("<int:app_id>/webhook-secret/rotate/", WebhookSecretRotateApiView.as_view(), name="app-webhook-secret-rotate"),
     path("<int:app_id>/quiet-periods/", ApplicationQuietPeriodListCreateApiView.as_view(), name="app-quiet-period-list-create"),
     path("<int:app_id>/quiet-periods/<int:quiet_period_id>/", ApplicationQuietPeriodDetailApiView.as_view(), name="app-quiet-period-detail"),
-    path("<int:app_id>/templates/", NotificationTemplateListCreateApiView.as_view(), name="app-template-list-create"),
+    path("<int:app_id>/inbound-email-logs/", ApplicationInboundEmailLogListApiView.as_view(), name="app-inbound-email-log-list"),
+    path("<int:app_id>/templates/",NotificationTemplateListCreateApiView.as_view(), name="app-template-list-create"),
     path("<int:app_id>/templates/<int:template_id>/", NotificationTemplateDetailApiView.as_view(), name="app-template-detail"),
 ]

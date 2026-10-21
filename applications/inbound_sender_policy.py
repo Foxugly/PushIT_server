@@ -10,8 +10,16 @@ An application's inbound alias accepts mail according to:
 but never blocks the owner's own address (the owner cannot lock themselves out
 by listing their own domain).
 
-List entries are either an exact address (``alice@example.com``) or a whole
-domain (``@example.com`` -- exact domain match, subdomains are NOT included).
+List entries are one of:
+
+- an exact address (``alice@example.com``);
+- a domain (``@example.com``) -- exact domain match, subdomains are NOT
+  included;
+- a wildcard domain (``@*.example.com``) -- the domain itself AND any of its
+  subdomains (``a@example.com``, ``a@mail.example.com``), never a look-alike
+  (``a@badexample.com``). ``*`` is only accepted as the whole first label,
+  right after the ``@``.
+
 They are stored lowercase, deduplicated, at most ``MAX_SENDER_LIST_ENTRIES``.
 
 This decides *policy* only. DMARC/anti-spoofing is evaluated afterwards on every
@@ -31,11 +39,29 @@ MODE_CHOICES = [(MODE_OWNER, "Owner (and allowlist) only"), (MODE_ANYONE, "Anyon
 
 MAX_SENDER_LIST_ENTRIES = 200
 MAX_SENDER_ENTRY_LENGTH = 254
+WILDCARD_DOMAIN_PREFIX = "@*."
 
 # Refusal reasons (journalled, shown to the owner in the notice).
 REASON_BLOCKLISTED = "blocklisted"
 REASON_NOT_ALLOWED = "not_allowed"
 REASON_NOT_AUTHENTICATED = "sender_not_authenticated"
+
+# Stable short codes put at the start of InboundEmailIngestionLog.error_message
+# for a policy/DMARC refusal ("<code>: <human text>"), shown to the owner by
+# GET /api/v1/apps/{id}/inbound-email-logs/. Do not rename: clients key on them.
+LOG_CODE_SENDER_NOT_ALLOWED = "sender_not_allowed"
+LOG_CODE_SENDER_BLOCKED = "sender_blocked"
+LOG_CODE_DMARC_FAILED = "dmarc_failed"
+_LOG_CODES = {
+    REASON_NOT_ALLOWED: LOG_CODE_SENDER_NOT_ALLOWED,
+    REASON_BLOCKLISTED: LOG_CODE_SENDER_BLOCKED,
+    REASON_NOT_AUTHENTICATED: LOG_CODE_DMARC_FAILED,
+}
+
+
+def log_code_for_rejection(reason: str) -> str:
+    """Map a REASON_* refusal to its stable journal code."""
+    return _LOG_CODES.get(reason, reason)
 
 # Acceptance reasons.
 ACCEPTED_OWNER = "owner"
@@ -51,7 +77,13 @@ def normalize_entry(raw: str) -> str:
     if len(entry) > MAX_SENDER_ENTRY_LENGTH:
         raise ValidationError(f"Entry is too long: {entry[:40]}...")
     if entry.startswith("@"):
-        domain = entry[1:]
+        if entry.startswith(WILDCARD_DOMAIN_PREFIX):
+            domain = entry[len(WILDCARD_DOMAIN_PREFIX):]
+        else:
+            domain = entry[1:]
+        # "*" is only valid as the whole first label ("@*.example.com").
+        if "*" in domain:
+            raise ValidationError(f"Invalid domain entry (wildcard only as '@*.domain'): {entry}")
         # Reuse Django's address validator on a probe local part to validate
         # the domain (no "@" inside, has a dot, valid labels).
         if not domain or "@" in domain:
@@ -61,6 +93,10 @@ def normalize_entry(raw: str) -> str:
         except ValidationError:
             raise ValidationError(f"Invalid domain entry: {entry}")
         return entry
+    if "*" in entry:
+        # validate_email accepts "*" in a local part; a wildcard address is
+        # never what the owner means.
+        raise ValidationError(f"Invalid e-mail address (wildcard only as '@*.domain'): {entry}")
     try:
         validate_email(entry)
     except ValidationError:
@@ -77,7 +113,7 @@ def normalize_entries(values) -> list[str]:
     if values is None:
         return []
     if not isinstance(values, (list, tuple)):
-        raise ValidationError("Expected a list of addresses or @domains.")
+        raise ValidationError("Expected a list of addresses, @domains or @*.domains.")
     result: list[str] = []
     seen: set[str] = set()
     errors: list[str] = []
@@ -100,15 +136,26 @@ def normalize_entries(values) -> list[str]:
 
 
 def sender_matches(sender: str, entries) -> bool:
-    """True when ``sender`` equals an address entry or its domain equals a
-    ``@domain`` entry (case-insensitive, exact domain)."""
+    """True when ``sender`` matches an entry (case-insensitive):
+
+    - ``alice@example.com``: that exact address;
+    - ``@example.com``: that exact domain (no subdomain);
+    - ``@*.example.com``: that domain or any subdomain of it, on a label
+      boundary (``badexample.com`` does not match).
+    """
     sender = (sender or "").strip().lower()
     if "@" not in sender:
         return False
-    domain = "@" + sender.rpartition("@")[2]
+    sender_domain = sender.rpartition("@")[2]
+    if not sender_domain:
+        return False
     for entry in entries or ():
         entry = str(entry).strip().lower()
-        if entry == sender or entry == domain:
+        if entry.startswith(WILDCARD_DOMAIN_PREFIX):
+            base = entry[len(WILDCARD_DOMAIN_PREFIX):]
+            if base and (sender_domain == base or sender_domain.endswith("." + base)):
+                return True
+        elif entry == sender or entry == "@" + sender_domain:
             return True
     return False
 

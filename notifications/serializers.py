@@ -17,7 +17,15 @@ from config.api_errors import (
 from devices.models import Device, DeviceTokenStatus
 from .inbound_auth import evaluate_sender_authentication
 from .inbound_email import extract_subject_schedule
-from .models import DeliveryStatus, Notification, NotificationDelivery, NotificationStatus, NotificationTemplate
+from .models import (
+    DeliveryStatus,
+    InboundEmailIngestionLog,
+    InboundEmailIngestionStatus,
+    Notification,
+    NotificationDelivery,
+    NotificationStatus,
+    NotificationTemplate,
+)
 from .scheduling import compute_effective_scheduled_for
 
 logger = logging.getLogger("pushit")
@@ -734,3 +742,28 @@ def bulk_send_ids_field():
 
 class BulkSendRequestSerializer(serializers.Serializer):
     notification_ids = bulk_send_ids_field()
+
+
+INBOUND_EMAIL_LOG_ERROR_MESSAGE_HELP = (
+    "Empty when the mail was accepted. For a refusal by the application's sender "
+    "policy or anti-spoofing check, it starts with a stable reason code, then `: ` "
+    "and a human-readable text: "
+    f"`{inbound_sender_policy.LOG_CODE_SENDER_NOT_ALLOWED}` (`owner` mode: sender is "
+    "neither the owner nor on the allowlist), "
+    f"`{inbound_sender_policy.LOG_CODE_SENDER_BLOCKED}` (sender is on the blocklist), "
+    f"`{inbound_sender_policy.LOG_CODE_DMARC_FAILED}` (sender failed SPF/DKIM/DMARC "
+    "authentication). Other statuses (`conflict`, `error`) carry a free-text message."
+)
+
+
+class InboundEmailIngestionLogSerializer(serializers.ModelSerializer):
+    status = serializers.ChoiceField(choices=InboundEmailIngestionStatus.choices, read_only=True)
+    error_message = serializers.CharField(read_only=True, help_text=INBOUND_EMAIL_LOG_ERROR_MESSAGE_HELP)
+    notification_id = serializers.IntegerField(
+        read_only=True, allow_null=True, help_text="Notification created from this mail, if any."
+    )
+
+    class Meta:
+        model = InboundEmailIngestionLog
+        fields = ["id", "processed_at", "status", "sender", "subject", "error_message", "notification_id"]
+        read_only_fields = fields

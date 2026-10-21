@@ -103,10 +103,10 @@ def test_stranger_is_refused_in_owner_mode(make_app, mailbox):
     assert Notification.objects.count() == 0
     log = _log()
     assert log.application_id == app.id
-    assert "not_allowed" in log.error_message
+    assert log.error_message.startswith("sender_not_allowed: ")
 
 
-@pytest.mark.parametrize("entry", ["ally@partner.io", "@partner.io"])
+@pytest.mark.parametrize("entry", ["ally@partner.io", "@partner.io", "@*.partner.io"])
 @override_settings(**GRAPH)
 def test_allowlisted_non_user_is_accepted_and_journalled(make_app, mailbox, entry):
     app = make_app(inbound_sender_allowlist=[entry])
@@ -129,7 +129,7 @@ def test_allowlisted_sender_must_pass_dmarc(make_app, mailbox):
 
     assert poll_inbound_mailbox()["rejected_count"] == 1
     assert Notification.objects.count() == 0
-    assert "DMARC" in _log().error_message
+    assert _log().error_message.startswith("dmarc_failed: ")
     mailbox.send_email.assert_called_once()
     assert "not authenticated" in mailbox.send_email.call_args.kwargs["subject"]
 
@@ -146,7 +146,7 @@ def test_anyone_mode_still_enforces_dmarc(make_app, mailbox):
     app = make_app(inbound_sender_mode="anyone")
     mailbox.fetch.return_value = [_mail(app, "random@else.org", auth="fail")]
     assert poll_inbound_mailbox()["rejected_count"] == 1
-    assert "DMARC" in _log().error_message
+    assert _log().error_message.startswith("dmarc_failed: ")
 
 
 @override_settings(**{**GRAPH, "INBOUND_EMAIL_REQUIRE_DMARC": False})
@@ -161,7 +161,7 @@ def test_blocklist_refuses_in_anyone_mode(make_app, mailbox):
     app = make_app(inbound_sender_mode="anyone", inbound_sender_blocklist=["@else.org"])
     mailbox.fetch.return_value = [_mail(app, "random@else.org")]
     assert poll_inbound_mailbox()["rejected_count"] == 1
-    assert "blocklisted" in _log().error_message
+    assert _log().error_message.startswith("sender_blocked: ")
 
 
 @override_settings(**GRAPH)
@@ -169,7 +169,7 @@ def test_blocklist_wins_over_allowlist(make_app, mailbox):
     app = make_app(inbound_sender_allowlist=["@partner.io"], inbound_sender_blocklist=["bad@partner.io"])
     mailbox.fetch.return_value = [_mail(app, "bad@partner.io")]
     assert poll_inbound_mailbox()["rejected_count"] == 1
-    assert "blocklisted" in _log().error_message
+    assert _log().error_message.startswith("sender_blocked: ")
 
 
 @override_settings(**GRAPH)

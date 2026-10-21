@@ -59,6 +59,9 @@ MAGIC_LINK_TTL_MINUTES = env.int("MAGIC_LINK_TTL_MINUTES", default=15)
 # Android APK offered to signed-in users (GET /api/v1/devices/android-app/).
 # Lives outside the app tree, placed by root on the box; absent -> 404.
 ANDROID_APK_PATH = Path(env("ANDROID_APK_PATH", default="/var/lib/pushit/apk/pushit.apk"))
+# JSON sidecar {"version_code": N, "version_name": "x.y.z"} describing that APK
+# (GET /api/v1/devices/android-app/version/). Defaults to pushit.json next to it.
+ANDROID_APK_META_PATH = Path(env("ANDROID_APK_META_PATH", default=str(ANDROID_APK_PATH.with_name("pushit.json"))))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
