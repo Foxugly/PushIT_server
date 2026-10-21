@@ -7,7 +7,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.models import User
-from applications import inbound_alias
+from applications import inbound_alias, inbound_sender_policy
 from applications.models import Application
 from config.logging_utils import mask_email
 from config.api_errors import (
@@ -532,19 +532,40 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         if application is None:
             errors.setdefault("recipient", []).append("No application matches this email address.")
 
+        # Who may send to this alias is the application's policy (see
+        # applications/inbound_sender_policy.py). Without an application, keep
+        # the historical "known user?" check: it drives the unknown-address
+        # auto-reply in the poller.
         user = User.objects.filter(email=sender).first()
-        if user is None:
-            errors.setdefault("sender", []).append("No user matches this email address.")
-        elif application is not None and application.owner_id != user.id:
-            errors.setdefault("sender", []).append(
-                "Sender must match the owner of the target application."
-            )
-
-        # Anti-spoofing enforcement. Only evaluated when we would otherwise trust
-        # this sender (a known user who passed the owner check), so it can never
-        # *grant* access — only deny a forged `From`.
+        policy = None
+        self.context["inbound_rejection"] = None
         self.context["sender_auth_rejection"] = None
-        if user is not None and "sender" not in errors:
+        if application is None:
+            if user is None:
+                errors.setdefault("sender", []).append("No user matches this email address.")
+        else:
+            policy = inbound_sender_policy.evaluate_sender_policy(application, sender)
+            if not policy.accepted:
+                errors.setdefault("sender", []).append(
+                    "Sender is blocked for this application."
+                    if policy.reason == inbound_sender_policy.REASON_BLOCKLISTED
+                    else "Sender is not allowed to send to this application."
+                )
+                self.context["inbound_rejection"] = policy.reason
+                self.context["application"] = application
+                logger.info(
+                    "inbound_email_sender_refused",
+                    extra={
+                        "sender": mask_email(sender),
+                        "application_id": application.id,
+                        "reason": policy.reason,
+                    },
+                )
+
+        # Anti-spoofing enforcement. Evaluated on EVERY sender the policy
+        # accepts (owner, allowlisted, or anyone), so it can never *grant*
+        # access -- only deny a forged `From`.
+        if policy is not None and policy.accepted:
             sender_domain = sender.rpartition("@")[2]
             auth_results = attrs.get("authentication_results", "")
             verdict = evaluate_sender_authentication(
@@ -557,13 +578,14 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
                     "auth_reason": verdict.reason,
                     "dmarc_verdict": verdict.dmarc_verdict,
                     "has_auth_results": bool(auth_results),
+                    "policy": policy.reason,
                 }
                 if getattr(settings, "INBOUND_EMAIL_REQUIRE_DMARC", False):
                     errors.setdefault("sender", []).append(
                         "Sender failed DMARC authentication."
                     )
                     self.context["sender_auth_rejection"] = verdict
-                    self.context["user"] = user
+                    self.context["inbound_rejection"] = inbound_sender_policy.REASON_NOT_AUTHENTICATED
                     self.context["application"] = application
                     logger.warning("inbound_email_dmarc_rejected", extra=log_extra)
                 else:
@@ -574,7 +596,12 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
         if errors:
             raise serializers.ValidationError(errors)
 
-        self.context["user"] = user
+        # The notification is authored by the application owner whoever the
+        # sender is (allowlisted / "anyone" senders need no PushIT account);
+        # billing/quota gates key on the owner. The real sender is kept on the
+        # InboundEmailIngestionLog row.
+        self.context["user"] = application.owner
+        self.context["sender_policy"] = policy.reason
         self.context["normalized_sender"] = sender
         self.context["application"] = application
         self.context["normalized_recipient"] = recipient

@@ -150,7 +150,9 @@ paths:
           description: Application not found
     patch:
       operationId: api_v1_apps_partial_update
-      description: Partially updates the name or description of an application.
+      description: 'Partially updates an application: name, description, webhook URL,
+        and the inbound e-mail sender policy (inbound_sender_mode owner|anyone, allow/block
+        lists of addresses or @domains, refusal notification flags).'
       summary: Update an application
       parameters:
       - in: path
@@ -4126,6 +4128,29 @@ components:
         webhook_url:
           type: string
           readOnly: true
+        inbound_sender_mode:
+          allOf:
+          - $ref: '#/components/schemas/InboundSenderModeEnum'
+          readOnly: true
+        inbound_sender_allowlist:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        inbound_sender_blocklist:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        inbound_rejection_notify_email:
+          type: boolean
+          readOnly: true
+        inbound_rejection_notify_push:
+          type: boolean
+          readOnly: true
+        inbound_rejection_reply_to_sender:
+          type: boolean
+          readOnly: true
         logo:
           type: string
           format: uri
@@ -4151,6 +4176,12 @@ components:
       - id
       - inbound_email_address
       - inbound_email_alias
+      - inbound_rejection_notify_email
+      - inbound_rejection_notify_push
+      - inbound_rejection_reply_to_sender
+      - inbound_sender_allowlist
+      - inbound_sender_blocklist
+      - inbound_sender_mode
       - logo
       - name
       - webhook_url
@@ -4213,6 +4244,22 @@ components:
           items:
             type: string
         description:
+          type: array
+          items:
+            type: string
+        webhook_url:
+          type: array
+          items:
+            type: string
+        inbound_sender_mode:
+          type: array
+          items:
+            type: string
+        inbound_sender_allowlist:
+          type: array
+          items:
+            type: string
+        inbound_sender_blocklist:
           type: array
           items:
             type: string
@@ -4987,6 +5034,14 @@ components:
       - check
       - service
       - status
+    InboundSenderModeEnum:
+      enum:
+      - owner
+      - anyone
+      type: string
+      description: |-
+        * `owner` - Owner (and allowlist) only
+        * `anyone` - Anyone
     LanguageEnum:
       enum:
       - FR
@@ -5955,6 +6010,22 @@ components:
           type: string
           format: uri
           maxLength: 500
+        inbound_sender_mode:
+          $ref: '#/components/schemas/InboundSenderModeEnum'
+        inbound_sender_allowlist:
+          type: array
+          items:
+            type: string
+        inbound_sender_blocklist:
+          type: array
+          items:
+            type: string
+        inbound_rejection_notify_email:
+          type: boolean
+        inbound_rejection_notify_push:
+          type: boolean
+        inbound_rejection_reply_to_sender:
+          type: boolean
     PatchedDeviceQuietPeriodWriteRequest:
       type: object
       description: Shared validation, normalization, and update logic for quiet period

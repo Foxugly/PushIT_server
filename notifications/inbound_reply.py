@@ -107,3 +107,26 @@ def send_unknown_address_reply(sender_email: str, tried_recipient: str) -> None:
             "inbound_email_unknown_address_reply_sent",
             extra={"sender": mask_email(sender_email), "recipient": mask_email(tried_recipient)},
         )
+
+
+def build_rejected_sender_reply(sender_email: str, tried_recipient: str) -> tuple[str, str]:
+    """Reply to a sender refused by an application's inbound policy (only when
+    the owner opted in with ``inbound_rejection_reply_to_sender``). Says no
+    more than "not accepted": no reason, no list of who is allowed."""
+    body = "\n".join([
+        f"Your e-mail to {tried_recipient} was not accepted.",
+        "",
+        "This address only accepts messages from senders authorized by its owner.",
+        "No notification was sent. If you think this is a mistake, contact the",
+        "person who gave you this address.",
+    ])
+    return "Undeliverable: sender not authorized", body
+
+
+def send_rejected_sender_reply(sender_email: str, tried_recipient: str) -> None:
+    subject, body = build_rejected_sender_reply(sender_email, tried_recipient)
+    send_email(to=sender_email, subject=subject, body=body)
+    logger.info(
+        "inbound_email_rejected_sender_reply_sent",
+        extra={"sender": mask_email(sender_email), "recipient": mask_email(tried_recipient)},
+    )

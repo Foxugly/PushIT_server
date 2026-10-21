@@ -6,6 +6,9 @@ from config.api_errors import (
     ErrorResponseSerializer as DetailResponseSerializer,
     build_validation_error_serializer,
 )
+from django.core.exceptions import ValidationError as DjangoValidationError
+
+from . import inbound_sender_policy
 from .models import Application, ApplicationQuietPeriod, QuietPeriodType
 
 
@@ -31,8 +34,18 @@ ApplicationCreateValidationErrorResponseSerializer = build_validation_error_seri
 
 ApplicationUpdateValidationErrorResponseSerializer = build_validation_error_serializer(
     "ApplicationUpdateValidationErrorResponse",
-    ["name", "description"],
+    ["name", "description", "webhook_url", "inbound_sender_mode", "inbound_sender_allowlist", "inbound_sender_blocklist"],
 )
+
+# Inbound e-mail sender policy fields, shared by the read and update serializers.
+INBOUND_SENDER_POLICY_FIELDS = [
+    "inbound_sender_mode",
+    "inbound_sender_allowlist",
+    "inbound_sender_blocklist",
+    "inbound_rejection_notify_email",
+    "inbound_rejection_notify_push",
+    "inbound_rejection_reply_to_sender",
+]
 
 ApplicationTokenRegenerateResponseSerializer = inline_serializer(
     name="ApplicationTokenRegenerateResponse",
@@ -89,6 +102,8 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
     # Always serialized (empty string when unset, never null) — declare it
     # read-only so the schema marks it required + non-nullable, matching reality.
     webhook_url = serializers.CharField(read_only=True, allow_blank=True)
+    inbound_sender_allowlist = serializers.ListField(child=serializers.CharField(), read_only=True)
+    inbound_sender_blocklist = serializers.ListField(child=serializers.CharField(), read_only=True)
 
     class Meta:
         model = Application
@@ -109,12 +124,15 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
             "inbound_email_alias",
             "inbound_email_address",
             "webhook_url",
+            *INBOUND_SENDER_POLICY_FIELDS,
             "logo",
             "is_active",
             "revoked_at",
             "last_used_at",
             "created_at",
         ]
+        # Read-only here so the schema marks them required (always serialized).
+        read_only_fields = INBOUND_SENDER_POLICY_FIELDS
 
 
 class ApplicationLogoUploadSerializer(serializers.Serializer):
@@ -211,9 +229,33 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
 
 
 class ApplicationUpdateSerializer(serializers.ModelSerializer):
+    # Entries: "alice@example.com" (exact address) or "@example.com" (whole
+    # domain). Lowercased, deduplicated, at most MAX_SENDER_LIST_ENTRIES.
+    inbound_sender_allowlist = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, trim_whitespace=True),
+        required=False,
+    )
+    inbound_sender_blocklist = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, trim_whitespace=True),
+        required=False,
+    )
+
     class Meta:
         model = Application
-        fields = ["name", "description", "webhook_url"]
+        fields = ["name", "description", "webhook_url", *INBOUND_SENDER_POLICY_FIELDS]
+
+    @staticmethod
+    def _normalize_sender_list(value):
+        try:
+            return inbound_sender_policy.normalize_entries(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
+
+    def validate_inbound_sender_allowlist(self, value):
+        return self._normalize_sender_list(value)
+
+    def validate_inbound_sender_blocklist(self, value):
+        return self._normalize_sender_list(value)
 
 
 class ApplicationQuietPeriodReadSerializer(serializers.ModelSerializer):
