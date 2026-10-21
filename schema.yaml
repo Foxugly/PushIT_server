@@ -152,7 +152,8 @@ paths:
       operationId: api_v1_apps_partial_update
       description: 'Partially updates an application: name, description, webhook URL,
         and the inbound e-mail sender policy (inbound_sender_mode owner|anyone, allow/block
-        lists of addresses or @domains, refusal notification flags).'
+        lists of addresses, @domains or @*.domains — the latter also matching subdomains
+        — and refusal notification flags).'
       summary: Update an application
       parameters:
       - in: path
@@ -338,6 +339,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Application not found, or this device is not one of its subscribers
+  /api/v1/apps/{app_id}/inbound-email-logs/:
+    get:
+      operationId: apps_inbound_email_logs_list
+      description: Returns the 50 most recent inbound e-mails processed for an application
+        owned by the authenticated user, newest first, as a bare array (no pagination).
+        A refused mail has `status=rejected` and an `error_message` starting with
+        a stable reason code (`sender_not_allowed`, `sender_blocked`, `dmarc_failed`).
+        Mail that matched no application is not listed here.
+      summary: Inbound e-mail journal
+      parameters:
+      - in: path
+        name: app_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Applications
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InboundEmailIngestionLog'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Application not found
   /api/v1/apps/{app_id}/logo/:
     post:
       operationId: api_v1_apps_logo_create
@@ -2283,6 +2318,30 @@ paths:
           description: The APK.
         '404':
           description: No APK is published.
+  /api/v1/devices/android-app/version/:
+    get:
+      operationId: devices_android_app_version
+      description: Returns the `versionCode` / `versionName` and size (bytes) of the
+        APK served by `GET /api/v1/devices/android-app/`. 404 `android_app_not_found`
+        when the APK or its metadata is missing or invalid.
+      summary: Version of the published Android app
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AndroidAppVersion'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: No APK is published.
   /api/v1/devices/identify/:
     post:
       operationId: api_v1_devices_identify_create
@@ -3792,6 +3851,22 @@ components:
       - checks
       - metrics
       - status
+    AndroidAppVersion:
+      type: object
+      properties:
+        version_code:
+          type: integer
+          description: Android `versionCode` of the published APK.
+        version_name:
+          type: string
+          description: Android `versionName` of the published APK, e.g. `1.4.2`.
+        size:
+          type: integer
+          description: APK size in bytes.
+      required:
+      - size
+      - version_code
+      - version_name
     ApplicationActivationResponse:
       type: object
       properties:
@@ -4137,11 +4212,19 @@ components:
           items:
             type: string
           readOnly: true
+          description: 'Entries: `alice@example.com` (exact address), `@example.com`
+            (that domain only, no subdomain) or `@*.example.com` (that domain and
+            any subdomain, e.g. `a@mail.example.com`; never `a@badexample.com`). `*`
+            is accepted only as `@*.`. Lowercased, deduplicated, at most 200 entries.'
         inbound_sender_blocklist:
           type: array
           items:
             type: string
           readOnly: true
+          description: 'Entries: `alice@example.com` (exact address), `@example.com`
+            (that domain only, no subdomain) or `@*.example.com` (that domain and
+            any subdomain, e.g. `a@mail.example.com`; never `a@badexample.com`). `*`
+            is accepted only as `@*.`. Lowercased, deduplicated, at most 200 entries.'
         inbound_rejection_notify_email:
           type: boolean
           readOnly: true
@@ -5034,6 +5117,63 @@ components:
       - check
       - service
       - status
+    InboundEmailIngestionLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        processed_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/InboundEmailIngestionLogStatusEnum'
+          readOnly: true
+        sender:
+          type: string
+          format: email
+          readOnly: true
+        subject:
+          type: string
+          readOnly: true
+        error_message:
+          type: string
+          readOnly: true
+          description: 'Empty when the mail was accepted. For a refusal by the application''s
+            sender policy or anti-spoofing check, it starts with a stable reason code,
+            then `: ` and a human-readable text: `sender_not_allowed` (`owner` mode:
+            sender is neither the owner nor on the allowlist), `sender_blocked` (sender
+            is on the blocklist), `dmarc_failed` (sender failed SPF/DKIM/DMARC authentication).
+            Other statuses (`conflict`, `error`) carry a free-text message.'
+        notification_id:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Notification created from this mail, if any.
+      required:
+      - error_message
+      - id
+      - notification_id
+      - processed_at
+      - sender
+      - status
+      - subject
+    InboundEmailIngestionLogStatusEnum:
+      enum:
+      - created
+      - existing
+      - rejected
+      - conflict
+      - error
+      type: string
+      description: |-
+        * `created` - Created
+        * `existing` - Existing
+        * `rejected` - Rejected
+        * `conflict` - Conflict
+        * `error` - Error
     InboundSenderModeEnum:
       enum:
       - owner
@@ -6016,10 +6156,19 @@ components:
           type: array
           items:
             type: string
+          description: 'Senders accepted in `owner` mode. Entries: `alice@example.com`
+            (exact address), `@example.com` (that domain only, no subdomain) or `@*.example.com`
+            (that domain and any subdomain, e.g. `a@mail.example.com`; never `a@badexample.com`).
+            `*` is accepted only as `@*.`. Lowercased, deduplicated, at most 200 entries.'
         inbound_sender_blocklist:
           type: array
           items:
             type: string
+          description: 'Senders always refused (never the owner''s own address). Entries:
+            `alice@example.com` (exact address), `@example.com` (that domain only,
+            no subdomain) or `@*.example.com` (that domain and any subdomain, e.g.
+            `a@mail.example.com`; never `a@badexample.com`). `*` is accepted only
+            as `@*.`. Lowercased, deduplicated, at most 200 entries.'
         inbound_rejection_notify_email:
           type: boolean
         inbound_rejection_notify_push:

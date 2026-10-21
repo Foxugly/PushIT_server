@@ -224,10 +224,14 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
             # notification; the owner is told per the application's flags.
             application = serializer.context.get("application")
             verdict = serializer.context.get("sender_auth_rejection")
+            # "<stable code>: <human text>" -- the code (sender_not_allowed /
+            # sender_blocked / dmarc_failed) is what the owner's journal
+            # endpoint documents and clients may key on.
+            code = inbound_sender_policy.log_code_for_rejection(rejection)
             if verdict is not None:
-                error_message = f"Sender failed DMARC authentication ({verdict.reason})."
+                error_message = f"{code}: Sender failed DMARC authentication ({verdict.reason})."
             else:
-                error_message = f"Sender refused by the application's inbound policy ({rejection})."
+                error_message = f"{code}: Sender refused by the application's inbound policy ({rejection})."
             record_inbound_email_ingestion(
                 source=InboundEmailSource.POLLING,
                 status=InboundEmailIngestionStatus.REJECTED,

@@ -118,7 +118,8 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
         description=(
             "Partially updates an application: name, description, webhook URL, and the "
             "inbound e-mail sender policy (inbound_sender_mode owner|anyone, allow/block lists "
-            "of addresses or @domains, refusal notification flags)."
+            "of addresses, @domains or @*.domains — the latter also matching subdomains — "
+            "and refusal notification flags)."
         ),
         tags=["Applications"],
         auth=[{"BearerAuth": []}],

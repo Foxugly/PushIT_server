@@ -29,6 +29,31 @@ def test_invalid_entries_are_refused(bad):
         policy.normalize_entries([bad])
 
 
+def test_wildcard_domain_entry_is_lowercased_and_kept():
+    assert policy.normalize_entries([" @*.Exemple.COM ", "@exemple.com"]) == ["@*.exemple.com", "@exemple.com"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "@*",
+        "@*.",
+        "@*.nodot",
+        "@*.*.exemple.com",
+        "@mail.*.exemple.com",
+        "@*exemple.com",
+        "@exemple.*",
+        "*@exemple.com",
+        "a*b@exemple.com",
+        "*.exemple.com",
+        "@*.exemple.com@x.io",
+    ],
+)
+def test_misplaced_wildcards_are_refused(bad):
+    with pytest.raises(ValidationError):
+        policy.normalize_entry(bad)
+
+
 def test_list_is_capped():
     entries = [f"user{i}@example.com" for i in range(policy.MAX_SENDER_LIST_ENTRIES)]
     assert len(policy.normalize_entries(entries)) == policy.MAX_SENDER_LIST_ENTRIES
@@ -52,6 +77,16 @@ def test_non_list_is_refused():
         ("bob@example.com", ["alice@example.com"], False),
         ("bob@example.com", [], False),
         ("garbage", ["@example.com"], False),
+        # wildcard domain: the domain itself and any subdomain, label boundary
+        ("a@exemple.com", ["@*.exemple.com"], True),
+        ("a@mail.exemple.com", ["@*.exemple.com"], True),
+        ("a@deep.mail.exemple.com", ["@*.exemple.com"], True),
+        ("A@Mail.Exemple.COM", ["@*.exemple.com"], True),
+        ("a@badexemple.com", ["@*.exemple.com"], False),
+        ("a@exemple.com.evil.io", ["@*.exemple.com"], False),
+        ("a@exemple.org", ["@*.exemple.com"], False),
+        ("garbage", ["@*.exemple.com"], False),
+        ("a@", ["@*.exemple.com"], False),
     ],
 )
 def test_sender_matches(sender, entries, expected):
@@ -82,6 +117,17 @@ def _app(**fields):
             False,
             policy.REASON_BLOCKLISTED,
         ),
+        # wildcard domains, in both lists
+        ({"inbound_sender_allowlist": ["@*.partner.io"]}, "a@mail.partner.io", True, policy.ACCEPTED_ALLOWLIST),
+        ({"inbound_sender_allowlist": ["@*.partner.io"]}, "a@partner.io", True, policy.ACCEPTED_ALLOWLIST),
+        ({"inbound_sender_allowlist": ["@*.partner.io"]}, "a@badpartner.io", False, policy.REASON_NOT_ALLOWED),
+        (
+            {"inbound_sender_allowlist": ["@*.partner.io"], "inbound_sender_blocklist": ["@*.spam.partner.io"]},
+            "x@eu.spam.partner.io",
+            False,
+            policy.REASON_BLOCKLISTED,
+        ),
+        ({"inbound_sender_blocklist": ["@*.example.com"]}, "owner@example.com", True, policy.ACCEPTED_OWNER),
         # ...but never blocks the owner's own address.
         ({"inbound_sender_blocklist": ["@example.com"]}, "owner@example.com", True, policy.ACCEPTED_OWNER),
         # anyone mode
@@ -138,7 +184,7 @@ def test_patch_updates_and_normalizes_the_policy(api):
         f"/api/v1/apps/{app.id}/",
         {
             "inbound_sender_mode": "anyone",
-            "inbound_sender_allowlist": ["Ally@Partner.io", "@corp.io", "ally@partner.io"],
+            "inbound_sender_allowlist": ["Ally@Partner.io", "@corp.io", "ally@partner.io", "@*.Group.io"],
             "inbound_sender_blocklist": ["@SPAM.example"],
             "inbound_rejection_notify_email": False,
             "inbound_rejection_notify_push": True,
@@ -148,12 +194,12 @@ def test_patch_updates_and_normalizes_the_policy(api):
     )
     assert response.status_code == 200, response.data
     assert response.data["inbound_sender_mode"] == "anyone"
-    assert response.data["inbound_sender_allowlist"] == ["ally@partner.io", "@corp.io"]
+    assert response.data["inbound_sender_allowlist"] == ["ally@partner.io", "@corp.io", "@*.group.io"]
     assert response.data["inbound_sender_blocklist"] == ["@spam.example"]
 
     app.refresh_from_db()
     assert app.inbound_sender_mode == "anyone"
-    assert app.inbound_sender_allowlist == ["ally@partner.io", "@corp.io"]
+    assert app.inbound_sender_allowlist == ["ally@partner.io", "@corp.io", "@*.group.io"]
     assert app.inbound_sender_blocklist == ["@spam.example"]
     assert app.inbound_rejection_notify_email is False
     assert app.inbound_rejection_notify_push is True
@@ -175,6 +221,7 @@ def test_patch_leaves_unsent_policy_fields_untouched(api):
     [
         ({"inbound_sender_allowlist": ["not-an-address"]}, "inbound_sender_allowlist"),
         ({"inbound_sender_blocklist": ["@nodot"]}, "inbound_sender_blocklist"),
+        ({"inbound_sender_allowlist": ["@mail.*.exemple.com"]}, "inbound_sender_allowlist"),
         ({"inbound_sender_allowlist": [f"u{i}@example.com" for i in range(201)]}, "inbound_sender_allowlist"),
         ({"inbound_sender_mode": "everyone"}, "inbound_sender_mode"),
     ],

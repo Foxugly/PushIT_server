@@ -6,7 +6,7 @@ from .api_views import (
     DeviceQuietPeriodDetailApiView,
     DeviceQuietPeriodListCreateApiView,
 )
-from .api_views_android_app import AndroidAppDownloadApiView
+from .api_views_android_app import AndroidAppDownloadApiView, AndroidAppVersionApiView
 from .api_views_app_token import (
     DeviceIdentifyApiView,
     DeviceLinkWithAppTokenApiView,
@@ -21,6 +21,7 @@ urlpatterns = [
     path("<int:device_id>/quiet-periods/", DeviceQuietPeriodListCreateApiView.as_view(), name="device-quiet-period-list-create"),
     path("<int:device_id>/quiet-periods/<int:quiet_period_id>/", DeviceQuietPeriodDetailApiView.as_view(), name="device-quiet-period-detail"),
     path("android-app/", AndroidAppDownloadApiView.as_view(), name="device-android-app"),
+    path("android-app/version/", AndroidAppVersionApiView.as_view(), name="device-android-app-version"),
     path("identify/", DeviceIdentifyApiView.as_view(), name="device-identify"),
     path("link/", DeviceLinkWithAppTokenApiView.as_view(), name="device-link"),
     path("unlink/", DeviceUnlinkWithAppTokenApiView.as_view(), name="device-unlink"),

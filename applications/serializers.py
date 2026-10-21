@@ -47,6 +47,13 @@ INBOUND_SENDER_POLICY_FIELDS = [
     "inbound_rejection_reply_to_sender",
 ]
 
+SENDER_LIST_HELP = (
+    "Entries: `alice@example.com` (exact address), `@example.com` (that domain only, "
+    "no subdomain) or `@*.example.com` (that domain and any subdomain, e.g. "
+    "`a@mail.example.com`; never `a@badexample.com`). `*` is accepted only as `@*.`. "
+    f"Lowercased, deduplicated, at most {inbound_sender_policy.MAX_SENDER_LIST_ENTRIES} entries."
+)
+
 ApplicationTokenRegenerateResponseSerializer = inline_serializer(
     name="ApplicationTokenRegenerateResponse",
     fields={
@@ -102,8 +109,12 @@ class ApplicationReadSerializer(serializers.ModelSerializer):
     # Always serialized (empty string when unset, never null) — declare it
     # read-only so the schema marks it required + non-nullable, matching reality.
     webhook_url = serializers.CharField(read_only=True, allow_blank=True)
-    inbound_sender_allowlist = serializers.ListField(child=serializers.CharField(), read_only=True)
-    inbound_sender_blocklist = serializers.ListField(child=serializers.CharField(), read_only=True)
+    inbound_sender_allowlist = serializers.ListField(
+        child=serializers.CharField(), read_only=True, help_text=SENDER_LIST_HELP
+    )
+    inbound_sender_blocklist = serializers.ListField(
+        child=serializers.CharField(), read_only=True, help_text=SENDER_LIST_HELP
+    )
 
     class Meta:
         model = Application
@@ -229,15 +240,17 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
 
 
 class ApplicationUpdateSerializer(serializers.ModelSerializer):
-    # Entries: "alice@example.com" (exact address) or "@example.com" (whole
-    # domain). Lowercased, deduplicated, at most MAX_SENDER_LIST_ENTRIES.
+    # Entries: see SENDER_LIST_HELP. Lowercased, deduplicated, at most
+    # MAX_SENDER_LIST_ENTRIES.
     inbound_sender_allowlist = serializers.ListField(
         child=serializers.CharField(allow_blank=True, trim_whitespace=True),
         required=False,
+        help_text="Senders accepted in `owner` mode. " + SENDER_LIST_HELP,
     )
     inbound_sender_blocklist = serializers.ListField(
         child=serializers.CharField(allow_blank=True, trim_whitespace=True),
         required=False,
+        help_text="Senders always refused (never the owner's own address). " + SENDER_LIST_HELP,
     )
 
     class Meta:
