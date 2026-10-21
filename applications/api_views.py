@@ -1,5 +1,7 @@
+import hashlib
 import io
 import logging
+import os
 
 from django.http import HttpResponse
 from django.utils import timezone
@@ -476,8 +478,24 @@ class ApplicationLogoApiView(APIView):
         app = _get_app_or_404(app_id, request.user)
         serializer = ApplicationLogoUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        app.logo = serializer.validated_data["logo"]
-        app.save(update_fields=["logo"])
+        upload = serializer.validated_data["logo"]
+        # Name the file after its content: a new logo gets a new URL, the same
+        # logo keeps it. Clients (the mobile inbox) cache logos by URL and nginx
+        # serves /media/ with a 30-day expiry, so a reused name ("logo.png")
+        # would keep showing the old image.
+        digest = hashlib.sha256()
+        for chunk in upload.chunks():
+            digest.update(chunk)
+        upload.seek(0)
+        extension = os.path.splitext(upload.name)[1].lower() or ".png"
+        filename = f"{app.id}-{digest.hexdigest()[:16]}{extension}"
+        previous = app.logo.name if app.logo else None
+        if previous != f"app_logo/{filename}":
+            app.logo.save(filename, upload, save=False)
+            app.save(update_fields=["logo"])
+            if previous:
+                # The replaced file is unreachable from now on: drop it.
+                app.logo.storage.delete(previous)
         return Response(ApplicationReadSerializer(app, context={"request": request}).data)
 
     def delete(self, request, app_id):
