@@ -56,6 +56,10 @@ FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="https://pushit.foxugly.com
 # Single-use regardless; this bounds how long an emailed link stays valid.
 MAGIC_LINK_TTL_MINUTES = env.int("MAGIC_LINK_TTL_MINUTES", default=15)
 
+# Android APK offered to signed-in users (GET /api/v1/devices/android-app/).
+# Lives outside the app tree, placed by root on the box; absent -> 404.
+ANDROID_APK_PATH = Path(env("ANDROID_APK_PATH", default="/var/lib/pushit/apk/pushit.apk"))
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
