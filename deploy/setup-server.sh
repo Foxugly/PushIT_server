@@ -9,9 +9,11 @@
 # BEFORE running this, seed SSM from your machine and grant the EC2 role read
 # access — see "=== 6/8" below and CLAUDE.md.
 #
-# Run as 'ubuntu' user (needs sudo):
-#   bash /tmp/setup-pushit.sh
-#   or after clone: bash /var/www/django_websites/PushIT_server/deploy/setup-server.sh
+# Run as 'ubuntu' user (needs sudo).
+# ⚠️ §3.10: run THIS script from a checkout django cannot write — never from
+#    the django-owned app tree (the script runs with ubuntu's sudo). E.g.:
+#      D=$(mktemp -d) && git clone --depth=1 https://github.com/Foxugly/PushIT_server.git "$D" \
+#        && bash "$D/deploy/setup-server.sh"
 #
 # Prerequisites:
 #   - DNS A record: pushit-api.foxugly.com → EC2 public IP
@@ -89,8 +91,23 @@ sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.t
 echo "=== 5/8 Install systemd services + sudoers ==="
 # ---------------------------------------------------------------------------
 
+# §3.10 / §3.11: every file root installs is read from ROOT'S OWN bare mirror
+# (/var/lib/fleet-deploy/PushIT_server.git, root:root 700) fetched from GitHub —
+# never from $APP_DIR or its .git, which django owns and could rewrite before
+# root copies them (django -> root escalation).
+MIRROR=/var/lib/fleet-deploy/PushIT_server.git
+sudo install -d -m 700 -o root -g root /var/lib/fleet-deploy
+sudo test -d "$MIRROR" || sudo git init --quiet --bare "$MIRROR"
+sudo git --git-dir="$MIRROR" fetch --quiet --depth=1 "https://github.com/Foxugly/PushIT_server.git" main
+SHA=$(sudo git --git-dir="$MIRROR" rev-parse FETCH_HEAD)
+root_install() {  # <mode> <path in repo> <destination>
+    sudo git --git-dir="$MIRROR" show "$SHA:$2" | sudo install -o root -g root -m "$1" /dev/stdin "$3"
+}
+
 # Systemd units (includes pushit-env-fetch, which writes /run/pushit/.env).
-sudo cp "$APP_DIR/deploy/systemd/"*.service /etc/systemd/system/
+for unit in $(sudo git --git-dir="$MIRROR" ls-tree --name-only "$SHA" deploy/systemd/ | grep '\.service$'); do
+    root_install 0644 "$unit" "/etc/systemd/system/$(basename "$unit")"
+done
 sudo systemctl daemon-reload
 
 # Sudoers for deploy.sh. It restarts the app services as root; it does NOT
@@ -146,15 +163,16 @@ sudo -u "$APP_USER" bash -c "set -a; . /run/pushit/.env; set +a; \
 
 # Normalize ownership + perms (idempotent). Run by 'ubuntu' here, so sudo is the
 # provisioning user's own privilege — NOT a new rule in django's sudoers.
-sudo chown -R "$APP_USER":"$APP_GROUP" "$APP_DIR"
-sudo chmod -R g-w,o-rwx "$APP_DIR"
+# chown -h: never follow a symlink django may have planted; chmod as django.
+sudo chown -R -h "$APP_USER":"$APP_GROUP" "$APP_DIR"
+sudo -u "$APP_USER" chmod -R g-w,o-rwx "$APP_DIR"
 
 # ---------------------------------------------------------------------------
 echo "=== 8/8 nginx vhost + TLS + start services ==="
 # ---------------------------------------------------------------------------
 
 # nginx vhost (alongside the existing QuizOnline vhost)
-sudo cp "$APP_DIR/deploy/nginx/pushit-api.conf" /etc/nginx/sites-available/pushit-api.conf
+root_install 0644 deploy/nginx/pushit-api.conf /etc/nginx/sites-available/pushit-api.conf
 sudo ln -sf /etc/nginx/sites-available/pushit-api.conf /etc/nginx/sites-enabled/pushit-api.conf
 sudo nginx -t
 sudo systemctl reload nginx
