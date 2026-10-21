@@ -225,6 +225,11 @@ def test_push_notice_goes_to_the_owners_active_devices_only(make_app, mailbox, o
     assert kwargs["data"]["type"] == "inbound_email_rejected"
     assert kwargs["data"]["application_id"] == app.id
     assert "s***@else.org" in kwargs["message"]
+    # Stable fields for the app's localised alert; never the raw address.
+    assert kwargs["data"]["reason"] == "sender_not_allowed"
+    assert kwargs["data"]["sender_masked"] == "s***@else.org"
+    assert "stranger@else.org" not in str(kwargs["data"])
+    assert kwargs["android_data_only"] is True
     # No Notification row: this is a system push, not an app notification.
     assert Notification.objects.count() == 0
 
@@ -329,3 +334,30 @@ def test_unknown_alias_keeps_the_unknown_address_reply(owner, mailbox):
     poll_inbound_mailbox()
     mailbox.unknown_reply.assert_called_once_with("owner@example.com", "nope-deadbeef.pushit@pushit.com")
     mailbox.send_email.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("fields", "sender", "auth", "code"),
+    [
+        ({}, "stranger@else.org", "pass", "sender_not_allowed"),
+        (
+            {"inbound_sender_mode": "anyone", "inbound_sender_blocklist": ["@else.org"]},
+            "bad@else.org",
+            "pass",
+            "sender_blocked",
+        ),
+        ({"inbound_sender_mode": "anyone"}, "random@else.org", "fail", "dmarc_failed"),
+    ],
+)
+@override_settings(**GRAPH)
+def test_push_notice_carries_the_stable_reason_code(make_app, mailbox, owner, fields, sender, auth, code):
+    app = make_app(inbound_rejection_notify_email=False, inbound_rejection_notify_push=True, **fields)
+    Device.objects.create(user=owner, push_token="tok-a", platform="android")
+    mailbox.fetch.return_value = [_mail(app, sender, auth=auth)]
+
+    poll_inbound_mailbox()
+
+    data = mailbox.push.call_args.kwargs["data"]
+    assert data["reason"] == code
+    assert data["sender_masked"] != sender and "***" in data["sender_masked"]
+    assert data["message"]  # kept for older clients

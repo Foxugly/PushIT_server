@@ -112,11 +112,18 @@ def _build_owner_notice(application, reason: str, sender: str, verdict=None) -> 
     return subject, "\n".join(lines), push_text
 
 
-def _push_to_owner_devices(owner, application, title: str, message: str) -> int:
+def _push_to_owner_devices(
+    owner, application, title: str, message: str, reason_code: str, sender_masked: str
+) -> int:
     """System push to the owner's own active devices (Device.user == owner),
     outside any application's subscriber list and without a Notification row.
     Best effort: a provider error on one device never fails the mail
-    processing. Returns the number of devices reached."""
+    processing. Returns the number of devices reached.
+
+    Sent data-only on Android (whatever PUSH_DELIVERY_MODE): the app renders a
+    localised alert from `reason` / `sender_masked`; an OS-rendered English
+    `notification` block would bypass its handler in the background. iOS keeps
+    the alert block (APNs needs it). `message` stays for older clients."""
     devices = Device.objects.filter(
         user=owner,
         is_active=True,
@@ -135,8 +142,11 @@ def _push_to_owner_devices(owner, application, title: str, message: str) -> int:
                     "application_name": application.name,
                     "title": title,
                     "message": message,
+                    "reason": reason_code,
+                    "sender_masked": sender_masked,
                 },
                 platform=device.platform,
+                android_data_only=True,
             )
             sent += 1
         except Exception as exc:  # noqa: BLE001 - best effort, logged
@@ -169,7 +179,14 @@ def _notify_owner_of_rejection(application, reason: str, sender: str, verdict=No
         )
 
     if application.inbound_rejection_notify_push and _claim_owner_notice_slot(owner, "push"):
-        sent = _push_to_owner_devices(owner, application, "PushIT: inbound e-mail refused", push_text)
+        sent = _push_to_owner_devices(
+            owner,
+            application,
+            "PushIT: inbound e-mail refused",
+            push_text,
+            reason_code=inbound_sender_policy.log_code_for_rejection(reason),
+            sender_masked=mask_email(sender),
+        )
         logger.info(
             "inbound_email_owner_notified",
             extra={"user_id": owner.pk, "channel": "push", "reason": reason, "devices": sent},

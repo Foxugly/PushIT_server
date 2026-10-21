@@ -43,7 +43,14 @@ def _ensure_fcm_initialized():
     logger.info("fcm_initialized", extra={"service_account": settings.FCM_SERVICE_ACCOUNT_PATH})
 
 
-def _send_fcm(push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None) -> str:
+def _send_fcm(
+    push_token: str,
+    title: str,
+    message: str,
+    data: dict | None = None,
+    platform: str | None = None,
+    android_data_only: bool = False,
+) -> str:
     _ensure_fcm_initialized()
     from firebase_admin import messaging
     from firebase_admin.exceptions import InvalidArgumentError, UnavailableError
@@ -55,9 +62,13 @@ def _send_fcm(push_token: str, title: str, message: str, data: dict | None = Non
     #     (per-app logo as the large icon + app name) — at the cost of no delivery
     #     after a force-stop.
     # iOS can't render a data-only push, so it ALWAYS keeps the notification block.
+    # `android_data_only=True` forces data-only for this one message on
+    # non-iOS devices whatever the mode: for pushes the app must render itself
+    # (e.g. a localised alert), where an OS-rendered server text would bypass
+    # the app's handler while it is in the background.
     mode = (getattr(settings, "PUSH_DELIVERY_MODE", "hybrid") or "hybrid").strip().lower()
     is_ios = (platform or "").strip().lower() == "ios"
-    include_notification = mode != "data-only" or is_ios
+    include_notification = is_ios or (mode != "data-only" and not android_data_only)
 
     # FCM data values must all be strings.
     message_kwargs = {
@@ -79,12 +90,24 @@ def _send_fcm(push_token: str, title: str, message: str, data: dict | None = Non
         raise PushProviderError(str(exc)) from exc
 
 
-def _send_mock(push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None) -> str:
+def _send_mock(
+    push_token: str,
+    title: str,
+    message: str,
+    data: dict | None = None,
+    platform: str | None = None,
+    android_data_only: bool = False,
+) -> str:
     return f"mock-msg-{push_token[-6:]}"
 
 
 def send_push_to_device(
-    push_token: str, title: str, message: str, data: dict | None = None, platform: str | None = None
+    push_token: str,
+    title: str,
+    message: str,
+    data: dict | None = None,
+    platform: str | None = None,
+    android_data_only: bool = False,
 ) -> str:
     provider = "fcm" if _is_fcm_configured() else "mock"
     # NB: title/message are deliberately NOT logged. For email-sourced
@@ -101,9 +124,9 @@ def send_push_to_device(
 
     try:
         if provider == "fcm":
-            provider_message_id = _send_fcm(push_token, title, message, data, platform)
+            provider_message_id = _send_fcm(push_token, title, message, data, platform, android_data_only)
         else:
-            provider_message_id = _send_mock(push_token, title, message, data, platform)
+            provider_message_id = _send_mock(push_token, title, message, data, platform, android_data_only)
 
         logger.info(
             "push_send_succeeded",
