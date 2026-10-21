@@ -20,11 +20,12 @@ from notifications.models import InboundEmailIngestionLog, Notification, Notific
     GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
 @patch("applications.models.Application._provision_exchange_alias")
+@patch("notifications.inbound_mailbox.send_email")
 @patch("notifications.inbound_mailbox.mark_email_read")
 @patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_poll_inbound_mailbox_creates_notification_for_matching_owner(
-    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
+    mock_fetch, mock_send_reply, mock_mark_read, mock_send_email, _mock_add_alias,
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
@@ -72,8 +73,14 @@ def test_poll_inbound_mailbox_creates_notification_for_matching_owner(
     assert created_log.application_id == app.id
     assert created_log.notification_id == notification.id
     rejected_log = InboundEmailIngestionLog.objects.get(status="rejected")
-    assert rejected_log.application_id is None
+    # A refused sender on a known alias is journalled against the application.
+    assert rejected_log.application_id == app.id
+    assert "not_allowed" in rejected_log.error_message
     assert rejected_log.mailbox_uid == "graph-102"
+    # No reply to the refused sender by default; the owner gets an e-mail notice.
+    mock_send_reply.assert_not_called()
+    mock_send_email.assert_called_once()
+    assert mock_send_email.call_args.kwargs["to"] == owner.email
     assert mock_mark_read.call_count == 2
     mock_mark_read.assert_any_call("graph-101")
     mock_mark_read.assert_any_call("graph-102")
@@ -140,11 +147,12 @@ def test_poll_sends_reply_when_known_user_sends_to_unknown_address(
     GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
 )
 @patch("applications.models.Application._provision_exchange_alias")
+@patch("notifications.inbound_mailbox.send_email")
 @patch("notifications.inbound_mailbox.mark_email_read")
 @patch("notifications.inbound_mailbox.send_unknown_address_reply")
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
-    mock_fetch, mock_send_reply, mock_mark_read, _mock_add_alias,
+    mock_fetch, mock_send_reply, mock_mark_read, _mock_send_email, _mock_add_alias,
 ):
     owner = User.objects.create_user(
         email="owner@example.com",
@@ -154,7 +162,10 @@ def test_poll_sends_reply_when_known_user_sends_to_other_owners_app(
         email="other@example.com",
         password="MotDePasseTresSolide123!",
     )
-    other_app = Application.objects.create(owner=other, name="Other App")
+    # Replying to a refused sender is opt-in per application.
+    other_app = Application.objects.create(
+        owner=other, name="Other App", inbound_rejection_reply_to_sender=True
+    )
     Application.objects.create(owner=owner, name="Owner App")
 
     mock_fetch.return_value = [

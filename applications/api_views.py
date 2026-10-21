@@ -115,7 +115,11 @@ class ApplicationListCreateApiView(generics.ListCreateAPIView):
     ),
     patch=extend_schema(
         summary="Update an application",
-        description="Partially updates the name or description of an application.",
+        description=(
+            "Partially updates an application: name, description, webhook URL, and the "
+            "inbound e-mail sender policy (inbound_sender_mode owner|anyone, allow/block lists "
+            "of addresses or @domains, refusal notification flags)."
+        ),
         tags=["Applications"],
         auth=[{"BearerAuth": []}],
         request=ApplicationUpdateSerializer,

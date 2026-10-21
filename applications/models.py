@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
-from . import inbound_alias
+from . import inbound_alias, inbound_sender_policy
 from .url_safety import validate_webhook_url
 
 
@@ -53,6 +53,22 @@ class Application(models.Model):
     # la signature le jour ou la cle change -- mauvais sens de la panne. C'est le
     # meme arbitrage que les secrets de signature Stripe, relisibles en console.
     webhook_secret = models.CharField(max_length=64, blank=True)
+
+    # Who may create notifications by e-mail to the inbound alias. See
+    # applications/inbound_sender_policy.py for the rules. Lists hold lowercase
+    # "a@b.com" / "@b.com" entries, validated by the API serializer.
+    inbound_sender_mode = models.CharField(
+        max_length=16,
+        choices=inbound_sender_policy.MODE_CHOICES,
+        default=inbound_sender_policy.MODE_OWNER,
+    )
+    inbound_sender_allowlist = models.JSONField(default=list, blank=True)
+    inbound_sender_blocklist = models.JSONField(default=list, blank=True)
+    # What happens when a mail to the alias is refused (any reason, DMARC incl.).
+    inbound_rejection_notify_email = models.BooleanField(default=True)
+    inbound_rejection_notify_push = models.BooleanField(default=False)
+    # Off by default: answering an unauthenticated sender is backscatter.
+    inbound_rejection_reply_to_sender = models.BooleanField(default=False)
 
     is_active = models.BooleanField(default=True)
     revoked_at = models.DateTimeField(null=True, blank=True)

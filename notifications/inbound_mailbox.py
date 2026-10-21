@@ -7,7 +7,8 @@ from django.conf import settings
 from django.core.cache import cache
 from rest_framework import serializers
 
-from applications import inbound_alias
+from accounts.models import User
+from applications import inbound_alias, inbound_sender_policy
 from applications.graph_mail import (
     GraphEmail,
     _is_configured,
@@ -17,6 +18,7 @@ from applications.graph_mail import (
 )
 
 from config.logging_utils import mask_email
+from devices.models import Device, DeviceTokenStatus
 
 from .creation import create_notification_with_optional_idempotency
 from .inbound_auth import AUTH_AS_HEADER
@@ -24,8 +26,10 @@ from .inbound_journal import record_inbound_email_ingestion
 from .inbound_reply import (
     auto_reply_block_reason,
     claim_auto_reply_slot,
+    send_rejected_sender_reply,
     send_unknown_address_reply,
 )
+from .push import send_push_to_device
 from .models import (
     InboundEmailIngestionLog,
     InboundEmailIngestionStatus,
@@ -37,7 +41,10 @@ from .utils import compute_request_fingerprint
 logger = logging.getLogger(__name__)
 
 
-def _maybe_send_unknown_address_reply(email: GraphEmail) -> None:
+def _maybe_send_unknown_address_reply(email: GraphEmail, send=None) -> None:
+    """Auto-reply to the sender, unless RFC 3834 loop protection or the
+    per-sender rate limit says no. ``send(sender, recipient)`` defaults to the
+    "unknown address" reply."""
     reason = auto_reply_block_reason(email)
     if not reason and not claim_auto_reply_slot(email.sender):
         reason = "rate_limited"
@@ -47,37 +54,137 @@ def _maybe_send_unknown_address_reply(email: GraphEmail) -> None:
             extra={"reason": reason, "mailbox_uid": email.graph_id},
         )
         return
-    send_unknown_address_reply(email.sender.strip().lower(), email.recipient)
+    (send or send_unknown_address_reply)(email.sender.strip().lower(), email.recipient)
 
 
-DMARC_NOTICE_CACHE_PREFIX = "inbound:dmarc-notice:"
+OWNER_NOTICE_CACHE_PREFIX = "inbound:owner-notice:"
+
+_REASON_TEXT = {
+    inbound_sender_policy.REASON_BLOCKLISTED: "the sender is on the application's blocklist",
+    inbound_sender_policy.REASON_NOT_ALLOWED: (
+        "the sender is neither the owner nor on the application's allowlist"
+    ),
+    inbound_sender_policy.REASON_NOT_AUTHENTICATED: "the sender failed authentication (SPF/DKIM/DMARC)",
+}
 
 
-def _notify_owner_of_dmarc_rejection(user, application, verdict) -> None:
-    """Tell the owner a mail claiming to be from them was refused. Sent to the
-    address on their account (never to a reply path the sender controls), at
-    most once per owner per INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS so a
-    spoofing burst does not become a mail flood."""
-    if not getattr(settings, "INBOUND_EMAIL_DMARC_NOTIFY_OWNER", True):
-        return
+def _claim_owner_notice_slot(user, channel: str) -> bool:
+    """At most one owner notice per owner, per channel, per
+    INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS, so a spam or spoofing burst
+    does not become a mail/push flood."""
     interval = int(getattr(settings, "INBOUND_EMAIL_AUTO_REPLY_INTERVAL_SECONDS", 3600))
-    if interval > 0:
-        digest = hashlib.sha256(str(user.pk).encode("utf-8")).hexdigest()
-        if not cache.add(f"{DMARC_NOTICE_CACHE_PREFIX}{digest}", 1, timeout=interval):
-            return
-    target = application.inbound_email_address if application is not None else "your PushIT address"
-    body = "\n".join([
-        f"PushIT refused an e-mail sent to {target} that claimed to come from your address,",
-        f"because it failed sender authentication ({verdict.reason}).",
+    if interval <= 0:
+        return True
+    digest = hashlib.sha256(str(user.pk).encode("utf-8")).hexdigest()
+    return cache.add(f"{OWNER_NOTICE_CACHE_PREFIX}{channel}:{digest}", 1, timeout=interval)
+
+
+def _build_owner_notice(application, reason: str, sender: str, verdict=None) -> tuple[str, str, str]:
+    """(mail subject, mail body, push text) for a refused inbound mail. The
+    sender is masked: the notice may land on a lock screen."""
+    masked = mask_email(sender)
+    why = _REASON_TEXT.get(reason, reason)
+    if verdict is not None:
+        why = f"{why} ({verdict.reason})"
+    lines = [
+        f'PushIT refused an e-mail sent to {application.inbound_email_address} '
+        f'(application "{application.name}").',
+        f"Sender: {masked}",
+        f"Reason: {why}.",
         "No notification was sent.",
         "",
-        "If you sent it yourself, your mail domain probably lacks SPF/DKIM alignment",
-        "or a DMARC record; ask your mail administrator.",
-        "If you did not, someone may be trying to send notifications in your name:",
-        "regenerate the application's inbound address in PushIT.",
-    ])
-    send_email(to=user.email, subject="PushIT: inbound e-mail refused (sender not authenticated)", body=body)
-    logger.info("inbound_email_dmarc_owner_notified", extra={"user_id": user.pk})
+    ]
+    if reason == inbound_sender_policy.REASON_NOT_AUTHENTICATED:
+        lines += [
+            "If the sender is legitimate, their mail domain probably lacks SPF/DKIM",
+            "alignment or a DMARC record; ask their mail administrator.",
+            "If not, someone may be trying to send notifications in their name:",
+            "regenerate the application's inbound address in PushIT.",
+        ]
+        subject = "PushIT: inbound e-mail refused (sender not authenticated)"
+    else:
+        lines += [
+            "You can change who may send to this address in the application's",
+            "sending settings in PushIT.",
+        ]
+        subject = "PushIT: inbound e-mail refused"
+    push_text = f"Mail from {masked} to {application.name} refused: {why}."
+    return subject, "\n".join(lines), push_text
+
+
+def _push_to_owner_devices(owner, application, title: str, message: str) -> int:
+    """System push to the owner's own active devices (Device.user == owner),
+    outside any application's subscriber list and without a Notification row.
+    Best effort: a provider error on one device never fails the mail
+    processing. Returns the number of devices reached."""
+    devices = Device.objects.filter(
+        user=owner,
+        is_active=True,
+        push_token_status=DeviceTokenStatus.ACTIVE,
+    ).order_by("id")
+    sent = 0
+    for device in devices:
+        try:
+            send_push_to_device(
+                push_token=device.push_token,
+                title=title,
+                message=message,
+                data={
+                    "type": "inbound_email_rejected",
+                    "application_id": application.id,
+                    "application_name": application.name,
+                    "title": title,
+                    "message": message,
+                },
+                platform=device.platform,
+            )
+            sent += 1
+        except Exception as exc:  # noqa: BLE001 - best effort, logged
+            logger.warning(
+                "inbound_email_owner_push_failed",
+                extra={"device_id": device.id, "error": str(exc)},
+            )
+    return sent
+
+
+def _notify_owner_of_rejection(application, reason: str, sender: str, verdict=None) -> None:
+    """Tell the owner a mail to their alias was refused, on the channels the
+    application enables: e-mail to the address on their account (never a reply
+    path the sender controls) and/or push to their own devices."""
+    if application is None:
+        return
+    owner = application.owner
+    subject, body, push_text = _build_owner_notice(application, reason, sender, verdict)
+
+    email_enabled = application.inbound_rejection_notify_email
+    if reason == inbound_sender_policy.REASON_NOT_AUTHENTICATED and not getattr(
+        settings, "INBOUND_EMAIL_DMARC_NOTIFY_OWNER", True
+    ):
+        email_enabled = False  # global kill switch for DMARC notices
+    if email_enabled and owner.email and _claim_owner_notice_slot(owner, "email"):
+        send_email(to=owner.email, subject=subject, body=body)
+        logger.info(
+            "inbound_email_owner_notified",
+            extra={"user_id": owner.pk, "channel": "email", "reason": reason},
+        )
+
+    if application.inbound_rejection_notify_push and _claim_owner_notice_slot(owner, "push"):
+        sent = _push_to_owner_devices(owner, application, "PushIT: inbound e-mail refused", push_text)
+        logger.info(
+            "inbound_email_owner_notified",
+            extra={"user_id": owner.pk, "channel": "push", "reason": reason, "devices": sent},
+        )
+
+
+def _reply_to_refused_sender(email: GraphEmail) -> None:
+    """Opt-in reply to a sender refused by the policy. A PushIT user gets the
+    historical "unknown address" reply (lists their own applications); anyone
+    else a generic "not accepted". Same loop protection and rate limit."""
+    sender = email.sender.strip().lower()
+    if User.objects.filter(email=sender).exists():
+        _maybe_send_unknown_address_reply(email)
+    else:
+        _maybe_send_unknown_address_reply(email, send=send_rejected_sender_reply)
 
 
 def _process_email(email: GraphEmail) -> tuple[bool, str]:
@@ -110,10 +217,17 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
     except serializers.ValidationError:
         errors = serializer.errors
 
-        auth_rejection = serializer.context.get("sender_auth_rejection")
-        if auth_rejection is not None:
-            # Forged or unauthenticated `From`: journal it, no notification and
-            # no "unknown address" auto-reply; the owner gets a heads-up.
+        rejection = serializer.context.get("inbound_rejection")
+        if rejection is not None:
+            # Refused by the application's sender policy, or forged /
+            # unauthenticated `From`: journal it (with the application), no
+            # notification; the owner is told per the application's flags.
+            application = serializer.context.get("application")
+            verdict = serializer.context.get("sender_auth_rejection")
+            if verdict is not None:
+                error_message = f"Sender failed DMARC authentication ({verdict.reason})."
+            else:
+                error_message = f"Sender refused by the application's inbound policy ({rejection})."
             record_inbound_email_ingestion(
                 source=InboundEmailSource.POLLING,
                 status=InboundEmailIngestionStatus.REJECTED,
@@ -122,21 +236,28 @@ def _process_email(email: GraphEmail) -> tuple[bool, str]:
                 subject=email.subject,
                 message_id=email.message_id,
                 mailbox_uid=email.graph_id,
-                application=serializer.context.get("application"),
-                error_message=f"Sender failed DMARC authentication ({auth_rejection.reason}).",
+                application=application,
+                error_message=error_message,
             )
-            _notify_owner_of_dmarc_rejection(
-                serializer.context["user"], serializer.context.get("application"), auth_rejection
-            )
+            _notify_owner_of_rejection(application, rejection, email.sender, verdict)
+            # Never answer a mail that failed authentication: its `From` is
+            # likely forged and the reply would hit an innocent third party.
+            if (
+                application is not None
+                and application.inbound_rejection_reply_to_sender
+                and rejection != inbound_sender_policy.REASON_NOT_AUTHENTICATED
+            ):
+                _reply_to_refused_sender(email)
             return True, "rejected"
 
-        # Check if this is a known user sending to an unknown/unauthorized address
+        # A known user writing to an alias that matches no application gets the
+        # "unknown address" reply (a refused sender on a KNOWN alias went
+        # through the policy branch above).
         recipient_errors = errors.get("recipient", [])
         sender_errors = errors.get("sender", [])
 
-        is_known_user_wrong_address = (
-            any("No application matches" in str(e) for e in recipient_errors)
-            or any("must match the owner" in str(e) for e in sender_errors)
+        is_known_user_wrong_address = any(
+            "No application matches" in str(e) for e in recipient_errors
         ) and not any("No user matches" in str(e) for e in sender_errors)
 
         if is_known_user_wrong_address:
