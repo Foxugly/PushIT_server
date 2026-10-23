@@ -91,6 +91,9 @@ class SubscriptionView(APIView):
             {
                 "billingEnabled": billing_configured(),
                 "isPaid": user_is_paid(request.user),
+                # Accès offert par le staff : sans ce drapeau, le SPA ne voit qu'un
+                # compte « payé » sans plan ni échéance et n'affiche rien d'utile.
+                "bypass": bool(getattr(request.user, "subscription_bypass", False)),
                 "status": sub.status if sub else "",
                 "plan": sub.plan if sub else "",
                 "interval": sub.interval if sub else "",
