@@ -457,7 +457,8 @@ class NotificationListWithAppTokenApiView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            Notification.objects.filter(application=self.request.auth_application)
+            Notification.objects.visible()
+            .filter(application=self.request.auth_application)
             .select_related("application")
             .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .order_by("-id")
@@ -521,7 +522,8 @@ class NotificationBulkSendWithAppTokenApiView(APIView):
         owner_filter = {"application": application}
 
         notifications = (
-            Notification.objects.select_related("application")
+            Notification.objects.visible()
+            .select_related("application")
             .filter(id__in=notification_ids, application=application)
         )
         found = {n.id: n for n in notifications}

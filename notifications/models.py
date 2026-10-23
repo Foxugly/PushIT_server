@@ -32,6 +32,11 @@ class InboundEmailIngestionStatus(models.TextChoices):
     ERROR = "error", "Error"
 
 
+class NotificationQuerySet(models.QuerySet):
+    def visible(self):
+        return self.filter(is_visible=True)
+
+
 # Create your models here.
 class Notification(models.Model):
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="notifications",)
@@ -49,7 +54,13 @@ class Notification(models.Model):
     processing_started_at = models.DateTimeField(blank=True, null=True)
     idempotency_key = models.CharField(max_length=255, blank=True, db_index=True)
     request_fingerprint = models.CharField(max_length=64, blank=True)
-    
+    # Soft delete: DELETE /notifications/<id>/ flips this to False. Hidden rows
+    # leave every client-facing listing/detail (``visible()``) but stay for
+    # sending, stats, metrics and the retention purge.
+    is_visible = models.BooleanField(default=True)
+
+    objects = NotificationQuerySet.as_manager()
+
     class Meta:
         constraints = [
             models.UniqueConstraint(

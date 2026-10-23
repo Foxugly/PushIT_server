@@ -284,7 +284,8 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         return (
-            Notification.objects.filter(application__owner=self.request.user)
+            Notification.objects.visible()
+            .filter(application__owner=self.request.user)
             .select_related("application")
             .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .order_by("-id")
@@ -359,19 +360,51 @@ class NotificationListCreateApiView(generics.ListCreateAPIView):
             ),
         },
     ),
+    delete=extend_schema(
+        summary="Hide a notification (soft delete)",
+        description=(
+            "Hides a notification of an application owned by the caller: it no longer "
+            "appears in any listing or detail (web console, mobile inbox, app token), "
+            "but is kept for statistics. Notifications still pending "
+            "(`scheduled`, `queued`, `processing`) cannot be hidden; a future one is "
+            "deleted via DELETE /notifications/future/{id}/."
+        ),
+        tags=["Notifications"],
+        auth=[{"BearerAuth": []}],
+        responses={
+            204: None,
+            404: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Not found, already hidden, or not owned by the caller",
+            ),
+            409: OpenApiResponse(
+                response=DetailResponseSerializer,
+                description="Notification still pending (code notification_pending)",
+            ),
+        },
+    ),
 )
-class NotificationDetailApiView(generics.RetrieveAPIView):
+class NotificationDetailApiView(generics.RetrieveDestroyAPIView):
     """Owner: the full detail. Recipient (a user with a delivery of this
     notification on one of *their own* devices, e.g. the mobile app opening a
     received push): the same shape, read-only, but `device_ids` / `deliveries`
-    restricted to the caller's devices so no other recipient leaks."""
+    restricted to the caller's devices so no other recipient leaks.
+
+    DELETE (owner only) is a soft delete: it sets ``is_visible=False``."""
 
     serializer_class = NotificationDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    PENDING_STATUSES = {
+        NotificationStatus.SCHEDULED,
+        NotificationStatus.QUEUED,
+        NotificationStatus.PROCESSING,
+    }
+
     def get_queryset(self):
         return (
-            Notification.objects.filter(application__owner=self.request.user)
+            Notification.objects.visible()
+            .filter(application__owner=self.request.user)
             .select_related("application")
             .prefetch_related(
                 "application__quiet_periods",
@@ -384,7 +417,8 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
             device__user=self.request.user
         ).select_related("device")
         return (
-            Notification.objects.filter(deliveries__device__user=self.request.user)
+            Notification.objects.visible()
+            .filter(deliveries__device__user=self.request.user)
             .select_related("application")
             .prefetch_related(
                 "application__quiet_periods",
@@ -402,6 +436,24 @@ class NotificationDetailApiView(generics.RetrieveAPIView):
         if instance is None:
             raise NotFound("Notification not found.", code="notification_not_found")
         return instance
+
+    def destroy(self, request, *args, **kwargs):
+        # Owner only: no recipient fallback here.
+        updated = (
+            self.get_queryset()
+            .filter(pk=self.kwargs["pk"])
+            .exclude(status__in=self.PENDING_STATUSES)
+            .update(is_visible=False)
+        )
+        if updated:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        if self.get_queryset().filter(pk=self.kwargs["pk"]).exists():
+            return error_response(
+                code="notification_pending",
+                detail="A pending notification cannot be deleted.",
+                http_status=status.HTTP_409_CONFLICT,
+            )
+        raise NotFound("Notification not found.", code="notification_not_found")
 
 
 @extend_schema_view(
@@ -818,12 +870,14 @@ def _fetch_notification(notification_id, owner_filter):
     if settings.DB_SUPPORTS_ROW_LOCKING:
         with transaction.atomic():
             return (
-                Notification.objects.select_for_update()
+                Notification.objects.visible()
+                .select_for_update()
                 .select_related("application")
                 .get(id=notification_id, **owner_filter)
             )
     return (
-        Notification.objects.select_related("application")
+        Notification.objects.visible()
+        .select_related("application")
         .get(id=notification_id, **owner_filter)
     )
 
@@ -959,7 +1013,8 @@ class NotificationBulkSendApiView(APIView):
         use_owner_in_queue = not settings.DB_SUPPORTS_ROW_LOCKING
 
         notifications = (
-            Notification.objects.select_related("application")
+            Notification.objects.visible()
+            .select_related("application")
             .filter(id__in=notification_ids, **owner_filter)
         )
         found = {n.id: n for n in notifications}
@@ -1081,7 +1136,8 @@ class NotificationsForDeviceApiView(generics.ListAPIView):
         if device is None:
             return Notification.objects.none()
         queryset = (
-            Notification.objects.filter(deliveries__device=device)
+            Notification.objects.visible()
+            .filter(deliveries__device=device)
             .select_related("application")
             .prefetch_related("application__quiet_periods", device_ids_prefetch())
             .distinct()
