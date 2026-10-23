@@ -452,3 +452,36 @@ def test_an_unsigned_ping_is_still_refused(db):
     r = APIClient().post("/api/v1/billing/entitlement/", {"ping": True}, format="json")
 
     assert r.status_code == 401
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_the_status_endpoint_flags_an_offered_access(owner):
+    """Sans `bypass`, le SPA voit un compte payé sans plan et n'affiche rien."""
+    owner.subscription_bypass = True
+    owner.save(update_fields=["subscription_bypass"])
+
+    body = _client(owner).get("/api/v1/billing/subscription/").json()
+
+    assert body["bypass"] is True
+    assert body["isPaid"] is True
+    assert body["plan"] == ""
+
+
+@override_settings(**BILLING_ON)
+@pytest.mark.django_db
+def test_the_status_endpoint_does_not_flag_a_regular_account(owner):
+    _abonne(owner, quota=2)
+
+    body = _client(owner).get("/api/v1/billing/subscription/").json()
+
+    assert body["bypass"] is False
+    assert body["isPaid"] is True and body["plan"] == "app"
+
+
+@pytest.mark.django_db
+def test_the_status_endpoint_flags_bypass_false_when_billing_is_off(owner):
+    body = _client(owner).get("/api/v1/billing/subscription/").json()
+
+    assert body["billingEnabled"] is False
+    assert body["bypass"] is False
