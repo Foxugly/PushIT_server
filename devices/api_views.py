@@ -208,7 +208,8 @@ class DeviceNotificationsApiView(UserOwnedDeviceMixin, generics.ListAPIView):
         if device is None:
             return Notification.objects.none()
         queryset = (
-            Notification.objects.filter(
+            Notification.objects.visible()
+            .filter(
                 application__owner=self.request.user,
                 deliveries__device=device,
             )

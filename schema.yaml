@@ -2824,6 +2824,39 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Not found, or neither owned by the caller nor delivered to
             one of their devices
+    delete:
+      operationId: api_v1_notifications_destroy
+      description: 'Hides a notification of an application owned by the caller: it
+        no longer appears in any listing or detail (web console, mobile inbox, app
+        token), but is kept for statistics. Notifications still pending (`scheduled`,
+        `queued`, `processing`) cannot be hidden; a future one is deleted via DELETE
+        /notifications/future/{id}/.'
+      summary: Hide a notification (soft delete)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Notifications
+      security:
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Not found, already hidden, or not owned by the caller
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Notification still pending (code notification_pending)
   /api/v1/notifications/{id}/opened/:
     post:
       operationId: api_v1_notifications_opened_create
