@@ -11,7 +11,7 @@ drf-spectacular==0.30.0
 prometheus-client==0.26.0
 sentry-sdk[django]>=2.72.0,<3
 qrcode==8.2
-firebase-admin==7.7.0
+firebase-admin==7.8.0
 msal==1.39.0
 requests==2.34.2
 PyYAML==6.0.3
