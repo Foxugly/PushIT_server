@@ -129,8 +129,42 @@ List entries are `alice@x.com` (exact), `@x.com` (that domain only — subdomain
 ### Sessions & admin access
 
 - **Long-lived sessions ("stay logged in" like WhatsApp).** `SIMPLE_JWT.REFRESH_TOKEN_LIFETIME` defaults to **365 days** (`JWT_REFRESH_DAYS`). With `ROTATE_REFRESH_TOKENS` + `BLACKLIST_AFTER_ROTATION`, every `auth/refresh/` issues a new refresh token and blacklists the old one, sliding the window — so any client (web SPA + mobile) that opens the app within the window stays logged in indefinitely. **Every client MUST persist the rotated refresh token** or it self-ejects on the next refresh (in cookie mode the browser does it: the rotated token replaces the cookie). `flush_expired_tokens_task` (beat, 03:30 daily) prunes the outstanding/blacklisted token tables so they stay bounded. Security trade-off: a stolen refresh is valid up to the window — shorten `JWT_REFRESH_DAYS` if needed.
-- **Django admin.** Enabled at the backend origin: `https://pushit-api.foxugly.com/admin/` (session/CSRF cookies + `/static/admin/` already served there). For convenience `pushit.foxugly.com/admin` **301-redirects** to it (nginx, in the frontend repo's vhost) — a redirect rather than a reverse proxy so admin cookies stay on one origin. The SPA admin area also links to it.
+- **Django admin.** Enabled at the backend origin: `https://pushit-api.foxugly.com/admin/` (session/CSRF cookies + `/static/admin/` already served there), behind a mandatory TOTP second factor (see « Admin 2FA » below). For convenience `pushit.foxugly.com/admin` **301-redirects** to it (nginx, in the frontend repo's vhost) — a redirect rather than a reverse proxy so admin cookies stay on one origin. The SPA admin area also links to it.
 - **Admin status panel.** `GET /api/v1/admin/status/` (`IsAdminUser`) backs the SPA's `dashboard/admin` page: per-dependency checks (DB / Celery broker / Celery workers / Exchange) + metrics, each isolated so one failure degrades rather than 500s.
+
+### Admin 2FA
+
+`/admin/` requires a TOTP second factor for **every** staff account (django-otp 1.7.5 + qrcode 8.2,
+app `admin_2fa/`, ported from the fleet reference Poker_server#81). API/JWT users — staff included,
+and the SPA's `api/v1/admin/status/` — see nothing of it.
+
+- **Wiring**: `"admin_2fa.apps.OTPAdminConfig"` *replaces* `"django.contrib.admin"` (it makes
+  `admin.site` an `Admin2FASite`, whose `has_permission` also needs `user.is_verified()`); plus
+  `django_otp`, `otp_totp`, `otp_static`, `admin_2fa` in INSTALLED_APPS and
+  `django_otp.middleware.OTPMiddleware` right after `AuthenticationMiddleware`. `OTP_TOTP_ISSUER` is
+  the label in the authenticator app. A missing piece fails `manage.py check` (`admin_2fa.E001-E004`).
+  A custom `AdminSite` subclass must inherit `admin_2fa.sites.Admin2FASite`.
+- **Flow**: password on `/admin/login/` → `/admin/2fa/setup/` (first time: QR code + key, confirm one
+  code, 10 single-use backup codes shown **once**) or `/admin/2fa/verify/` (TOTP code or a backup
+  code). Server-rendered admin templates, CSRF, `never_cache`, no inline script/style.
+- **Brute force**: django-otp throttles each device (1 s, 2 s, 4 s… after each wrong code, in DB) and
+  `deploy/nginx/pushit-api.conf` puts `/admin/2fa/` in the same `pushit_admin_login` zone as the login
+  (10 r/min per IP). **The live vhost (`/etc/nginx/sites-available/pushit-api.foxugly.com`, certbot
+  managed) is not installed by the deploy**: copy the `location ^~ /admin/2fa/` block into it by hand
+  (root, `nginx -t`, `systemctl reload nginx`).
+- **Lost phone / locked out** (on the box, as the app's own unit would run it):
+
+  ```bash
+  sudo systemd-run --wait --pipe --quiet --uid=django --gid=www-data \
+    -p EnvironmentFile=/run/pushit/.env -p WorkingDirectory=/var/www/django_websites/PushIT_server \
+    /var/www/django_websites/PushIT_server/.venv/bin/python manage.py admin_2fa_reset <email>
+  ```
+
+  deletes the user's devices (re-enrolment at the next admin login); `--unlock` only clears the delay.
+- **Tests on admin pages**: use `admin_2fa.testing.force_admin_login(client, user)`, not
+  `client.force_login` (the admin would redirect to the second factor).
+- **Secrets**: never log or send to Sentry the TOTP key, the QR code or a backup code — the views keep
+  them in `Redacted` wrappers and the form field is named `token` (scrubbed by Sentry).
 
 ### Firebase Cloud Messaging
 

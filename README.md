@@ -40,6 +40,7 @@ Points importants :
 - [devices](C:/Users/rvilain/PycharmProjects/PushIT_server/devices) : devices et liaison via app token
 - [notifications](C:/Users/rvilain/PycharmProjects/PushIT_server/notifications) : notifications, queue, services d'envoi, tâches Celery
 - [health](C:/Users/rvilain/PycharmProjects/PushIT_server/health) : live, ready, metrics
+- `admin_2fa` : 2FA TOTP obligatoire sur `/admin/` (django-otp) — voir `CLAUDE.md` « Admin 2FA »
 - [config](C:/Users/rvilain/PycharmProjects/PushIT_server/config) : settings, middleware, erreurs API, logging, métriques
 - [tests](C:/Users/rvilain/PycharmProjects/PushIT_server/tests) : intégration, schéma OpenAPI, wiring, gestion des exceptions
 - [observability](C:/Users/rvilain/PycharmProjects/PushIT_server/observability) : Prometheus, alerting, Grafana

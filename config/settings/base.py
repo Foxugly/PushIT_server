@@ -64,7 +64,9 @@ ANDROID_APK_PATH = Path(env("ANDROID_APK_PATH", default="/var/lib/pushit/apk/pus
 ANDROID_APK_META_PATH = Path(env("ANDROID_APK_META_PATH", default=str(ANDROID_APK_PATH.with_name("pushit.json"))))
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    # admin.site with mandatory TOTP 2FA (admin_2fa/, CLAUDE.md "Admin 2FA"):
+    # replaces "django.contrib.admin", same app label.
+    "admin_2fa.apps.OTPAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -74,6 +76,10 @@ INSTALLED_APPS = [
     "rest_framework",
     "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
+    "django_otp.plugins.otp_static",
+    "admin_2fa",
     "accounts.apps.AccountsConfig",
     "applications.apps.ApplicationsConfig",
     "devices.apps.DevicesConfig",
@@ -91,6 +97,9 @@ MIDDLEWARE = [
     "config.middleware.MetricsMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Binds the session's verified OTP device to request.user (admin 2FA). After
+    # AuthenticationMiddleware; JWT API users are untouched (DRF authenticates later).
+    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -154,6 +163,12 @@ USE_I18N = True
 USE_TZ = True
 
 AUTH_USER_MODEL = "accounts.User"
+
+# --- Admin 2FA (django-otp). Label shown in the authenticator app. Throttling
+# stays on (factor 1 = 1 s, 2 s, 4 s... after each wrong code, per device). ---
+OTP_TOTP_ISSUER = "PushIT admin (pushit-api.foxugly.com)"
+OTP_TOTP_THROTTLE_FACTOR = 1
+OTP_STATIC_THROTTLE_FACTOR = 1
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
