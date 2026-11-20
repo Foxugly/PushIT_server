@@ -14,3 +14,8 @@ errorlog = "/var/log/pushit/gunicorn-error.log"
 loglevel = "info"
 
 preload_app = True
+
+# gunicorn >= 25.1 opens a control socket (gunicornc) by default, in
+# $XDG_RUNTIME_DIR or ~/.gunicorn/gunicorn.ctl: every site running as the django
+# user would fight over the same path. Not used here.
+control_socket_disable = True
