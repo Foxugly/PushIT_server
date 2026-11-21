@@ -18,7 +18,13 @@ git fetch origin main
 git reset --hard origin/main
 
 echo ">>> Installing dependencies..."
-"$VENV/bin/pip" install --quiet -r requirements.txt
+# requirements.txt is a hash-pinned lock (uv pip compile from requirements.in),
+# the exact set CI tested. A plain `pip install -r` of version ranges never
+# upgraded what was already installed, so prod silently missed patch/security
+# releases. --require-hashes refuses anything not in the lock, --no-deps refuses
+# to resolve anything missing from it, and pip check fails on an incoherent set.
+"$VENV/bin/pip" install --quiet --require-hashes --no-deps -r requirements.txt
+"$VENV/bin/pip" check
 
 # Load the SSM-fetched env so manage.py has SECRET_KEY, STATE, DB creds,
 # etc. systemd injects this for the services via EnvironmentFile, but a manual

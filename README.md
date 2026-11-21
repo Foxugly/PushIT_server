@@ -52,7 +52,16 @@ Points importants :
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+`requirements.txt` est un verrou haché généré depuis `requirements.in` (dépendances directes) ;
+la production installe exactement ce verrou. Pour changer une dépendance, éditer
+`requirements.in` puis régénérer (`--universal` : Linux en prod et Windows en dev, Python 3.12+) :
+
+```powershell
+uv pip compile requirements.in --generate-hashes --universal --python-version 3.12 -o requirements.txt
 ```
 
 ### 2. Configurer l'environnement
