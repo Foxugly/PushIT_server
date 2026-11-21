@@ -11,6 +11,15 @@ PushIT Server is a Django REST API for managing push notification delivery. It h
 ## Common Commands
 
 ```bash
+# Install deps — two steps: requirements.txt is a hash-pinned lock, and one hashed
+# line puts a whole pip run in hash-checking mode
+pip install --require-hashes -r requirements.txt
+pip install -r requirements-dev.txt
+
+# Change a dependency: edit requirements.in (direct deps), then regenerate the lock
+# for prod (Linux, Python 3.12). deploy.sh installs exactly it (--require-hashes --no-deps + pip check)
+uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o requirements.txt
+
 # Run dev server
 python manage.py runserver
 
@@ -362,7 +371,7 @@ three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
 - `deploy/systemd/pushit-celery.service` — Celery worker (queue `pushit`, concurrency 2)
 - `deploy/systemd/pushit-celery-beat.service` — Celery beat scheduler
 - `deploy/setup-server.sh` — One-time server provisioning
-- `deploy/deploy.sh` — Deploy script (pull, deps, source env, migrate, collectstatic, normalize perms, restart)
+- `deploy/deploy.sh` — Deploy script (pull, deps from the hashed lock, source env, migrate, collectstatic, normalize perms, restart)
 - `.github/workflows/deploy.yml` — CI/CD pipeline
 
 ### Server commands
