@@ -17,8 +17,8 @@ pip install --require-hashes -r requirements.txt
 pip install -r requirements-dev.txt
 
 # Change a dependency: edit requirements.in (direct deps), then regenerate the lock
-# for prod (Linux, Python 3.12). deploy.sh installs exactly it (--require-hashes --no-deps + pip check)
-uv pip compile requirements.in --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o requirements.txt
+# for every platform (--universal: Linux prod + Windows dev), Python 3.12+. deploy.sh installs exactly it (--require-hashes --no-deps + pip check)
+uv pip compile requirements.in --generate-hashes --universal --python-version 3.12 -o requirements.txt
 
 # Run dev server
 python manage.py runserver
