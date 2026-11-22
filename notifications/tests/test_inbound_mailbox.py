@@ -359,7 +359,14 @@ def test_transient_graph_failure_logs_a_warning_not_an_error(mock_fetch, exc, ca
 
 @pytest.mark.django_db
 @override_settings(**_GRAPH_SETTINGS)
-@pytest.mark.parametrize("exc", [_http_error(401), _http_error(403), ValueError("bad json")])
+@pytest.mark.parametrize("exc", [
+        _http_error(401),
+        _http_error(403),
+        ValueError("bad json"),
+        requests.exceptions.SSLError("cert"),
+        requests.exceptions.ProxyError("proxy"),
+    ],
+)
 @patch("notifications.inbound_mailbox.fetch_unread_emails")
 def test_non_transient_graph_failure_is_still_an_error(mock_fetch, exc, caplog):
     mock_fetch.side_effect = exc

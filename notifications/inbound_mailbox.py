@@ -401,6 +401,10 @@ def _record_processing_failure(email: GraphEmail, exc: Exception) -> None:
 
 def _is_transient_graph_error(exc: Exception) -> bool:
     """True for Graph failures that a later poll is expected to get past."""
+    # SSLError / ProxyError subclass ConnectionError but may mean interception:
+    # they stay errors.
+    if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ProxyError)):
+        return False
     if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
         return True
     if isinstance(exc, requests.HTTPError) and exc.response is not None:
