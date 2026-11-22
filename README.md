@@ -58,10 +58,10 @@ pip install -r requirements-dev.txt
 
 `requirements.txt` est un verrou haché généré depuis `requirements.in` (dépendances directes) ;
 la production installe exactement ce verrou. Pour changer une dépendance, éditer
-`requirements.in` puis régénérer (`--universal` : Linux en prod et Windows en dev, Python 3.12+) :
+`requirements.in` puis régénérer (`--universal` : Linux en prod et Windows en dev, Python 3.14 — deadsnakes `/usr/bin/python3.14` en prod) :
 
 ```powershell
-uv pip compile requirements.in --generate-hashes --universal --python-version 3.12 -o requirements.txt
+uv pip compile requirements.in --generate-hashes --universal --python-version 3.14 -o requirements.txt
 ```
 
 ### 2. Configurer l'environnement

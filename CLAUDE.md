@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PushIT Server is a Django REST API for managing push notification delivery. It handles user/app registration, device management, notification creation & scheduling (with quiet periods and templates), delivery via FCM, and inbound email as a notification source via Microsoft Graph API polling.
 
-**Stack:** Python 3.12, Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/CI) + PostgreSQL (prod), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API), Firebase Admin SDK.
+**Stack:** Python 3.14 (deadsnakes `/usr/bin/python3.14` on the box; system `python3` stays 3.12), Django 6.0.3, DRF 3.17.1, Celery 5.6.3 (Redis broker), SQLite (dev/CI) + PostgreSQL (prod), SimpleJWT, drf-spectacular, Prometheus metrics, MSAL (Microsoft Graph API), Firebase Admin SDK.
 
 ## Common Commands
 
@@ -17,8 +17,8 @@ pip install --require-hashes -r requirements.txt
 pip install -r requirements-dev.txt
 
 # Change a dependency: edit requirements.in (direct deps), then regenerate the lock
-# for every platform (--universal: Linux prod + Windows dev), Python 3.12+. deploy.sh installs exactly it (--require-hashes --no-deps + pip check)
-uv pip compile requirements.in --generate-hashes --universal --python-version 3.12 -o requirements.txt
+# for every platform (--universal: Linux prod + Windows dev), Python 3.14. deploy.sh installs exactly it (--require-hashes --no-deps + pip check)
+uv pip compile requirements.in --generate-hashes --universal --python-version 3.14 -o requirements.txt
 
 # Run dev server
 python manage.py runserver
@@ -252,11 +252,14 @@ Deployed on a shared Ubuntu 24.04 EC2 alongside QuizOnline.
 
 ### CI/CD (GitHub Actions)
 
-Push to `main` triggers: tests (Python 3.12) → **OIDC → SSM deploy** (no long-lived SSH key).
+Push to `main` triggers: tests (Python 3.14) → **OIDC → SSM deploy** (no long-lived SSH key).
 
 - The deploy job runs under `environment: production`, assumes the per-repo IAM role
   `pushit-deploy` via GitHub OIDC, then `aws ssm send-command` runs `sudo -u django deploy.sh`
   on the EC2 instance (AWS-RunShellScript runs the command as root; deploy.sh does the work as django).
+- `deploy.sh` rebuilds `.venv` **in place** with `/usr/bin/python3.14` when it is on another
+  Python (old venv kept as `.venv.prev`, restored if the rebuild fails), then installs the lock.
+  One venv only — gunicorn, celery and beat all run from `.venv/bin/`.
 - Env vars come from AWS SSM (`/pushit/prod/*`), fetched into `/run/pushit/.env` at boot — the deploy no longer writes a `.env` or uses `DOTENV_PROD`
 - Integration tests (`@pytest.mark.integration`) are excluded from CI (`-m "not integration"`)
 - *History:* migrated SSH-action → OIDC→SSM on 2026-06-03; dropped the `EC2_SSH_KEY` / `EC2_HOST` / `EC2_USER` / `DOTENV_PROD` secrets (now only `AWS_DEPLOY_ROLE_ARN` + `EC2_INSTANCE_ID`). Fleet model: **OPERATIONS.md §3.11**.
@@ -347,9 +350,10 @@ three layers so a stray `umask 022` from a build/`pip`/`git` run can't leave
    in `/etc/systemd/system`, so changes need a manual root step
    (`cp` → `daemon-reload` → `restart`); a code deploy does **not** apply them.
 
-> A code deploy that *changes* `deploy.sh` runs the **old** script that turn
-> (bash reads it before its own `git reset`), so umask/normalization take effect
-> on the *next* deploy. To fix existing drift immediately, run as root:
+> The SSM command resets the checkout to `origin/main` *before* invoking
+> `deploy.sh`, so a deploy that changes `deploy.sh` runs the **new** script.
+> (A manual run of `deploy.sh` executes the old one that turn — bash reads it
+> before its own `git reset`.) To fix existing drift immediately, run as root:
 > `sudo chmod -R g-w,o-rwx /var/www/django_websites/PushIT_server`, then verify
 > `sudo find <tree> ! -type l -perm /007 | wc -l` and `-perm /020` both report `0`.
 
