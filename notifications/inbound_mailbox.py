@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 
+import requests
 from django.conf import settings
 from django.core.cache import cache
 from rest_framework import serializers
@@ -398,6 +399,16 @@ def _record_processing_failure(email: GraphEmail, exc: Exception) -> None:
     mark_email_read(email.graph_id)
 
 
+def _is_transient_graph_error(exc: Exception) -> bool:
+    """True for Graph failures that a later poll is expected to get past."""
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        return status == 429 or status >= 500
+    return False
+
+
 def poll_inbound_mailbox() -> dict:
     if not _is_configured():
         return {"status": "skipped", "reason": "not configured", "processed_count": 0}
@@ -405,6 +416,12 @@ def poll_inbound_mailbox() -> dict:
     try:
         emails = fetch_unread_emails()
     except Exception as exc:
+        if _is_transient_graph_error(exc):
+            # Microsoft Graph hiccup (5xx, 429, timeout, network): the next poll
+            # retries on its own. A warning keeps it in the logs without opening a
+            # Sentry event every minute (PUSHIT-BACKEND-N/X: 700 events in a day).
+            logger.warning("inbound_mailbox_fetch_transient", extra={"error": str(exc)})
+            return {"status": "error", "reason": str(exc), "processed_count": 0}
         logger.exception("inbound_mailbox_fetch_failed", extra={"error": str(exc)})
         return {"status": "error", "reason": str(exc), "processed_count": 0}
 

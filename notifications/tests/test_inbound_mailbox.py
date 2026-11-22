@@ -1,6 +1,8 @@
+import logging
 from unittest.mock import patch
 
 import pytest
+import requests
 from django.test import override_settings
 
 from accounts.models import User
@@ -319,3 +321,53 @@ def test_build_unknown_address_reply_returns_empty_for_unknown_user():
 
     assert subject == ""
     assert body == ""
+
+
+_GRAPH_SETTINGS = dict(
+    INBOUND_EMAIL_DOMAIN="pushit.com",
+    GRAPH_CLIENT_ID="fake-client-id",
+    GRAPH_TENANT_ID="fake-tenant",
+    GRAPH_CLIENT_SECRET="fake-secret",
+    GRAPH_MAILBOX_USER_ID="mailbox@pushit.com",
+)
+
+
+def _http_error(status: int) -> requests.HTTPError:
+    response = requests.Response()
+    response.status_code = status
+    return requests.HTTPError(f"{status} error", response=response)
+
+
+@pytest.mark.django_db
+@override_settings(**_GRAPH_SETTINGS)
+@pytest.mark.parametrize(
+    "exc",
+    [_http_error(502), _http_error(503), _http_error(429), requests.ReadTimeout("t"), requests.ConnectionError("c")],
+)
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_transient_graph_failure_logs_a_warning_not_an_error(mock_fetch, exc, caplog):
+    mock_fetch.side_effect = exc
+
+    with caplog.at_level(logging.WARNING, logger="notifications.inbound_mailbox"):
+        result = poll_inbound_mailbox()
+
+    assert result["status"] == "error"
+    records = [r for r in caplog.records if r.name == "notifications.inbound_mailbox"]
+    assert [r.levelno for r in records] == [logging.WARNING]
+    assert records[0].getMessage() == "inbound_mailbox_fetch_transient"
+
+
+@pytest.mark.django_db
+@override_settings(**_GRAPH_SETTINGS)
+@pytest.mark.parametrize("exc", [_http_error(401), _http_error(403), ValueError("bad json")])
+@patch("notifications.inbound_mailbox.fetch_unread_emails")
+def test_non_transient_graph_failure_is_still_an_error(mock_fetch, exc, caplog):
+    mock_fetch.side_effect = exc
+
+    with caplog.at_level(logging.WARNING, logger="notifications.inbound_mailbox"):
+        result = poll_inbound_mailbox()
+
+    assert result["status"] == "error"
+    records = [r for r in caplog.records if r.name == "notifications.inbound_mailbox"]
+    assert [r.levelno for r in records] == [logging.ERROR]
+    assert records[0].getMessage() == "inbound_mailbox_fetch_failed"
