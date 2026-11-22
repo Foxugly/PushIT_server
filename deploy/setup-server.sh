@@ -82,7 +82,7 @@ echo "=== 4/7 Python venv + dependencies ==="
 # ---------------------------------------------------------------------------
 
 if [ ! -d "$APP_DIR/.venv" ]; then
-    sudo -u "$APP_USER" python3 -m venv "$APP_DIR/.venv"
+    sudo -u "$APP_USER" /usr/bin/python3.14 -m venv "$APP_DIR/.venv"  # deadsnakes; system python3 is 3.12
 fi
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
