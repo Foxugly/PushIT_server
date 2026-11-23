@@ -16,7 +16,7 @@ from config.api_errors import (
 )
 from devices.models import Device, DeviceTokenStatus
 from .inbound_auth import evaluate_sender_authentication
-from .inbound_email import extract_subject_schedule
+from .inbound_email import INVALID_SEND_AT_MESSAGE, extract_subject_schedule
 from .models import (
     DeliveryStatus,
     InboundEmailIngestionLog,
@@ -505,8 +505,10 @@ class NotificationInboundEmailSerializer(serializers.Serializer):
 
         try:
             title, scheduled_for = extract_subject_schedule(subject)
-        except ValueError as exc:
-            errors["subject"] = [str(exc)]
+        except ValueError:
+            # Fixed text, never str(exc): the error list is returned to the
+            # client (CodeQL py/stack-trace-exposure).
+            errors["subject"] = [INVALID_SEND_AT_MESSAGE]
             title = ""
             scheduled_for = None
 

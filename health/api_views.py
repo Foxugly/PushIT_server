@@ -8,6 +8,7 @@ dependency degrades the response to ``status="degraded"`` rather than 500-ing
 the whole endpoint.
 """
 
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -24,6 +25,22 @@ from applications.models import Application
 from devices.models import Device
 from exchange.integration import is_configured as exchange_is_configured
 from notifications.models import Notification, NotificationStatus
+
+logger = logging.getLogger("pushit")
+
+# Returned in place of the exception text, which is only logged server-side
+# (CodeQL py/stack-trace-exposure: a DB/broker error can carry hosts, DSNs, SQL).
+CHECK_FAILED_DETAIL = "unavailable"
+
+
+def _check_failed(name: str) -> dict:
+    logger.warning("admin_status_check_failed", extra={"check": name}, exc_info=True)
+    return {"status": "error", "detail": CHECK_FAILED_DETAIL}
+
+
+def _metric_failed(name: str) -> dict:
+    logger.warning("admin_status_metric_failed", extra={"metric": name}, exc_info=True)
+    return {"error": CHECK_FAILED_DETAIL}
 
 
 class AdminStatusCheckSerializer(serializers.Serializer):
@@ -44,8 +61,8 @@ def _check_database() -> dict:
             cursor.execute("SELECT 1")
             cursor.fetchone()
         return {"status": "ok", "detail": "reachable"}
-    except Exception as exc:  # noqa: BLE001 — never let a check 500 the endpoint
-        return {"status": "error", "detail": str(exc)}
+    except Exception:  # noqa: BLE001 — never let a check 500 the endpoint
+        return _check_failed("database")
 
 
 def _check_celery_broker() -> dict:
@@ -54,8 +71,8 @@ def _check_celery_broker() -> dict:
 
         app.connection().ensure_connection(max_retries=1, timeout=2)
         return {"status": "ok", "detail": "reachable"}
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "detail": str(exc)}
+    except Exception:  # noqa: BLE001
+        return _check_failed("celery_broker")
 
 
 def _check_celery_workers() -> dict:
@@ -67,15 +84,15 @@ def _check_celery_workers() -> dict:
             return {"status": "ok", "detail": f"{len(replies)} worker(s) responded"}
         # No worker reply is not necessarily an error — beat/worker may be busy.
         return {"status": "degraded", "detail": "no workers responded"}
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "detail": str(exc)}
+    except Exception:  # noqa: BLE001
+        return _check_failed("celery_workers")
 
 
 def _check_exchange() -> dict:
     try:
         return {"status": "ok", "configured": bool(exchange_is_configured())}
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "detail": str(exc)}
+    except Exception:  # noqa: BLE001
+        return _check_failed("exchange")
 
 
 def _collect_metrics() -> dict:
@@ -86,13 +103,13 @@ def _collect_metrics() -> dict:
             "total": Application.objects.count(),
             "active": Application.objects.filter(is_active=True).count(),
         }
-    except Exception as exc:  # noqa: BLE001
-        metrics["applications"] = {"error": str(exc)}
+    except Exception:  # noqa: BLE001
+        metrics["applications"] = _metric_failed("applications")
 
     try:
         metrics["devices"] = {"total": Device.objects.count()}
-    except Exception as exc:  # noqa: BLE001
-        metrics["devices"] = {"error": str(exc)}
+    except Exception:  # noqa: BLE001
+        metrics["devices"] = _metric_failed("devices")
 
     try:
         counts = {
@@ -103,8 +120,8 @@ def _collect_metrics() -> dict:
             status.value: counts.get(status.value, 0)
             for status in NotificationStatus
         }
-    except Exception as exc:  # noqa: BLE001
-        metrics["notifications"] = {"error": str(exc)}
+    except Exception:  # noqa: BLE001
+        metrics["notifications"] = _metric_failed("notifications")
 
     try:
         stuck_minutes = getattr(settings, "NOTIFICATION_PROCESSING_STUCK_MINUTES", 15)
@@ -114,8 +131,8 @@ def _collect_metrics() -> dict:
             processing_started_at__isnull=False,
             processing_started_at__lt=cutoff,
         ).count()
-    except Exception as exc:  # noqa: BLE001
-        metrics["processing_stuck"] = {"error": str(exc)}
+    except Exception:  # noqa: BLE001
+        metrics["processing_stuck"] = _metric_failed("processing_stuck")
 
     return metrics
 

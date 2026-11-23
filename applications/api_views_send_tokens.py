@@ -22,6 +22,15 @@ from .models_send_token import MAX_TOKENS_PER_APPLICATION, AppSendToken, SendTok
 
 logger = logging.getLogger("pushit")
 
+# Messages fixes renvoyes au client pour chaque `RevealUnavailable.reason` :
+# le texte de l'exception reste dans les logs (CodeQL py/stack-trace-exposure).
+_REVEAL_UNAVAILABLE_DETAILS = {
+    RevealUnavailable.REASON_NOT_CONFIGURED: "APP_TOKEN_ENCRYPTION_KEYS n'est pas configuré.",
+    RevealUnavailable.REASON_NO_CIPHERTEXT: "Ce jeton n'a pas de copie déchiffrable.",
+    RevealUnavailable.REASON_NO_KEY: "Aucune clé ne déchiffre ce jeton.",
+}
+_REVEAL_UNAVAILABLE_DEFAULT = "Ce jeton ne peut pas être relu."
+
 
 class SendTokenSerializer(serializers.ModelSerializer):
     is_active = serializers.BooleanField(read_only=True)
@@ -169,9 +178,13 @@ class SendTokenRevealApiView(_OwnedApplicationMixin, APIView):
         except RevealUnavailable as exc:
             # Le jeton reste utilisable -- l'authentification passe par
             # l'empreinte. Seule sa relecture est perdue, et on le dit.
+            logger.warning(
+                "send_token_reveal_unavailable",
+                extra={"app": app_id, "token": jeton.id, "reason": exc.reason, "error": str(exc)},
+            )
             return error_response(
                 code="reveal_unavailable",
-                detail=str(exc),
+                detail=_REVEAL_UNAVAILABLE_DETAILS.get(exc.reason, _REVEAL_UNAVAILABLE_DEFAULT),
                 http_status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
