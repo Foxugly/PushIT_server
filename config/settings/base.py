@@ -453,9 +453,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # we never send events tagged environment=DEV/TEST — local `manage.py`/pytest
 # runs would otherwise pollute the dashboard with non-bugs. The prod check mirrors
 # the dispatch in config/settings/__init__.py (DJANGO_ENV=prod OR STATE=PROD), so
-# it holds however prod settings were selected. The SDK auto-enables its Django
-# and Celery integrations when those packages are importable, so a bare init is
-# enough. DSN comes from SSM /pushit/prod/SENTRY_DSN in prod.
+# it holds however prod settings were selected. The SDK auto-enables its Celery
+# integration; Django and logging are configured in config/sentry.py. DSN comes
+# from SSM /pushit/prod/SENTRY_DSN in prod.
 _SENTRY_PROD_ACTIVE = (
     os.environ.get("DJANGO_ENV", "").strip().lower() == "prod"
     or STATE.strip().upper() == "PROD"
@@ -477,31 +477,18 @@ _SENTRY_ENV_IS_PROD = SENTRY_ENVIRONMENT.strip().upper() in {"PROD", "PRODUCTION
 
 if SENTRY_DSN and _SENTRY_PROD_ACTIVE and _SENTRY_ENV_IS_PROD:
     import sentry_sdk
-    from django.core.exceptions import DisallowedHost
 
     # Underscored: module-level upper-case names would become Django settings.
-    from config.sentry import DATA_COLLECTION as _SENTRY_DATA_COLLECTION
-    from config.sentry import scrub_event as _sentry_scrub_event
+    from config.sentry import sentry_options as _sentry_options
 
-    def _sentry_before_send(event, hint):
-        _sentry_scrub_event(event, hint)
-        # Drop common public-endpoint noise: bots/scanners hitting the API with
-        # a bad Host header raise DisallowedHost (a handled 400, not a real bug).
-        exc = (hint.get("exc_info") or (None, None, None))[1]
-        if isinstance(exc, DisallowedHost):
-            return None
-        if str(event.get("logger", "")).startswith("django.security.DisallowedHost"):
-            return None
-        return event
-
+    # No PII, cookies or request bodies; scrubbing, DisallowedHost noise and
+    # integrations: see config/sentry.py.
     sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        environment=SENTRY_ENVIRONMENT,
-        traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
-        # No PII, cookies or request bodies: see config/sentry.py.
-        data_collection=_SENTRY_DATA_COLLECTION,
-        before_send=_sentry_before_send,
-        before_send_transaction=_sentry_scrub_event,
+        **_sentry_options(
+            dsn=SENTRY_DSN,
+            environment=SENTRY_ENVIRONMENT,
+            traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
+        )
     )
 
 # --- Cloudflare Turnstile (captcha on /auth/register/) ---
