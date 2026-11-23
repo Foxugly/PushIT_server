@@ -15,7 +15,19 @@ from django.core.exceptions import ImproperlyConfigured
 
 
 class RevealUnavailable(Exception):
-    """Aucune clé configurée : on ne peut pas remontrer un jeton."""
+    """Aucune clé configurée : on ne peut pas remontrer un jeton.
+
+    `reason` est un code stable (``REASON_*``) : la vue en tire un message fixe
+    pour le client, jamais le texte de l'exception (CodeQL py/stack-trace-exposure).
+    """
+
+    REASON_NOT_CONFIGURED = "not_configured"
+    REASON_NO_CIPHERTEXT = "no_ciphertext"
+    REASON_NO_KEY = "no_matching_key"
+
+    def __init__(self, message: str, reason: str = REASON_NOT_CONFIGURED):
+        super().__init__(message)
+        self.reason = reason
 
 
 def _keys() -> list[str]:
@@ -60,7 +72,9 @@ def encrypt(raw: str) -> bytes:
 
 def decrypt(blob: bytes) -> str:
     if not blob:
-        raise RevealUnavailable("Ce jeton n'a pas de copie déchiffrable.")
+        raise RevealUnavailable(
+            "Ce jeton n'a pas de copie déchiffrable.", RevealUnavailable.REASON_NO_CIPHERTEXT
+        )
     from cryptography.fernet import InvalidToken
 
     try:
@@ -69,4 +83,6 @@ def decrypt(blob: bytes) -> str:
         # Chiffré avec une clé qui n'est plus dans la liste : le jeton reste
         # utilisable (l'authentification passe par l'empreinte), il n'est plus
         # que illisible. On le dit tel quel.
-        raise RevealUnavailable("Aucune clé ne déchiffre ce jeton.") from exc
+        raise RevealUnavailable(
+            "Aucune clé ne déchiffre ce jeton.", RevealUnavailable.REASON_NO_KEY
+        ) from exc

@@ -82,3 +82,50 @@ def test_admin_status_staff_user_ok(_mock_celery):
         "draft", "scheduled", "queued", "processing",
         "sent", "failed", "partial", "no_target",
     }
+
+
+@pytest.mark.django_db
+def test_admin_status_does_not_expose_exception_text(monkeypatch, caplog):
+    """CodeQL py/stack-trace-exposure: a failing check/metric returns a fixed
+    string; the exception text (hosts, DSNs, SQL...) only goes to the logs."""
+    from config.celery import app
+    from devices.models import Device
+
+    secret = "redis://:hunter2@internal-host:6379/2 refused"
+
+    class _Conn:
+        def ensure_connection(self, *args, **kwargs):
+            raise ConnectionError(secret)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(app, "connection", lambda *a, **k: _Conn())
+    monkeypatch.setattr(app.control, "ping", _boom)
+    monkeypatch.setattr(Device.objects, "count", _boom)
+
+    user = User.objects.create_user(
+        email="staff2@example.com", password="MotDePasseTresSolide123!"
+    )
+    user.is_staff = True
+    user.save(update_fields=["is_staff"])
+    client = APIClient()
+    _auth(client, user)
+
+    with caplog.at_level("WARNING", logger="pushit"):
+        response = client.get(ADMIN_STATUS_URL)
+
+    assert response.status_code == 200
+    assert secret not in response.content.decode()
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["checks"]["celery_broker"] == {"status": "error", "detail": "unavailable"}
+    assert body["checks"]["celery_workers"] == {"status": "error", "detail": "unavailable"}
+    assert body["checks"]["database"]["status"] == "ok"
+    assert body["metrics"]["devices"] == {"error": "unavailable"}
+
+    logged = [r for r in caplog.records if r.msg in ("admin_status_check_failed", "admin_status_metric_failed")]
+    assert {getattr(r, "check", None) or getattr(r, "metric", None) for r in logged} == {
+        "celery_broker", "celery_workers", "devices",
+    }
+    assert all(r.exc_info and secret in str(r.exc_info[1]) for r in logged)

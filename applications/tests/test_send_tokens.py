@@ -323,3 +323,50 @@ def test_a_stranger_sees_nothing_and_creates_nothing(app, db):
     assert _as(autre).post(
         f"/api/v1/apps/{app.id}/send-tokens/", {"name": "vol"}, format="json"
     ).status_code == 404
+
+
+@pytest.mark.django_db
+def test_reveal_unavailable_returns_a_fixed_message_not_the_exception_text(app, owner, caplog):
+    """CodeQL py/stack-trace-exposure : le texte de l'exception reste dans les
+    logs, le client recoit un message fixe choisi par `reason`."""
+    with override_settings(APP_TOKEN_ENCRYPTION_KEYS=[]):
+        jeton, _ = AppSendToken.issue(app, "prod")
+
+    secret = "texte-interne-de-l-exception"
+    with override_settings(**CHIFFREMENT), patch.object(
+        AppSendToken,
+        "reveal",
+        side_effect=RevealUnavailable(secret, RevealUnavailable.REASON_NO_CIPHERTEXT),
+    ), caplog.at_level("WARNING", logger="pushit"):
+        r = _as(owner).post(
+            f"/api/v1/apps/{app.id}/send-tokens/{jeton.id}/reveal/",
+            {"password": MOT_DE_PASSE},
+            format="json",
+        )
+
+    assert r.status_code == 503
+    assert r.json() == {
+        "code": "reveal_unavailable",
+        "detail": "Ce jeton n'a pas de copie déchiffrable.",
+    }
+    assert secret not in r.content.decode()
+    record = next(rec for rec in caplog.records if rec.msg == "send_token_reveal_unavailable")
+    assert record.error == secret
+    assert record.reason == RevealUnavailable.REASON_NO_CIPHERTEXT
+    assert not SendTokenReveal.objects.exists()
+
+
+@pytest.mark.django_db
+def test_reveal_unavailable_without_a_key_keeps_its_message(app, owner):
+    """Le message visible reste celui d'avant le correctif (contrat SPA)."""
+    with override_settings(APP_TOKEN_ENCRYPTION_KEYS=[]):
+        jeton, _ = AppSendToken.issue(app, "prod")
+        r = _as(owner).post(
+            f"/api/v1/apps/{app.id}/send-tokens/{jeton.id}/reveal/",
+            {"password": MOT_DE_PASSE},
+            format="json",
+        )
+
+    assert r.status_code == 503
+    assert r.json()["code"] == "reveal_unavailable"
+    assert r.json()["detail"] == "Ce jeton n'a pas de copie déchiffrable."
