@@ -479,7 +479,12 @@ if SENTRY_DSN and _SENTRY_PROD_ACTIVE and _SENTRY_ENV_IS_PROD:
     import sentry_sdk
     from django.core.exceptions import DisallowedHost
 
+    # Underscored: module-level upper-case names would become Django settings.
+    from config.sentry import DATA_COLLECTION as _SENTRY_DATA_COLLECTION
+    from config.sentry import scrub_event as _sentry_scrub_event
+
     def _sentry_before_send(event, hint):
+        _sentry_scrub_event(event, hint)
         # Drop common public-endpoint noise: bots/scanners hitting the API with
         # a bad Host header raise DisallowedHost (a handled 400, not a real bug).
         exc = (hint.get("exc_info") or (None, None, None))[1]
@@ -493,8 +498,10 @@ if SENTRY_DSN and _SENTRY_PROD_ACTIVE and _SENTRY_ENV_IS_PROD:
         dsn=SENTRY_DSN,
         environment=SENTRY_ENVIRONMENT,
         traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
-        send_default_pii=env.bool("SENTRY_SEND_PII", default=False),
+        # No PII, cookies or request bodies: see config/sentry.py.
+        data_collection=_SENTRY_DATA_COLLECTION,
         before_send=_sentry_before_send,
+        before_send_transaction=_sentry_scrub_event,
     )
 
 # --- Cloudflare Turnstile (captcha on /auth/register/) ---
